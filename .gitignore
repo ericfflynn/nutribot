@@ -1,1 +1,14 @@
-app/.env
+__pycache__/
+*.pyc
+
+# Env
+.env
+
+# DB file
+app/*.db
+
+# Streamlit
+.streamlit/
+
+# Misc
+*.log

@@ -6,13 +6,17 @@ from langchain.prompts import PromptTemplate
 from dotenv import load_dotenv
 import os
 
-# Load env vars
+# Load environment variables
 load_dotenv()
 
-# Set Streamlit config
-st.set_page_config(page_title="NutriBot", layout="wide")
+# Set up Streamlit page
+st.set_page_config(
+    page_title="NutriBot",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
 
-# NutriBot system prompt
+# LangChain prompt template
 instructions = PromptTemplate.from_template(
     """
     You are NutriBot, an expert nutrition assistant that gives personalized, practical advice.
@@ -25,7 +29,7 @@ instructions = PromptTemplate.from_template(
     """
 )
 
-# Set up LangChain
+# LangChain setup
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.0-flash",
     google_api_key=os.getenv("GEMINI_API_KEY"),
@@ -40,21 +44,22 @@ conversation = ConversationChain(
 # Initialize chat history
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
-    # Add greeting on first load
-    greeting = "Hi, I’m NutriBot. How can I help you with your nutrition today?"
-    st.session_state.chat_history.append(("NutriBot", greeting))
+    st.session_state.chat_history.append(("ai", "Hi, I’m NutriBot. How can I help you with your nutrition today?"))
 
-# Display chat history
-for speaker, text in st.session_state.chat_history:
-    st.markdown(f"**{speaker}:** {text}")
+# Render chat history
+for role, msg in st.session_state.chat_history:
+    with st.chat_message(role):
+        st.markdown(msg)
 
-# Input box and button
-user_input = st.text_input("Type your message:", key="input", placeholder="Ask me anything about nutrition...", on_change=None)
+# Chat input
+if user_input := st.chat_input("Type your question and hit Enter..."):
+    # Add user message
+    st.session_state.chat_history.append(("user", user_input))
+    with st.chat_message("user"):
+        st.markdown(user_input)
 
-# Handle input submission
-if user_input:
+    # Get AI response
     response = conversation.run(user_input)
-    st.session_state.chat_history.append(("You", user_input))
-    st.session_state.chat_history.append(("NutriBot", response))
-    # Clear input (force rerun)
-    st.experimental_rerun()
+    st.session_state.chat_history.append(("ai", response))
+    with st.chat_message("ai"):
+        st.markdown(response)
