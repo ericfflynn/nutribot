@@ -1,0 +1,11 @@
+{
+    "dependencies": ["./"],
+    "graphs": {
+      "nutribot": {
+        "path": "graph.agent:build_agent",
+        "description": "NutriBot ReAct nutrition assistant"
+      }
+    },
+    "env": ".env"
+  }
+  

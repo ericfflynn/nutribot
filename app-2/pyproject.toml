@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nutribot"
+version = "0.1.0"
+description = "NutriBot — a LangGraph + Streamlit nutrition assistant"
+authors = [
+  { name="Eric Flynn" }
+]
+readme = "README.md"
+requires-python = ">=3.11"
+
+# these are your runtime dependencies
+dependencies = [
+  "langgraph==0.4.8",
+  "langgraph-prebuilt",
+  "langchain_openai",
+  "streamlit",
+  "python-dotenv",
+  "requests",
+]

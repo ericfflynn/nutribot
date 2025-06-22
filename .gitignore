@@ -1,14 +1,24 @@
+# Byte-compiled files
 __pycache__/
-*.pyc
+*.py[cod]
 
-# Env
-.env
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
 
-# DB file
-app/*.db
+# Virtual environments
+.venv/
+venv/
 
-# Streamlit
+# SQLite database
+*.db
+
+# Streamlit cache
 .streamlit/
 
-# Misc
-*.log
+# LangGraph API folder
+.langgraph_api/
+
+# macOS
+.DS_Store
