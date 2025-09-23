@@ -4,3 +4,6 @@ langsmith
 python-dotenv
 langchain-groq
 langchain-tavily
+pydantic
+pandas
+streamlit
