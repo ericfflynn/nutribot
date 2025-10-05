@@ -1,5 +1,6 @@
 import pandas as pd
 
+
 def compute_totals(df: pd.DataFrame) -> dict:
     """Compute nutrition totals from the dataframe."""
     totals = df[["calories", "protein_g", "carbs_g", "fat_g"]].sum()

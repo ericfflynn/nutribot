@@ -1,6 +1,7 @@
 from openai import OpenAI
 from .schemas import MealResponse
 
+
 class NutriBot:
     def __init__(self, model="gpt-4.1-mini"):
         self.client = OpenAI()
@@ -19,10 +20,10 @@ class NutriBot:
                         "Extract each food, quantity, and unit, and estimate "
                         "calories, protein_g, carbs_g, and fat_g. "
                         "Always return JSON that matches the MealResponse schema."
-                    )
+                    ),
                 },
-                {"role": "user", "content": user_input}
+                {"role": "user", "content": user_input},
             ],
-            response_format=MealResponse
+            response_format=MealResponse,
         )
         return resp.choices[0].message.parsed
