@@ -5,7 +5,7 @@ It takes free-form meal descriptions (e.g. *“I ate 2 eggs and a banana”*) an
 
 ---
 
-## 🚀 Features (Current)
+## Current Features
 
 - Enter any meal in natural language.
 - AI parses foods, quantities, and estimates nutrition values (FoodItem list).

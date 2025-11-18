@@ -12,4 +12,7 @@ wheels/
 
 nutribot.db
 
+# Logs
+logs/
+
 .ruff_cache/

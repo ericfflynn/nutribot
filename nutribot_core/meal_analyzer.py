@@ -2,7 +2,9 @@ from openai import OpenAI
 from .schemas import MealResponse
 
 
-class NutriBot:
+class MealAnalyzer:
+    """Parses natural language meal descriptions and estimates nutrition values."""
+    
     def __init__(self, model="gpt-4.1-mini"):
         self.client = OpenAI()
         self.model = model
@@ -15,7 +17,7 @@ class NutriBot:
                 {
                     "role": "system",
                     "content": (
-                        "You are NutriBot, a nutrition assistant. "
+                        "You are a nutrition assistant. "
                         "The user will describe a meal in natural language. "
                         "Extract each food, quantity, and unit, and estimate "
                         "calories, protein_g, carbs_g, and fat_g. "
@@ -27,3 +29,4 @@ class NutriBot:
             response_format=MealResponse,
         )
         return resp.choices[0].message.parsed
+

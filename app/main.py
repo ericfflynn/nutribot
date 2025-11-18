@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from nutribot_core.bot import NutriBot
+from nutribot_core.meal_analyzer import MealAnalyzer
 from nutribot_core.utils import compute_totals
 from nutribot_core.db import SessionLocal
 from nutribot_core.crud import save_meal_response
@@ -44,8 +44,8 @@ if reset:
 
 if analyze and user_input:
     with st.spinner("Analyzing..."):
-        bot = NutriBot()
-        parsed = bot.analyze_meal(user_input)
+        analyzer = MealAnalyzer()
+        parsed = analyzer.analyze_meal(user_input)
         st.session_state.parsed = parsed
 
 if save_meal and st.session_state.parsed:
