@@ -30,8 +30,6 @@ class ToolRouter:
         Returns:
             List of tool result messages to add to conversation
         """
-        print(f"\n🛠️  OpenAI wants to call {len(tool_calls)} tool(s)")
-        
         tool_results = []
         
         for tool_call in tool_calls:

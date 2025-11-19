@@ -30,14 +30,16 @@ class ChatInterface:
         self.openai_client = OpenAIClient(model)
         self.tool_router = ToolRouter(self.mcp_client)
         self.conversation = Conversation(
-            system_message or "You are a helpful nutrition assistant. Use the calculate_macros tool when users ask about nutrition."
+            system_message or """
+            You are a helpful nutrition assistant. You have tools at your disposal to help you look up nutrition information for foods or meals
+            You can also access the whoop API to look up your sleep, workout, and recovery data."""
         )
         self.tools: Optional[List[Dict[str, Any]]] = None
     
     async def _initialize_tools(self):
-        """Initialize tools from MCP server."""
+        """Initialize tools from MCP server (establishes persistent connection)."""
         if self.tools is None:
-            print("\n📋 Fetching tools from MCP server...")
+            # This will establish the persistent connection and fetch tools
             self.tools = await self.mcp_client.get_tools()
     
     def _display_response(self, message: Any):
@@ -50,69 +52,98 @@ class ChatInterface:
     
     async def _process_user_input(self, user_input: str) -> Any:
         """
-        Process user input and return assistant response.
+        Process user input with ReAct pattern (Reasoning + Acting loop).
+        
+        This implements the ReAct pattern where the LLM can:
+        1. Reason about what it needs
+        2. Act by calling tools
+        3. Observe tool results
+        4. Repeat until it has enough information to answer
         
         Args:
             user_input: User's message
             
         Returns:
-            Final assistant message
+            Final assistant message (no more tool calls)
         """
-        # Add user message
+        # Step 1: Add user message to conversation state
         self.conversation.add_user_message(user_input)
         
-        # Ensure tools are loaded
+        # Step 2: Ensure tools are loaded (lazy initialization)
         await self._initialize_tools()
         
-        # Send to OpenAI with tool definitions
-        print("\n🤖 Sending to OpenAI (with tool definitions)...")
-        response = self.openai_client.chat(
-            messages=self.conversation.get_messages(),
-            tools=self.tools,
-            tool_choice="auto"
-        )
+        # Step 3: ReAct Loop - continue until LLM has final answer
+        max_iterations = 10  # Safety limit to prevent infinite loops
+        iteration = 0
         
-        message = self.openai_client.get_message_from_response(response)
-        self.conversation.add_assistant_message(message)
-        
-        # Check if OpenAI wants to use a tool
-        if message.tool_calls:
-            # Route tool calls to MCP server
-            tool_results = await self.tool_router.handle_tool_calls(
-                message.tool_calls
-            )
+        while iteration < max_iterations:
+            iteration += 1
+            print(f"\n🤖 ReAct iteration {iteration}...")
             
-            # Add tool results to conversation
-            self.conversation.add_tool_results(tool_results)
-            
-            # Get final response from OpenAI
-            print("\n🤖 Sending tool results back to OpenAI for final answer...")
+            # Step 3a: LLM REASONING - send conversation + tools
             response = self.openai_client.chat(
-                messages=self.conversation.get_messages()
+                messages=self.conversation.get_messages(),  # Full conversation history
+                tools=self.tools,                           # ✅ Always include tools
+                tool_choice="auto"                          # ✅ Let LLM decide
             )
+            
             message = self.openai_client.get_message_from_response(response)
             self.conversation.add_assistant_message(message)
+            
+            # Step 3b: Check if LLM wants to ACT (call tools)
+            if message.tool_calls:
+                print(f"🔧 LLM wants to call {len(message.tool_calls)} tool(s)")
+                
+                # Step 3c: ACT - Execute tool calls
+                tool_results = await self.tool_router.handle_tool_calls(
+                    message.tool_calls
+                )
+                
+                # Step 3d: OBSERVE - Add tool results to conversation
+                self.conversation.add_tool_results(tool_results)
+                
+                # Step 3e: Continue loop - LLM will reason about tool results
+                # and potentially make more tool calls
+                continue
+            else:
+                # Step 4: No more tool calls = final answer
+                print("✅ LLM has final answer (no more tool calls)")
+                return message
         
+        # Safety: if we hit max iterations, return last message
+        print(f"⚠️  Reached max iterations ({max_iterations}), returning last response")
         return message
     
-    def run(self):
-        """Run the chat interface."""
+    async def _run_async(self):
+        """Async version of run() - maintains single event loop for persistent connection."""
         print("\n🥗 NutriBot Chat Interface")
         print("Type 'quit' to exit\n")
         
-        while True:
-            # Get user input
-            user_input = input("You: ")
-            if user_input.lower().strip() == 'quit':
-                break
-            
-            # Process and display response
-            message = asyncio.run(self._process_user_input(user_input))
-            self._display_response(message)
+        try:
+            while True:
+                # Get user input (blocking is fine for user input)
+                # We're in a single event loop, so persistent connection is maintained
+                user_input = input("You: ")
+                if user_input.lower().strip() == 'quit':
+                    break
+                
+                # Process and display response (reuses same event loop and connection)
+                message = await self._process_user_input(user_input)
+                self._display_response(message)
+        finally:
+            # Always disconnect MCP server when chat ends
+            # This ensures the server process is properly terminated
+            print("\n🔌 Cleaning up MCP connection...")
+            await self.mcp_client.disconnect()
         
         # Prompt to save
         save = input("\n💾 Save conversation? (y/n): ").lower().strip()
         if save == 'y':
             filename = self.conversation.save_to_file()
             print(f"✅ Saved to {filename}")
+    
+    def run(self):
+        """Run the chat interface (creates single event loop for entire session)."""
+        # Use asyncio.run() once at the top level to maintain persistent connection
+        asyncio.run(self._run_async())
 

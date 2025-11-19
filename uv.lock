@@ -729,6 +729,7 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "sqlalchemy" },
     { name = "streamlit" },
+    { name = "whoop-sdk" },
 ]
 
 [package.dev-dependencies]
@@ -746,6 +747,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.1.1" },
     { name = "sqlalchemy", specifier = ">=2.0.43" },
     { name = "streamlit", specifier = ">=1.49.1" },
+    { name = "whoop-sdk", specifier = ">=0.2.1" },
 ]
 
 [package.metadata.requires-dev]
@@ -1514,4 +1516,17 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/24/30/6b0809f4510673dc723187aeaf24c7f5459922d01e2f794277a3dfb90345/wcwidth-0.2.14.tar.gz", hash = "sha256:4d478375d31bc5395a3c55c40ccdf3354688364cd61c4f6adacaa9215d0b3605", size = 102293, upload-time = "2025-09-22T16:29:53.023Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/af/b5/123f13c975e9f27ab9c0770f514345bd406d0e8d3b7a0723af9d43f710af/wcwidth-0.2.14-py2.py3-none-any.whl", hash = "sha256:a7bb560c8aee30f9957e5f9895805edd20602f2d7f720186dfd906e82b4982e1", size = 37286, upload-time = "2025-09-22T16:29:51.641Z" },
+]
+
+[[package]]
+name = "whoop-sdk"
+version = "0.2.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "python-dotenv" },
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/09/1c/c560ba37277913ca69da3615e809c5e15219e73297687a4b508aa5a15766/whoop_sdk-0.2.1.tar.gz", hash = "sha256:cd94f984a27ef4bc670a22ef95fa3190ffa4176d3d1605bb262ae017fbacb058", size = 21734, upload-time = "2025-11-14T01:36:29.758Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ad/0f/063e0d3da21a7fd894019ce6b00f610f85b47fb195b46c31ca432d57ab9e/whoop_sdk-0.2.1-py3-none-any.whl", hash = "sha256:4a9f10bb7f0c44b58b048f7b94cafeda0f7950125a6307e3645d724a12ac7817", size = 13649, upload-time = "2025-11-14T01:36:28.814Z" },
 ]
