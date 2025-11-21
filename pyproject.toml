@@ -11,6 +11,7 @@ dependencies = [
     "pandas>=2.3.2",
     "pydantic>=2.11.9",
     "python-dotenv>=1.1.1",
+    "requests>=2.31.0",
     "sqlalchemy>=2.0.43",
     "streamlit>=1.49.1",
     "whoop-sdk>=0.2.1",

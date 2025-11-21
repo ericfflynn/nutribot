@@ -1,5 +1,7 @@
 """Chat interface - orchestrates everything."""
 import asyncio
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import List, Dict, Any, Optional
 from .mcp_client import MCPClient
 from .openai_client import OpenAIClient
@@ -29,11 +31,22 @@ class ChatInterface:
         self.mcp_client = MCPClient(mcp_server_command, mcp_server_args)
         self.openai_client = OpenAIClient(model)
         self.tool_router = ToolRouter(self.mcp_client)
-        self.conversation = Conversation(
-            system_message or """
-            You are a helpful nutrition assistant. You have tools at your disposal to help you look up nutrition information for foods or meals
+        
+        # Get current date and time in Eastern timezone
+        eastern_tz = ZoneInfo("America/New_York")
+        now_eastern = datetime.now(eastern_tz)
+        current_date = now_eastern.strftime("%Y-%m-%d")
+        current_time = now_eastern.strftime("%H:%M:%S %Z")
+        day_of_week = now_eastern.strftime("%A")  # Full day name (Monday, Tuesday, etc.)
+        
+        # Build system message with date/time context
+        base_system_message = system_message or """
+            You are a helpful nutrition assistant. You have tools at your disposal to help you look up nutrition information for foods or meals.
             You can also access the whoop API to look up your sleep, workout, and recovery data."""
-        )
+        
+        full_system_message = f"""{base_system_message}
+            IMPORTANT: Today is {day_of_week}, {current_date} and the current time is {current_time} (Eastern Time)."""
+        self.conversation = Conversation(full_system_message)
         self.tools: Optional[List[Dict[str, Any]]] = None
     
     async def _initialize_tools(self):

@@ -1,6 +1,7 @@
 from mcp.server.fastmcp import FastMCP
 from nutribot_core.meal_analyzer import MealAnalyzer
 from whoop_sdk import Whoop
+from mcp_server.notion import get_fitness_benchmarks
 from datetime import date, datetime
 from typing import Optional
 import json
@@ -207,6 +208,18 @@ def get_whoop_workouts(
         }, indent=2)
     except Exception as e:
         return json.dumps({"error": str(e)}, indent=2)
+
+@mcp.tool()
+def get_notion_fitness_benchmarks() -> str:
+    """Get fitness benchmarks from Notion.
+    
+    Retrieves your fitness benchmarks including benchmark name, category, 
+    target value, latest test result, test date, and units.
+    
+    Returns:
+        JSON string containing fitness benchmarks data
+    """
+    return get_fitness_benchmarks()
 
 def main():
     # Initialize and run the server
