@@ -41,8 +41,15 @@ class ChatInterface:
         
         # Build system message with date/time context
         base_system_message = system_message or """
-            You are a helpful nutrition assistant. You have tools at your disposal to help you look up nutrition information for foods or meals.
-            You can also access the whoop API to look up your sleep, workout, and recovery data."""
+            You are a helpful nutrition and training assistant.
+            You have tools for journaling, recommendation, feedback capture, and Whoop data.
+            Tool-use behavior:
+            - When the user asks to save/log what happened today, call the journal save tool.
+            - When the user asks for a next workout recommendation, call the recommendation tool.
+            - When the user gives feedback about a recommendation (e.g. 'that was helpful', 'bad recommendation', 'not aligned'),
+              call submit_recommendation_feedback.
+            - Infer helpful=true/false from user sentiment when possible and pass the note text.
+            - If recommendation text is available in context, include it in the feedback tool call."""
         
         full_system_message = f"""{base_system_message}
             IMPORTANT: Today is {day_of_week}, {current_date} and the current time is {current_time} (Eastern Time)."""
@@ -159,4 +166,3 @@ class ChatInterface:
         """Run the chat interface (creates single event loop for entire session)."""
         # Use asyncio.run() once at the top level to maintain persistent connection
         asyncio.run(self._run_async())
-

@@ -17,3 +17,5 @@ nutribot.db
 logs/
 
 .ruff_cache/
+# macOS
+.DS_Store

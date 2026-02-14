@@ -1,0 +1,21 @@
+{
+  "goals": [
+    "heart_health",
+    "muscle_gain",
+    "visible_abs"
+  ],
+  "rules": {
+    "muscle_frequency_days": 7,
+    "hard_muscle_cooldown_hours": 72,
+    "prefer_zone2_if_stressed_or_low_recovery": true
+  },
+  "focus": {
+    "core_sessions_per_week_target": 3,
+    "cardio_sessions_per_week_target": 3
+  },
+  "notes": [
+    "Try to hit each major muscle at least once per week.",
+    "Do not hit the same muscle hard within 72 hours.",
+    "If stress is high or recovery is low, reduce intensity."
+  ]
+}

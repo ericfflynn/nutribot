@@ -1,239 +1,256 @@
-# NutriBot - AI-Powered Health Assistant with MCP Integration
+# NutriBot
 
-A conversational AI assistant powered by GPT-4o-mini that combines nutrition analysis with fitness data from Whoop, built using the Model Context Protocol (MCP) to create a modular, extensible architecture.
+NutriBot is an MCP-based fitness and nutrition assistant that combines:
+- free-form daily journaling
+- structured LLM-based text parsing
+- Whoop fitness tracker data
+- rule-driven workout recommendations
 
-## Key Features
+This repository is a showcase of practical AI engineering: tool calling, async workflows, schema validation, MCP server design, and recommendation logic built on mixed structured/unstructured signals.
 
-### **MCP Server Architecture**
-- **Modular Tool System**: Built with FastMCP, exposing tools as reusable functions
-- **Persistent Connections**: Maintains a single stdio connection to the MCP server for the entire chat session, enabling state persistence and efficient resource usage
-- **ReAct Pattern**: Implements Reasoning + Acting loop, allowing the LLM to chain multiple tool calls intelligently
-- **Whoop SDK Integration**: Seamlessly integrates with `whoop-sdk` (PyPI) for real-time fitness data access
+## Core Stack
 
-### **AI Capabilities (Powered by GPT-4o-mini)**
-- **Natural Language Nutrition Analysis**: Parse free-form meal descriptions and extract structured nutrition data
-- **Multi-Step Reasoning**: Automatically determines when to fetch current date, then use it for date-based queries
-- **Context-Aware Responses**: Maintains conversation history and uses appropriate tools based on user intent
+- OpenAI API for chat completions and structured journal parsing (gpt-4o-mini)
+- Custom MCP server (`FastMCP`) exposing domain tools
+- Custom chat runtime with ReAct-style tool-call loop (reason -> call tool -> observe -> continue)
+- Async background parsing pipeline for non-blocking journal ingestion
+- PostgreSQL + SQLAlchemy for persistence (`journal_entries`, `journal_events`, feedback)
+- Whoop SDK integration for recovery/sleep/workout trend signals
+- Pydantic schema validation for parsed events and payload integrity
 
-### **Data Sources**
-- **Nutrition Data**: AI-powered meal parsing with macro breakdowns
-- **Whoop Fitness Data**: Access to sleep, recovery, workouts, and user profile
-- **Date-Aware Queries**: Automatically handles relative dates ("last night", "this week") by fetching current date first
+## What It Does
 
-## Architecture
+- Captures daily free-form journal entries and persists them.
+- Parses entries asynchronously into typed events (`meal`, `workout`, `recovery`, `stressor`, `other`) with schema validation.
+- Produces workout recommendations from principles, parsed journal history, and Whoop short-term trends (`last_7d`, `last_3d`, `yesterday`).
+- Synthesizes recommendations with an LLM from structured training, recovery, stress, and Whoop signals.
+- Captures recommendation feedback for iterative tuning.
 
+## Execution Flow
+
+1. User writes a free-form journal entry.
+2. Entry is saved immediately and marked for async parsing.
+3. Background LLM parse converts text into validated typed events.
+4. Recommendation engine combines:
+   - workout principles config (`mcp_server/config/workout_principles.json`)
+   - recent journal events
+   - Whoop trend windows (`last_7d`, `last_3d`, `yesterday`)
+   - LLM synthesis for final recommendation text/rationale
+   - fallback rules only if LLM synthesis fails
+5. User feedback on recommendations is stored for future tuning.
+
+## In-Action Examples
+
+### 1) Save and parse a mixed entry
+Prompt:
 ```
-┌─────────────────────────────────────┐
-│      ChatInterface (Orchestrator)   │
-│  - ReAct Loop (Reasoning + Acting)  │
-│  - Single Event Loop Management     │
-└─────────────────────────────────────┘
-           │
-           ├──► Conversation (State Management)
-           ├──► OpenAIClient (LLM Communication)
-           ├──► ToolRouter (Tool Call Routing)
-           └──► MCPClient (Persistent Connection)
-                    │
-                    └──► MCP Server (stdio)
-                         ├──► MealAnalyzer
-                         └──► Whoop SDK
-```
-
-### **Key Design Decisions**
-
-1. **Persistent MCP Connection**: The MCP server stays alive for the entire chat session, allowing:
-   - Server-side state to persist (e.g., `whoop.login()` authentication)
-   - Faster tool calls (no startup overhead)
-   - Efficient resource usage (one process vs. many)
-
-2. **ReAct Pattern Implementation**: The LLM can reason about what it needs, act by calling tools, observe results, and repeat until it has enough information:
-
-3. **Modular Architecture**: Each component has a single responsibility:
-   - `Conversation`: Manages message history
-   - `OpenAIClient`: Handles LLM API calls
-   - `ToolRouter`: Routes tool calls to MCP
-   - `MCPClient`: Manages persistent stdio connection
-   - `ChatInterface`: Orchestrates the flow
-
-## Example Interactions
-
-
-**User:** "How many workouts have I hit so far this week. Give me a summary"
-
-**System Response:**
-```
- ReAct iteration 1...
-🔧 LLM wants to call 1 tool(s)
-
-🔧 Calling 'get_current_date' on MCP server with args: {}
-Processing request of type CallToolRequest
-✅ MCP server returned: 2025-11-19...
-
-🤖 ReAct iteration 2...
-🔧 LLM wants to call 1 tool(s)
-
-
-🔧 Calling 'get_whoop_workouts' on MCP server with args: {'start': '2025-11-13', 'end': '2025-11-19'}
-Processing request of type CallToolRequest
-✅ MCP server returned: {
-  "records": [
-    {
-      "id": "fafa41e0-53cd-46ea-be2e-1c7ed8b5590c",
-      "v1_id": null,
-    ...
-
-🤖 ReAct iteration 3...
-✅ LLM has final answer (no more tool calls)
-
-Assistant: So far this week (from November 13 to November 19, 2025), you have completed **8 workouts**. Here's a summary of each workout:
-
-1. **November 13, 2025** - Weightlifting
-   - Duration: ~50 minutes
-   - Strain: 7.60
-   - Average Heart Rate: 117 bpm
-   - Max Heart Rate: 157 bpm
-   - Calories Burned: 1208.53 kJ
-
-2. **November 14, 2025** - Table Tennis
-   - Duration: ~37 minutes
-   - Strain: 5.44
-   - Average Heart Rate: 106 bpm
-   - Max Heart Rate: 142 bpm
-   - Calories Burned: 527.62 kJ
-
-3. **November 14, 2025** - Weightlifting
-   - Duration: ~52 minutes
-   - Strain: 7.91
-   - Average Heart Rate: 117 bpm
-   - Max Heart Rate: 169 bpm
-   - Calories Burned: 1257.06 kJ
-
-[... continues with all 8 workouts ...]"
-
+Breakfast was eggs and fruit. Lunch was salmon and rice. I did hard legs (quads, hamstrings, glutes) and then a short run. Stress is high from work and I slept badly.
 ```
 
-**User:** "I wanna have a big bowl of oatmeal (1 cup) with 2 tablespoons of almond butter, some blueberries, and walnuts for breakfast what are the macros for this?"
-
-**System Response:**
-```
-ReAct iteration 1...
-LLM wants to call 1 tool(s)
-
-Calling 'analyze_meal' on MCP server with args: {'meal_description': '1 cup of oatmeal, 2 tablespoons of almond butter, blueberries, and walnuts'}
-Processing request of type CallToolRequest
-HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
-✅ MCP server returned: {
-  "items": [
-    {
-      "food": "oatmeal",
-      "quantity": 1.0,
-      "unit": "cup",
-      "cal...
-
-🤖 ReAct iteration 2...
-✅ LLM has final answer (no more tool calls)
-
-Assistant: Here's the macro breakdown for your breakfast of 1 cup of oatmeal with 2 tablespoons of almond butter, blueberries, and walnuts:
-
-### **Nutrition Summary:**
-1. **Oatmeal (1 cup)**
-   - **Calories**: 154
-   - **Protein**: 6.0 g
-   - **Carbs**: 27.0 g
-   - **Fat**: 3.0 g
-
-2. **Almond Butter (2 tablespoons)**
-   - **Calories**: 196
-   - **Protein**: 5.0 g
-   - **Carbs**: 6.0 g
-   - **Fat**: 18.0 g
-
-3. **Blueberries (0.5 cup)**
-   - **Calories**: 42
-   - **Protein**: 0.5 g
-   - **Carbs**: 11.0 g
-   - **Fat**: 0.2 g
-
-4. **Walnuts (1 ounce)**
-   - **Calories**: 185
-   - **Protein**: 4.3 g
-   - **Carbs**: 4.0 g
-   - **Fat**: 18.5 g
-
-### **Total for the Meal:**
-- **Total Calories**: 577
-- **Total Protein**: 15.8 g
-- **Total Carbs**: 48.0 g
-- **Total Fat**: 39.7 g
-
-If you have any more questions or need further assistance, feel free to ask!
+Parsed output (example):
+```json
+[
+  {
+    "event_type": "meal",
+    "confidence": 0.90,
+    "payload": {
+      "foods": ["eggs", "fruit"],
+      "summary": "Breakfast with eggs and fruit."
+    }
+  },
+  {
+    "event_type": "meal",
+    "confidence": 0.90,
+    "payload": {
+      "foods": ["salmon", "rice"],
+      "summary": "Lunch with salmon and rice."
+    }
+  },
+  {
+    "event_type": "workout",
+    "confidence": 0.90,
+    "payload": {
+      "modalities": ["strength", "running"],
+      "muscle_groups": ["quads", "hamstrings", "glutes", "cardio"],
+      "intensity": "high",
+      "summary": "Hard lower-body session followed by a short run."
+    }
+  },
+  {
+    "event_type": "stressor",
+    "confidence": 0.80,
+    "payload": {
+      "stress_level": "high",
+      "stress_source": "work"
+    }
+  },
+  {
+    "event_type": "recovery",
+    "confidence": 0.70,
+    "payload": {
+      "sleep_notes": "Slept badly last night.",
+      "soreness_areas": []
+    }
+  }
+]
 ```
 
-## Technical Implementation
+### 2) Generate a recommendation
+Prompt:
+```
+Given my recent week, what should my next workout be and why?
+```
 
-### **MCP Tools Exposed**
+Tool-call trace (example):
+```text
+tool: get_workout_principles()
+result: { rules: { muscle_frequency_days: 7, hard_muscle_cooldown_hours: 72, ... } }
 
-1. **`analyze_meal(meal_description: str)`** - Parses natural language meal descriptions into structured nutrition data
-2. **`get_current_date()`** - Returns current date in YYYY-MM-DD format (enables date-aware queries)
-3. **`get_whoop_profile()`** - Retrieves user profile information
-4. **`get_whoop_recovery(start, end, limit, max_pages)`** - Gets recovery metrics (HRV, RHR, recovery score)
-5. **`get_whoop_sleep(start, end, limit, max_pages)`** - Gets sleep data (duration, stages, sleep score)
-6. **`get_whoop_workouts(start, end, limit, max_pages)`** - Gets workout data (strain, heart rate zones, calories)
+tool: get_recent_journal(days=7, limit=20)
+result: entries=[entry_id=6, entry_id=5, entry_id=4]
 
-### **Connection Management**
+tool: get_journal_events(entry_id=6)
+result: 5 events
+  - meal (eggs, fruit) confidence=0.9
+  - meal (salmon, rice) confidence=0.9
+  - workout (strength + running; quads/hamstrings/glutes/cardio; intensity=high) confidence=0.9
+  - stressor (high, source=work) confidence=0.8
+  - recovery (sleep_notes=\"Slept badly last night.\") confidence=0.7
 
-The system uses a single persistent stdio connection to the MCP server:
-- Connection established on first tool call
-- Maintained for entire chat session
-- Properly cleaned up on exit
-- Enables state persistence (e.g., Whoop authentication)
+tool: recommend_next_workout(days=7)
+result:
+  recommendation=\"recovery day or easy zone-2 cardio + mobility\"
+  recommendation_source=\"llm\"
+  signals.lower_load=7, signals.upper_load=4
+  signals.high_stress=true, signals.low_recovery=true
+  signals.whoop.last_7d.total_workout_strain=67.81
+  signals.whoop.last_3d.avg_recovery_score=63.67
+  signals.whoop.yesterday.latest_recovery_score=79.0
+  signals.yesterday_guard=false
+```
 
-### **Date Handling**
+Example output (shape):
+```json
+{
+  "recommendation": "recovery day or easy zone-2 cardio + mobility",
+  "recommendation_source": "llm",
+  "goals": ["heart_health", "muscle_gain", "visible_abs"],
+  "signals": {
+    "lower_load": 7,
+    "upper_load": 4,
+    "high_stress": true,
+    "low_recovery": true,
+    "yesterday_guard": false,
+    "whoop": {
+      "last_7d": {
+        "avg_recovery_score": 61.86,
+        "avg_sleep_performance": 87.0,
+        "total_workout_strain": 67.81
+      },
+      "last_3d": {
+        "avg_recovery_score": 63.67,
+        "avg_sleep_performance": 90.0
+      },
+      "yesterday": {
+        "latest_recovery_score": 79.0,
+        "latest_sleep_performance": 96.0
+      }
+    }
+  },
+  "rationale": [
+    "Recent stress/recovery signals suggest lowering intensity.",
+    "Avoid hard work for recently hit muscles (<72h): biceps, chest, core, glutes, hamstrings, quads, shoulders, triceps.",
+    "Undertrained this week (>7 days): back, calves.",
+    "Visible abs goal active: add brief core block (10-15 min)."
+  ]
+}
+```
 
-Intelligent date conversion for Whoop API:
-- Accepts `YYYY-MM-DD` format from LLM
-- Converts to ISO format (`2025-11-19T00:00:00.000Z`)
-- Handles end dates correctly (sets to `23:59:59.999Z` for full-day queries)
-- Supports relative date queries via `get_current_date()` tool
+### 3) Submit feedback
+Prompt:
+```
+That recommendation was very aligned with how I feel today.
+```
 
-## What This Demonstrates
+Expected result: feedback is captured and persisted with context for future tuning.
 
-This project showcases:
+## MCP Tools
 
-- **MCP Integration**: Building production-ready MCP servers with persistent connections
-- **AI Tool Orchestration**: Implementing ReAct pattern for multi-step reasoning
-- **SDK Integration**: Wrapping third-party SDKs (whoop-sdk) into MCP tools
-- **Async Architecture**: Proper event loop management for persistent connections
-- **Modular Design**: Clean separation of concerns with testable components
-- **Real-World Application**: Combining multiple data sources (nutrition + fitness) in a unified interface
+### Date/Time Context
+Provides reliable current-date context so relative references like \"today\" and \"yesterday\" are resolved consistently.
+
+### Whoop Integration
+Pulls profile, recovery, sleep, and workout data to generate short-term trend signals (`last_7d`, `last_3d`, `yesterday`) used in recommendation decisions.
+
+### Journal Ingestion and Parsing
+Accepts free-form daily logs, persists raw entries, runs asynchronous LLM parsing, and stores structured event data (`meal`, `workout`, `recovery`, `stressor`, `other`).
+
+### Retrieval and Quality Ops
+Supports recent/history retrieval, keyword search, and repair flows (for example, reparsing legacy entries with empty payloads).
+
+### Recommendation and Feedback Loop
+Generates next-workout recommendations from principles + journal signals + Whoop trends, then captures user feedback for iterative tuning.
+
 
 ## Project Structure
 
-```
+```text
 nutribot/
-├── mcp_server/          # MCP server implementation
-│   └── server.py        # FastMCP server with tool definitions
-├── chat_client/         # Client-side orchestration
-│   ├── chat_interface.py    # Main ReAct loop
-│   ├── mcp_client.py        # Persistent MCP connection
-│   ├── tool_router.py       # Routes tool calls
-│   ├── openai_client.py     # LLM communication
-│   └── conversation.py     # State management
-├── nutribot_core/       # Core business logic
-│   └── meal_analyzer.py    # Nutrition parsing
-└── logs/                # Conversation history
+├── chat.py
+├── chat_client/
+├── logs/
+├── mcp_server/
+│   ├── config/
+│   │   └── workout_principles.json
+│   ├── tools/
+│   │   ├── journal_tools.py
+│   │   └── whoop_tools.py
+│   ├── db.py
+│   ├── journal_parser.py
+│   ├── server.py
+│   └── workout_principles.py
+└── pyproject.toml
 ```
 
-## Conversation Flow
+## Setup
 
-1. User sends message
-2. `ChatInterface` adds to conversation history
-3. ReAct loop begins:
-   - LLM reasons about what tools to use
-   - LLM calls tools (via MCP)
-   - Tool results added to conversation
-   - LLM reasons again (can chain multiple tool calls)
-   - Returns final answer when no more tools needed
-4. Response displayed to user
+### Prereqs
+- Python 3.13+
+- `uv`
+- OpenAI API key
+- Whoop credentials
+- Postgres database URL
 
-The system maintains full conversation context, allowing follow-up questions and multi-turn interactions.
+### Environment
+
+Create `.env` in repo root:
+
+```bash
+OPENAI_API_KEY=...
+DATABASE_URL=postgresql://...
+WHOOP_EMAIL=...
+WHOOP_PASSWORD=...
+```
+
+### Run
+
+```bash
+uv sync
+uv run python chat.py
+```
+
+## Design Notes
+
+- `workout_principles.json` is the single source of truth for goals/rules.
+- Parser payloads are strictly validated by event type.
+- Journal parse is asynchronous by design to keep interaction responsive.
+
+## Roadmap
+
+- [ ] Add semantic search (pgvector hybrid with FTS).
+- [ ] Add recommendation feedback analytics.
+- [ ] Add Whoop-to-journal event linking with confidence scoring.
+- [ ] Add macronutrient estimates from logged meals (daily + per-meal rollups).
+- [ ] Add meal recommendations based on goals, training load, and recent recovery trends.
+- [ ] Add phone-first journaling ingestion via Notion or another simple API-backed app, then sync into this pipeline automatically.
+- [ ] Add HTTP/SSE MCP transport + auth for remote deployment.
