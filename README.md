@@ -1,12 +1,20 @@
 # NutriBot
 
-NutriBot is an MCP-based fitness and nutrition assistant that combines:
+NutriBot is an MCP-based journaling intelligence assistant.
+
+Current implementation is fitness/wellness-first and combines:
 - free-form daily journaling
 - structured LLM-based text parsing
 - Whoop fitness tracker data
 - rule-driven workout recommendations
 
-This repository is a showcase of practical AI engineering: tool calling, async workflows, schema validation, MCP server design, and recommendation logic built on mixed structured/unstructured signals.
+Architecture direction is broader: capture life themes from journal entries over time, then generate feedback from those tracked patterns.
+
+Core domains:
+- nutrition
+- training
+- recovery/sleep
+- stress/mood
 
 ## Core Stack
 
@@ -18,13 +26,21 @@ This repository is a showcase of practical AI engineering: tool calling, async w
 - Whoop SDK integration for recovery/sleep/workout trend signals
 - Pydantic schema validation for parsed events and payload integrity
 
-## What It Does
+## What It Does (Current)
 
 - Captures daily free-form journal entries and persists them.
 - Parses entries asynchronously into typed events (`meal`, `workout`, `recovery`, `stressor`, `other`) with schema validation.
 - Produces workout recommendations from principles, parsed journal history, and Whoop short-term trends (`last_7d`, `last_3d`, `yesterday`).
 - Synthesizes recommendations with an LLM from structured training, recovery, stress, and Whoop signals.
 - Captures recommendation feedback for iterative tuning.
+
+## Product Direction
+
+- Keep journaling input broad and natural.
+- Extract structured themes over time, centered on the core domains above.
+- Extend with additional life context (for example: routines, work, relationships) as secondary layers.
+- Use longitudinal patterns to generate practical feedback across life domains.
+- Maintain clear safety boundaries for mental-health-adjacent support (reflection/pattern support, not diagnosis).
 
 ## Execution Flow
 
@@ -245,12 +261,43 @@ uv run python chat.py
 - Parser payloads are strictly validated by event type.
 - Journal parse is asynchronous by design to keep interaction responsive.
 
-## Roadmap
+## TODO (Single Source of Truth)
 
-- [ ] Add semantic search (pgvector hybrid with FTS).
+### Completed
+
+- [x] Keep lazy Whoop auth in place (`whoop.login()` no longer runs on import).
+- [x] Add journal persistence layer:
+  - `journal_entries`: `id`, `entry_date`, `raw_text`, `parse_status`, `parse_error`, `created_at`, `updated_at`
+  - `journal_events`: `id`, `entry_id`, `event_type`, `payload_json`, `confidence`, `created_at`
+- [x] Add MCP journal tools:
+  - `save_journal_entry(content, entry_date?)`
+  - `get_journal_parse_status(entry_id)`
+  - `get_recent_journal(days=7, limit=20)`
+  - `search_journal(query, limit=10)` (Postgres full-text search)
+- [x] Add async LLM parse pipeline:
+  - Background parse after save (`queued` -> `processing` -> `success|failed`)
+  - Parse freeform into events: `meal`, `workout`, `recovery`, `stressor`, `other`
+  - Validate JSON shape before writing events
+- [x] Define constrained enums for consistency:
+  - Muscle groups: `chest`, `back`, `lats`, `traps`, `shoulders`, `biceps`, `triceps`, `forearms`, `core`, `glutes`, `quads`, `hamstrings`, `calves`, `full_body`, `cardio`
+  - Training modalities: `strength`, `running`, `cycling`, `swimming`, `walking`, `sports`, `mobility`, `other`
+- [x] Add recommendation tool: `recommend_next_workout(days=7)`.
+
+### Next
+- [ ] P0: Add phone-first journaling ingestion (lowest-friction capture) via Notion or another API-backed app.
+- [ ] Add Question Mode for proactive check-ins.
+  - Detect trend patterns (for example, dipping recovery + rising stress)
+  - Ask one focused follow-up question to gather missing context
+  - Store responses as structured context for future recommendations
+- [ ] Link parsed workout events to Whoop workout events.
+  - Match by date/time windows and modality
+  - Store linkage fields (for example, `whoop_workout_id`, `match_confidence`)
+  - Use Whoop metrics (strain/recovery/sleep) to improve recommendations
+- [ ] Hybrid journal search:
+  - Keep Postgres full-text search
+  - Add semantic vector search and combine ranks
 - [ ] Add recommendation feedback analytics.
 - [ ] Add Whoop-to-journal event linking with confidence scoring.
 - [ ] Add macronutrient estimates from logged meals (daily + per-meal rollups).
 - [ ] Add meal recommendations based on goals, training load, and recent recovery trends.
-- [ ] Add phone-first journaling ingestion via Notion or another simple API-backed app, then sync into this pipeline automatically.
 - [ ] Add HTTP/SSE MCP transport + auth for remote deployment.

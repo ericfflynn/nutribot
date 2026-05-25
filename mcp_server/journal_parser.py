@@ -101,6 +101,73 @@ class OtherPayload(BaseModel):
     summary: str
 
 
+def _normalize_stress_level(value: Any) -> str:
+    s = str(value or "").strip().lower()
+    if s in {"low", "moderate", "high", "unknown"}:
+        return s
+    if s == "medium":
+        return "moderate"
+    return "unknown"
+
+
+def _is_blank(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return value == ""
+    if isinstance(value, list):
+        return len(value) == 0
+    return False
+
+
+def _coerce_payload(event_type: str, payload: Any) -> dict[str, Any]:
+    src = payload if isinstance(payload, dict) else {}
+    if event_type == "workout":
+        raw_modalities = src.get("modalities", [])
+        raw_muscles = src.get("muscle_groups", [])
+        modalities = [str(x).strip().lower() for x in raw_modalities if str(x).strip().lower() in TRAINING_MODALITIES]
+        muscle_groups = [str(x).strip().lower() for x in raw_muscles if str(x).strip().lower() in MUSCLE_GROUPS]
+        intensity = str(src.get("intensity", "unknown")).strip().lower()
+        if intensity not in {"low", "moderate", "high", "unknown"}:
+            intensity = "unknown"
+        summary = str(src.get("summary") or "Workout noted.")
+        return {
+            "modalities": modalities or ["other"],
+            "muscle_groups": muscle_groups or ["full_body"],
+            "intensity": intensity,
+            "summary": summary,
+        }
+    if event_type == "recovery":
+        soreness = src.get("soreness_areas", [])
+        if not isinstance(soreness, list):
+            soreness = []
+        out = {
+            "soreness_areas": [str(x) for x in soreness if str(x).strip()],
+            "energy": str(src.get("energy")).strip() if src.get("energy") is not None else None,
+            "sleep_notes": str(src.get("sleep_notes")).strip() if src.get("sleep_notes") is not None else None,
+            "summary": str(src.get("summary")).strip() if src.get("summary") is not None else None,
+        }
+        return {k: v for k, v in out.items() if not _is_blank(v)}
+    if event_type == "meal":
+        foods = src.get("foods", [])
+        if not isinstance(foods, list):
+            foods = []
+        out = {
+            "foods": [str(x) for x in foods if str(x).strip()],
+            "meal_summary": str(src.get("meal_summary")).strip() if src.get("meal_summary") is not None else None,
+            "summary": str(src.get("summary")).strip() if src.get("summary") is not None else None,
+        }
+        return {k: v for k, v in out.items() if not _is_blank(v)}
+    if event_type == "stressor":
+        out = {
+            "stress_level": _normalize_stress_level(src.get("stress_level")),
+            "stress_source": str(src.get("stress_source")).strip() if src.get("stress_source") is not None else None,
+            "summary": str(src.get("summary")).strip() if src.get("summary") is not None else None,
+        }
+        return {k: v for k, v in out.items() if not _is_blank(v)}
+    return {"summary": str(src.get("summary") or "General note.")}
+
+
 def build_journal_parse_prompt(raw_text: str) -> str:
     return f"""
 You are an extraction engine for a fitness/wellness journal.
@@ -139,7 +206,7 @@ def parse_journal_events(client: OpenAI, model: str, raw_text: str) -> list[dict
     parsed = ParsedJournalResponse.model_validate(json.loads(content))
     out: list[dict[str, Any]] = []
     for event in parsed.events:
-        payload = event.payload
+        payload = _coerce_payload(event.event_type, event.payload)
         if event.event_type == "workout":
             payload = WorkoutPayload.model_validate(payload).model_dump()
         elif event.event_type == "recovery":
@@ -149,7 +216,10 @@ def parse_journal_events(client: OpenAI, model: str, raw_text: str) -> list[dict
         elif event.event_type == "stressor":
             payload = StressorPayload.model_validate(payload).model_dump(exclude_none=True)
         else:
-            payload = OtherPayload.model_validate(payload).model_dump()
+            try:
+                payload = OtherPayload.model_validate(payload).model_dump()
+            except Exception:
+                payload = {"summary": "General note."}
 
         out.append(
             {
