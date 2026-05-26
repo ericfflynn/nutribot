@@ -9,6 +9,7 @@ wheels/
 # Virtual environments
 .venv
 .env
+.env*.local
 
 notebook.ipynb
 nutribot.db
@@ -17,5 +18,16 @@ nutribot.db
 logs/
 
 .ruff_cache/
+
+# Next.js / Vercel
+node_modules/
+.next/
+out/
+.vercel/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
 # macOS
 .DS_Store
