@@ -5,8 +5,8 @@ import { revalidatePath } from "next/cache";
 import { clearSession, createSession, getSessionUser } from "@/lib/auth";
 import { todayLocalDate } from "@/lib/dates";
 import { parseMacroGoals } from "@/lib/goals";
-import { parseMacros, type ParsedMacros } from "@/lib/macro-parser";
-import { saveMacroEntry, saveUserMacroGoals } from "@/lib/supabase";
+import { parseMacroObject, parseMacros, parseStoredMacros, type ParsedMacros } from "@/lib/macro-parser";
+import { deleteMacroEntry, saveMacroEntry, saveUserMacroGoals, updateMacroEntry } from "@/lib/supabase";
 
 export type MealReviewState = {
   rawText: string;
@@ -106,13 +106,90 @@ export async function addMacroEntryAction(formData: FormData) {
     redirect("/?error=Review%20the%20AI%20estimate%20before%20saving.");
   }
 
-  const parsed = JSON.parse(parsedJson) as ParsedMacros;
+  let parsed: ParsedMacros;
+  try {
+    parsed = parseStoredMacros(parsedJson);
+  } catch {
+    redirect(`/?error=${encodeURIComponent("Saved estimate was invalid. Please estimate the meal again.")}`);
+  }
+
   await saveMacroEntry({
     userName: user.name,
     entryDate: todayLocalDate(),
     rawText,
     parsed
   });
+
+  revalidatePath("/");
+  redirect("/");
+}
+
+export async function updateMacroEntryAction(formData: FormData) {
+  const user = await getSessionUser();
+  if (!user) {
+    redirect("/");
+  }
+
+  const id = String(formData.get("id") || "").trim();
+  const rawText = String(formData.get("rawText") || "").trim();
+  if (!id) {
+    redirect(`/?error=${encodeURIComponent("Meal entry is missing.")}`);
+  }
+  if (!rawText) {
+    redirect(`/?error=${encodeURIComponent("Meal description is required.")}`);
+  }
+
+  let parsed: ParsedMacros;
+  try {
+    parsed = parseMacroObject({
+      calories: formData.get("calories"),
+      protein_g: formData.get("protein_g"),
+      carbs_g: formData.get("carbs_g"),
+      fat_g: formData.get("fat_g"),
+      items: [],
+      confidence: 1,
+      notes: String(formData.get("notes") || "").trim(),
+      accuracy_suggestion: ""
+    });
+  } catch {
+    redirect(`/?error=${encodeURIComponent("Meal macros must be valid non-negative numbers.")}`);
+  }
+
+  try {
+    await updateMacroEntry({
+      id,
+      userName: user.name,
+      rawText,
+      parsed
+    });
+  } catch (error) {
+    redirect(
+      `/?error=${encodeURIComponent(error instanceof Error ? error.message : "Meal update failed.")}`
+    );
+  }
+
+  revalidatePath("/");
+  redirect("/");
+}
+
+export async function deleteMacroEntryAction(formData: FormData) {
+  const user = await getSessionUser();
+  if (!user) {
+    redirect("/");
+  }
+
+  const id = String(formData.get("id") || "").trim();
+  if (!id) {
+    redirect(`/?error=${encodeURIComponent("Meal entry is missing.")}`);
+  }
+
+  try {
+    await deleteMacroEntry(id, user.name);
+  } catch (error) {
+    redirect(
+      `/?error=${encodeURIComponent(error instanceof Error ? error.message : "Meal delete failed.")}`
+    );
+  }
 
   revalidatePath("/");
   redirect("/");

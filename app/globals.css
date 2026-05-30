@@ -100,7 +100,8 @@ button {
   gap: 7px;
 }
 
-.field label {
+.field label,
+.field > span {
   color: var(--muted);
   font-size: 14px;
   font-weight: 650;
@@ -109,7 +110,8 @@ button {
 .field input,
 .field select,
 .field textarea,
-.goals-form input {
+.goals-form input,
+.review-adjust-grid input {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -152,6 +154,19 @@ button {
 
 .button.secondary:hover {
   background: #eef2eb;
+}
+
+.button.danger {
+  background: #9d1c2f;
+}
+
+.button.danger:hover {
+  background: #7d1424;
+}
+
+.button.compact {
+  min-height: 36px;
+  padding: 0 12px;
 }
 
 .dashboard {
@@ -293,6 +308,11 @@ button {
   padding: 16px;
 }
 
+.edit-entry-form {
+  display: grid;
+  gap: 14px;
+}
+
 .entry-head {
   display: flex;
   align-items: flex-start;
@@ -310,6 +330,20 @@ button {
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 12px;
+}
+
+.macro-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.entry-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
 }
 
 .review-card {
@@ -342,6 +376,37 @@ button {
 .review-macros .pill {
   border-color: rgba(33, 115, 91, 0.28);
   color: var(--accent-strong);
+}
+
+.review-adjust-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.review-adjust-grid label {
+  display: grid;
+  gap: 6px;
+}
+
+.review-adjust-grid span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.review-adjust-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid rgba(33, 115, 91, 0.18);
+  border-radius: 8px;
+  background: #f4faf6;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+  padding: 9px 10px;
 }
 
 .feedback-applied {
@@ -386,6 +451,7 @@ button {
   border: 1px solid var(--line);
   border-radius: 8px;
   overflow: hidden;
+  max-width: 100%;
 }
 
 .item-table-row {
@@ -515,20 +581,20 @@ button {
 
   .topbar {
     align-items: flex-start;
+    flex-wrap: wrap;
   }
 
   .summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .review-actions,
-  .review-head,
-  .revise-form,
-  .goals-form,
-  .split-panel,
-  .item-table-row {
-    display: grid;
-    grid-template-columns: 1fr repeat(4, minmax(52px, auto));
+  .goals-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .goals-form > div,
+  .goals-form button {
+    grid-column: 1 / -1;
   }
 
   .split-panel {
@@ -541,5 +607,81 @@ button {
 
   .metric strong {
     font-size: 24px;
+  }
+
+  .review-head,
+  .entry-head {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .review-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .review-actions > form,
+  .review-actions .button,
+  .revise-form .button {
+    width: 100%;
+  }
+
+  .revise-form {
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .review-adjust-grid,
+  .macro-edit-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .review-adjust-note {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .review-adjust-note .button {
+    width: 100%;
+  }
+
+  .entry-actions {
+    align-items: stretch;
+  }
+
+  .entry-actions,
+  .entry-actions form,
+  .entry-actions .button {
+    width: 100%;
+  }
+
+  .entry-actions .button {
+    min-height: 42px;
+  }
+
+  .item-breakdown {
+    overflow-x: auto;
+  }
+
+  .item-table-row {
+    grid-template-columns: minmax(150px, 1.4fr) repeat(4, minmax(62px, 0.65fr));
+    min-width: 520px;
+  }
+}
+
+@media (max-width: 420px) {
+  .shell {
+    width: min(100vw - 20px, 960px);
+  }
+
+  .summary-grid,
+  .goals-form,
+  .review-adjust-grid,
+  .macro-edit-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar .button {
+    width: 100%;
   }
 }

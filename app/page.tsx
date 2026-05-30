@@ -1,4 +1,5 @@
 import { loginAction, logoutAction, saveMacroGoalsAction } from "./actions";
+import { EntryCard } from "./entry-card";
 import { MealLogger } from "./meal-logger";
 import { getAllowedUsers, getSessionUser } from "@/lib/auth";
 import { todayLocalDate } from "@/lib/dates";
@@ -214,36 +215,7 @@ export default async function Home({ searchParams }: PageProps) {
           {entries.length === 0 ? (
             <div className="panel empty">No meals logged today.</div>
           ) : (
-            entries.map((entry) => (
-              <article className="panel entry" key={entry.id}>
-                <div className="entry-head">
-                  <p className="entry-text">{entry.raw_text}</p>
-                  <span className="muted">
-                    {new Date(entry.created_at).toLocaleTimeString([], {
-                      hour: "numeric",
-                      minute: "2-digit"
-                    })}
-                  </span>
-                </div>
-                <div className="macro-row">
-                  <span className="pill">{Math.round(entry.calories)} cal</span>
-                  <span className="pill">{Math.round(entry.protein_g)}g protein</span>
-                  <span className="pill">{Math.round(entry.carbs_g)}g carbs</span>
-                  <span className="pill">{Math.round(entry.fat_g)}g fat</span>
-                  <span className="pill">{Math.round(entry.confidence * 100)}% confidence</span>
-                </div>
-                {entry.items.length ? (
-                  <div className="saved-items">
-                    {entry.items.map((item, index) => (
-                      <span key={`${entry.id}-${item.name}-${index}`}>
-                        {item.name}: {Math.round(item.calories)} calories
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
-                {entry.notes ? <p className="muted">{entry.notes}</p> : null}
-              </article>
-            ))
+            entries.map((entry) => <EntryCard entry={entry} key={entry.id} />)
           )}
         </section>
       </section>

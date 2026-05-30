@@ -217,6 +217,105 @@ export async function saveMacroEntry(params: {
   }
 }
 
+export async function updateMacroEntry(params: {
+  id: string;
+  userName: string;
+  rawText: string;
+  parsed: ParsedMacros;
+}) {
+  const { parsed } = params;
+  const db = getPool();
+  if (db) {
+    const { rowCount } = await db.query(
+      `
+      update public.macro_entries
+      set
+        raw_text = $3,
+        calories = $4,
+        protein_g = $5,
+        carbs_g = $6,
+        fat_g = $7,
+        items = $8::jsonb,
+        confidence = $9,
+        notes = $10
+      where id = $1::uuid and user_name = $2
+      `,
+      [
+        params.id,
+        params.userName,
+        params.rawText,
+        Math.round(parsed.calories),
+        Math.round(parsed.protein_g),
+        Math.round(parsed.carbs_g),
+        Math.round(parsed.fat_g),
+        JSON.stringify(parsed.items),
+        parsed.confidence,
+        parsed.notes || null
+      ]
+    );
+
+    if (!rowCount) {
+      throw new Error("Meal entry was not found.");
+    }
+    return;
+  }
+
+  const { data, error } = await getSupabase()
+    .from("macro_entries")
+    .update({
+      raw_text: params.rawText,
+      calories: Math.round(parsed.calories),
+      protein_g: Math.round(parsed.protein_g),
+      carbs_g: Math.round(parsed.carbs_g),
+      fat_g: Math.round(parsed.fat_g),
+      items: parsed.items,
+      confidence: parsed.confidence,
+      notes: parsed.notes || null
+    })
+    .eq("id", params.id)
+    .eq("user_name", params.userName)
+    .select("id");
+
+  if (error) {
+    throw error;
+  }
+  if (!data?.length) {
+    throw new Error("Meal entry was not found.");
+  }
+}
+
+export async function deleteMacroEntry(id: string, userName: string) {
+  const db = getPool();
+  if (db) {
+    const { rowCount } = await db.query(
+      `
+      delete from public.macro_entries
+      where id = $1::uuid and user_name = $2
+      `,
+      [id, userName]
+    );
+
+    if (!rowCount) {
+      throw new Error("Meal entry was not found.");
+    }
+    return;
+  }
+
+  const { data, error } = await getSupabase()
+    .from("macro_entries")
+    .delete()
+    .eq("id", id)
+    .eq("user_name", userName)
+    .select("id");
+
+  if (error) {
+    throw error;
+  }
+  if (!data?.length) {
+    throw new Error("Meal entry was not found.");
+  }
+}
+
 export async function getUserMacroGoals(userName: string): Promise<MacroGoals> {
   const db = getPool();
   if (db) {

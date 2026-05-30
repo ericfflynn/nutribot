@@ -23,6 +23,14 @@ const macroSchema = z.object({
 
 export type ParsedMacros = z.infer<typeof macroSchema>;
 
+export function parseMacroObject(input: unknown): ParsedMacros {
+  return macroSchema.parse(input);
+}
+
+export function parseStoredMacros(input: string): ParsedMacros {
+  return parseMacroObject(JSON.parse(input));
+}
+
 const macroResponseFormat = {
   type: "json_schema",
   json_schema: {

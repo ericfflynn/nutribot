@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
 import {
   addMacroEntryAction,
@@ -8,6 +8,7 @@ import {
   reviseMealForReviewAction,
   type MealReviewState
 } from "./actions";
+import { adjustCalories, adjustMacroValue, initialAdjustedMacros } from "@/lib/macro-adjust";
 
 function isGenericEstimateNote(note: string) {
   const lower = note.toLowerCase();
@@ -166,6 +167,43 @@ export function MealLogger({
   const activeState = revisedState.parsed || revisedState.error ? revisedState : state;
   const parsed = activeState.parsed;
   const rawText = activeState.rawText || state.rawText;
+  const [editedMacros, setEditedMacros] = useState(() =>
+    initialAdjustedMacros({ calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 })
+  );
+
+  useEffect(() => {
+    if (!parsed) {
+      return;
+    }
+
+    setEditedMacros(initialAdjustedMacros(parsed));
+  }, [parsed]);
+
+  const adjustedParsed = useMemo(() => {
+    if (!parsed) {
+      return null;
+    }
+
+    return {
+      ...parsed,
+      calories: editedMacros.calories,
+      protein_g: editedMacros.protein_g,
+      carbs_g: editedMacros.carbs_g,
+      fat_g: editedMacros.fat_g,
+      notes:
+        parsed.notes && !isGenericEstimateNote(parsed.notes)
+          ? parsed.notes
+          : "Manual total adjustment before saving."
+    };
+  }, [editedMacros, parsed]);
+
+  function updateMacro(name: "protein_g" | "carbs_g" | "fat_g", value: string) {
+    setEditedMacros((current) => adjustMacroValue(current, name, value));
+  }
+
+  function updateCalories(value: string) {
+    setEditedMacros((current) => adjustCalories(current, value));
+  }
 
   return (
     <section className="meal-log-stack">
@@ -201,11 +239,59 @@ export function MealLogger({
               <p>{activeState.feedback}</p>
             </div>
           ) : null}
-          <div className="macro-row review-macros">
-            <span className="pill">{Math.round(parsed.calories)} cal</span>
-            <span className="pill">{Math.round(parsed.protein_g)}g protein</span>
-            <span className="pill">{Math.round(parsed.carbs_g)}g carbs</span>
-            <span className="pill">{Math.round(parsed.fat_g)}g fat</span>
+          <div className="review-adjust-grid">
+            <label>
+              <span>Calories</span>
+              <input
+                type="number"
+                min="0"
+                step="10"
+                value={editedMacros.calories}
+                onChange={(event) => updateCalories(event.target.value)}
+              />
+            </label>
+            <label>
+              <span>Protein</span>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={editedMacros.protein_g}
+                onChange={(event) => updateMacro("protein_g", event.target.value)}
+              />
+            </label>
+            <label>
+              <span>Carbs</span>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={editedMacros.carbs_g}
+                onChange={(event) => updateMacro("carbs_g", event.target.value)}
+              />
+            </label>
+            <label>
+              <span>Fat</span>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={editedMacros.fat_g}
+                onChange={(event) => updateMacro("fat_g", event.target.value)}
+              />
+            </label>
+          </div>
+          <div className="review-adjust-note">
+            <span>Editing macros recalculates calories. Editing calories scales macros proportionally.</span>
+            <button
+              className="button secondary compact"
+              type="button"
+              onClick={() =>
+                setEditedMacros(initialAdjustedMacros(parsed))
+              }
+            >
+              Reset
+            </button>
           </div>
           <ItemMacroBreakdown items={parsed.items} />
           {parsed.notes && !isGenericEstimateNote(parsed.notes) ? <p className="muted">{parsed.notes}</p> : null}
@@ -219,7 +305,7 @@ export function MealLogger({
           <div className="review-actions">
             <form action={addMacroEntryAction}>
               <input type="hidden" name="rawText" value={rawText} />
-              <input type="hidden" name="parsed" value={JSON.stringify(parsed)} />
+              <input type="hidden" name="parsed" value={JSON.stringify(adjustedParsed || parsed)} />
               <AcceptButton />
             </form>
 
