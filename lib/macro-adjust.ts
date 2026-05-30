@@ -4,6 +4,10 @@ export type EditableMacros = {
   carbs_g: number;
   fat_g: number;
   calorieRemainder: number;
+  proteinRaw: number;
+  carbsRaw: number;
+  fatRaw: number;
+  calorieRemainderRaw: number;
 };
 
 export type MacroField = "protein_g" | "carbs_g" | "fat_g";
@@ -16,8 +20,12 @@ export function macroCalories(protein_g: number, carbs_g: number, fat_g: number)
   return roundMacro(protein_g * 4 + carbs_g * 4 + fat_g * 9);
 }
 
+function macroCaloriesExact(protein_g: number, carbs_g: number, fat_g: number) {
+  return protein_g * 4 + carbs_g * 4 + fat_g * 9;
+}
+
 export function calorieRemainder(calories: number, protein_g: number, carbs_g: number, fat_g: number) {
-  return Math.max(0, roundMacro(calories) - macroCalories(protein_g, carbs_g, fat_g));
+  return Math.max(0, roundMacro(calories) - roundMacro(macroCaloriesExact(protein_g, carbs_g, fat_g)));
 }
 
 export function initialAdjustedMacros(input: {
@@ -26,24 +34,39 @@ export function initialAdjustedMacros(input: {
   carbs_g: number;
   fat_g: number;
 }): EditableMacros {
+  const proteinRaw = Math.max(0, Number(input.protein_g) || 0);
+  const carbsRaw = Math.max(0, Number(input.carbs_g) || 0);
+  const fatRaw = Math.max(0, Number(input.fat_g) || 0);
+  const calorieRemainderRaw = Math.max(
+    0,
+    (Number(input.calories) || 0) - macroCaloriesExact(proteinRaw, carbsRaw, fatRaw)
+  );
+
   return {
     calories: roundMacro(input.calories),
-    protein_g: roundMacro(input.protein_g),
-    carbs_g: roundMacro(input.carbs_g),
-    fat_g: roundMacro(input.fat_g),
-    calorieRemainder: calorieRemainder(input.calories, input.protein_g, input.carbs_g, input.fat_g)
+    protein_g: roundMacro(proteinRaw),
+    carbs_g: roundMacro(carbsRaw),
+    fat_g: roundMacro(fatRaw),
+    calorieRemainder: roundMacro(calorieRemainderRaw),
+    proteinRaw,
+    carbsRaw,
+    fatRaw,
+    calorieRemainderRaw
   };
 }
 
 export function adjustMacroValue(current: EditableMacros, name: MacroField, value: string): EditableMacros {
+  const nextValue = roundMacro(Number(value) || 0);
   const next = {
     ...current,
-    [name]: roundMacro(Number(value) || 0)
+    [name]: nextValue,
+    [`${name.replace("_g", "")}Raw`]: nextValue
   };
 
   return {
     ...next,
-    calories: macroCalories(next.protein_g, next.carbs_g, next.fat_g) + next.calorieRemainder
+    calories:
+      roundMacro(macroCaloriesExact(next.proteinRaw, next.carbsRaw, next.fatRaw) + next.calorieRemainderRaw)
   };
 }
 
@@ -57,7 +80,10 @@ export function adjustCalories(current: EditableMacros, value: string): Editable
 
   const calories = roundMacro(Number(value) || 0);
   const baseCalories =
-    current.calories || macroCalories(current.protein_g, current.carbs_g, current.fat_g) + current.calorieRemainder;
+    current.calories ||
+    roundMacro(
+      macroCaloriesExact(current.proteinRaw, current.carbsRaw, current.fatRaw) + current.calorieRemainderRaw
+    );
 
   if (!baseCalories) {
     return {
@@ -67,11 +93,20 @@ export function adjustCalories(current: EditableMacros, value: string): Editable
   }
 
   const scale = calories / baseCalories;
+  const proteinRaw = current.proteinRaw * scale;
+  const carbsRaw = current.carbsRaw * scale;
+  const fatRaw = current.fatRaw * scale;
+  const calorieRemainderRaw = current.calorieRemainderRaw * scale;
+
   return {
     calories,
-    protein_g: roundMacro(current.protein_g * scale),
-    carbs_g: roundMacro(current.carbs_g * scale),
-    fat_g: roundMacro(current.fat_g * scale),
-    calorieRemainder: roundMacro(current.calorieRemainder * scale)
+    protein_g: roundMacro(proteinRaw),
+    carbs_g: roundMacro(carbsRaw),
+    fat_g: roundMacro(fatRaw),
+    calorieRemainder: roundMacro(calorieRemainderRaw),
+    proteinRaw,
+    carbsRaw,
+    fatRaw,
+    calorieRemainderRaw
   };
 }
