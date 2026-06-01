@@ -7,7 +7,7 @@
   --accent: #21735b;
   --accent-strong: #155742;
   --warn: #8a4b16;
-  --shadow: 0 12px 28px rgba(25, 35, 28, 0.09);
+  --shadow: 0 6px 18px rgba(25, 35, 28, 0.06);
 }
 
 * {
@@ -68,7 +68,7 @@ button {
 .panel {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 12px;
   box-shadow: var(--shadow);
 }
 
@@ -180,6 +180,32 @@ button {
   gap: 12px;
 }
 
+.daily-summary,
+.weekly-summary,
+.history {
+  display: grid;
+  gap: 10px;
+}
+
+.daily-summary > div:first-child,
+.weekly-summary > div:first-child,
+.history > div:first-child {
+  padding: 0 2px;
+}
+
+.daily-summary strong,
+.weekly-summary strong,
+.history strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 20px;
+}
+
+.weekly-summary p {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+
 .metric {
   padding: 16px;
 }
@@ -265,18 +291,51 @@ button {
   margin: 6px 0 3px;
   font-size: 22px;
 }
-.goals-form {
-  display: grid;
-  grid-template-columns: 1.4fr repeat(4, minmax(82px, 1fr)) auto;
-  gap: 12px;
-  align-items: end;
+.goals-disclosure summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
   padding: 16px;
+  cursor: pointer;
+  list-style: none;
 }
 
-.goals-form strong {
+.goals-disclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.goals-disclosure summary::after {
+  color: var(--muted);
+  content: "+";
+  font-size: 24px;
+  line-height: 1;
+}
+
+.goals-disclosure[open] summary::after {
+  content: "-";
+}
+
+.goals-disclosure summary strong {
   display: block;
   margin-top: 5px;
   font-size: 20px;
+}
+
+.goal-summary {
+  color: var(--muted);
+  flex: 1;
+  font-size: 13px;
+  font-weight: 750;
+  text-align: right;
+}
+
+.goals-form {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(82px, 1fr)) auto;
+  gap: 12px;
+  align-items: end;
+  padding: 0 16px 16px;
 }
 
 .goals-form label {
@@ -592,16 +651,11 @@ button {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .goals-form > div,
   .goals-form button {
     grid-column: 1 / -1;
   }
 
   .split-panel {
-    grid-template-columns: 1fr;
-  }
-
-  .balance-grid {
     grid-template-columns: 1fr;
   }
 
@@ -672,16 +726,193 @@ button {
 @media (max-width: 420px) {
   .shell {
     width: min(100vw - 20px, 960px);
+    padding: 14px 0 32px;
   }
 
-  .summary-grid,
-  .goals-form,
-  .review-adjust-grid,
-  .macro-edit-grid {
-    grid-template-columns: 1fr;
+  .dashboard {
+    gap: 14px;
+  }
+
+  .topbar {
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .brand h1 {
+    font-size: 22px;
+  }
+
+  .brand span {
+    font-size: 13px;
   }
 
   .topbar .button {
-    width: 100%;
+    min-height: 36px;
+    padding: 0 11px;
+    font-size: 13px;
+  }
+
+  .daily-summary,
+  .weekly-summary,
+  .history {
+    gap: 8px;
+  }
+
+  .daily-summary strong,
+  .weekly-summary strong,
+  .history strong {
+    font-size: 17px;
+  }
+
+  .metric {
+    padding: 11px;
+  }
+
+  .summary-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .summary-grid .metric:first-child {
+    grid-column: 1 / -1;
+    padding: 13px;
+  }
+
+  .summary-grid .metric:first-child strong {
+    font-size: 27px;
+  }
+
+  .metric strong {
+    margin-top: 4px;
+    font-size: 18px;
+  }
+
+  .metric small {
+    font-size: 11px;
+  }
+
+  .progress-metric {
+    gap: 6px;
+  }
+
+  .progress-track {
+    height: 6px;
+  }
+
+  .split-panel {
+    gap: 10px;
+    padding: 13px;
+  }
+
+  .split-panel strong {
+    font-size: 18px;
+  }
+
+  .balance-grid {
+    gap: 6px;
+  }
+
+  .balance-grid div {
+    padding: 9px 8px;
+  }
+
+  .balance-grid strong {
+    font-size: 18px;
+  }
+
+  .balance-grid span,
+  .balance-grid small {
+    font-size: 11px;
+  }
+
+  .goals-disclosure summary {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    padding: 13px;
+  }
+
+  .goals-disclosure summary strong {
+    font-size: 18px;
+  }
+
+  .goal-summary {
+    flex-basis: 100%;
+    order: 3;
+    text-align: left;
+  }
+
+  .goals-form {
+    grid-template-columns: 1fr;
+    padding: 0 13px 13px;
+  }
+
+  .entry-form,
+  .review-card,
+  .entry {
+    padding: 14px;
+  }
+
+  .form-grid {
+    gap: 12px;
+    margin-top: 14px;
+  }
+
+  .field textarea {
+    min-height: 108px;
+  }
+
+  .pill {
+    padding: 4px 7px;
+    font-size: 12px;
+  }
+
+  .item-breakdown {
+    overflow: visible;
+  }
+
+  .item-table-head {
+    display: none;
+  }
+
+  .item-table-row {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px 6px;
+    min-width: 0;
+    padding: 10px;
+  }
+
+  .item-table-row div:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .item-table-row > span {
+    font-size: 13px;
+    text-align: left;
+  }
+
+  .item-table-row > span::before {
+    color: var(--muted);
+    display: block;
+    font-size: 10px;
+    font-weight: 850;
+    margin-bottom: 2px;
+    text-transform: uppercase;
+  }
+
+  .item-table-row > span:nth-child(2)::before {
+    content: "Protein";
+  }
+
+  .item-table-row > span:nth-child(3)::before {
+    content: "Fat";
+  }
+
+  .item-table-row > span:nth-child(4)::before {
+    content: "Carbs";
+  }
+
+  .item-table-row > span:nth-child(5)::before {
+    content: "Calories";
   }
 }

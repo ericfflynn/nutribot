@@ -17,3 +17,16 @@ export function todayLocalDate() {
 
   return `${year}-${month}-${day}`;
 }
+
+export function currentWeekToDate(entryDate: string) {
+  const date = new Date(`${entryDate}T00:00:00Z`);
+  const daysSinceMonday = (date.getUTCDay() + 6) % 7;
+  const start = new Date(date);
+  start.setUTCDate(start.getUTCDate() - daysSinceMonday);
+
+  return {
+    startDate: start.toISOString().slice(0, 10),
+    endDate: entryDate,
+    elapsedDays: daysSinceMonday + 1
+  };
+}

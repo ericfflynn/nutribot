@@ -2,9 +2,16 @@ import { loginAction, logoutAction, saveMacroGoalsAction } from "./actions";
 import { EntryCard } from "./entry-card";
 import { MealLogger } from "./meal-logger";
 import { getAllowedUsers, getSessionUser } from "@/lib/auth";
-import { todayLocalDate } from "@/lib/dates";
+import { currentWeekToDate, todayLocalDate } from "@/lib/dates";
 import { gramsFromPercentGoals, macroCalorieSplit } from "@/lib/goals";
-import { getUserMacroGoals, isDatabaseConfigured, listEntriesForDate, summarizeEntries } from "@/lib/supabase";
+import {
+  getUserMacroGoals,
+  isDatabaseConfigured,
+  listEntriesForDate,
+  listEntriesForDateRange,
+  listRecentEntries,
+  summarizeEntries
+} from "@/lib/supabase";
 
 type PageProps = {
   searchParams?: Promise<{
@@ -83,31 +90,38 @@ function GoalsForm({
   disabled: boolean;
 }) {
   return (
-    <form className="panel goals-form" action={saveMacroGoalsAction}>
-      <div>
-        <span className="eyebrow">Goals</span>
-        <strong>Daily targets</strong>
-      </div>
-      <label>
-        <span>Calories</span>
-        <input name="calories" type="number" min="1" step="1" defaultValue={goals.calories} disabled={disabled} />
-      </label>
-      <label>
-        <span>Protein %</span>
-        <input name="proteinPct" type="number" min="0" step="1" defaultValue={goals.proteinPct} disabled={disabled} />
-      </label>
-      <label>
-        <span>Carbs %</span>
-        <input name="carbsPct" type="number" min="0" step="1" defaultValue={goals.carbsPct} disabled={disabled} />
-      </label>
-      <label>
-        <span>Fat %</span>
-        <input name="fatPct" type="number" min="0" step="1" defaultValue={goals.fatPct} disabled={disabled} />
-      </label>
-      <button className="button secondary" type="submit" disabled={disabled}>
-        Save goals
-      </button>
-    </form>
+    <details className="panel goals-disclosure">
+      <summary>
+        <div>
+          <span className="eyebrow">Goals</span>
+          <strong>Daily targets</strong>
+        </div>
+        <span className="goal-summary">
+          {goals.calories} cal · Protein {goals.proteinPct}% · Carbs {goals.carbsPct}% · Fat {goals.fatPct}%
+        </span>
+      </summary>
+      <form className="goals-form" action={saveMacroGoalsAction}>
+        <label>
+          <span>Calories</span>
+          <input name="calories" type="number" min="1" step="1" defaultValue={goals.calories} disabled={disabled} />
+        </label>
+        <label>
+          <span>Protein %</span>
+          <input name="proteinPct" type="number" min="0" step="1" defaultValue={goals.proteinPct} disabled={disabled} />
+        </label>
+        <label>
+          <span>Carbs %</span>
+          <input name="carbsPct" type="number" min="0" step="1" defaultValue={goals.carbsPct} disabled={disabled} />
+        </label>
+        <label>
+          <span>Fat %</span>
+          <input name="fatPct" type="number" min="0" step="1" defaultValue={goals.fatPct} disabled={disabled} />
+        </label>
+        <button className="button secondary" type="submit" disabled={disabled}>
+          Save goals
+        </button>
+      </form>
+    </details>
   );
 }
 
@@ -121,15 +135,31 @@ export default async function Home({ searchParams }: PageProps) {
   }
 
   const entryDate = todayLocalDate();
+  const week = currentWeekToDate(entryDate);
   const databaseReady = isDatabaseConfigured();
   let databaseError: string | null = null;
-  const entries = databaseReady
-    ? await listEntriesForDate(user.name, entryDate).catch((error: unknown) => {
+  const [entries, weeklyEntries, recentEntries] = databaseReady
+    ? await Promise.all([
+        listEntriesForDate(user.name, entryDate),
+        listEntriesForDateRange(user.name, week.startDate, week.endDate),
+        listRecentEntries(user.name)
+      ]).catch((error: unknown) => {
         databaseError = error instanceof Error ? error.message : "Database connection failed.";
-        return [];
+        return [[], [], []];
       })
-    : [];
+    : [[], [], []];
   const totals = summarizeEntries(entries);
+  const weeklyTotals = summarizeEntries(weeklyEntries);
+  const weeklyAverages = {
+    calories: weeklyTotals.calories / week.elapsedDays,
+    protein_g: weeklyTotals.protein_g / week.elapsedDays,
+    carbs_g: weeklyTotals.carbs_g / week.elapsedDays,
+    fat_g: weeklyTotals.fat_g / week.elapsedDays
+  };
+  const historyEntries = [
+    ...entries,
+    ...recentEntries.filter((recentEntry) => !entries.some((entry) => entry.id === recentEntry.id))
+  ];
   const goals = databaseReady
     ? await getUserMacroGoals(user.name).catch((error: unknown) => {
         databaseError = error instanceof Error ? error.message : "Database connection failed.";
@@ -166,12 +196,34 @@ export default async function Home({ searchParams }: PageProps) {
       </header>
 
       <section className="dashboard">
-        <div className="summary-grid">
-          <ProgressMetric label="Calories" value={totals.calories} target={goals.calories} />
-          <ProgressMetric label="Protein" value={totals.protein_g} target={gramGoals.protein_g} suffix="g" />
-          <ProgressMetric label="Carbs" value={totals.carbs_g} target={gramGoals.carbs_g} suffix="g" />
-          <ProgressMetric label="Fat" value={totals.fat_g} target={gramGoals.fat_g} suffix="g" />
-        </div>
+        <section className="daily-summary">
+          <div>
+            <span className="eyebrow">Today</span>
+            <strong>Daily totals vs goal</strong>
+          </div>
+          <div className="summary-grid">
+            <ProgressMetric label="Calories" value={totals.calories} target={goals.calories} />
+            <ProgressMetric label="Protein" value={totals.protein_g} target={gramGoals.protein_g} suffix="g" />
+            <ProgressMetric label="Carbs" value={totals.carbs_g} target={gramGoals.carbs_g} suffix="g" />
+            <ProgressMetric label="Fat" value={totals.fat_g} target={gramGoals.fat_g} suffix="g" />
+          </div>
+        </section>
+
+        <section className="weekly-summary">
+          <div>
+            <span className="eyebrow">Weekly summary</span>
+            <strong>Current week average vs goal</strong>
+            <p className="muted">
+              {week.startDate} to {week.endDate} · {week.elapsedDays} elapsed {week.elapsedDays === 1 ? "day" : "days"}
+            </p>
+          </div>
+          <div className="summary-grid">
+            <ProgressMetric label="Calories" value={weeklyAverages.calories} target={goals.calories} />
+            <ProgressMetric label="Protein" value={weeklyAverages.protein_g} target={gramGoals.protein_g} suffix="g" />
+            <ProgressMetric label="Carbs" value={weeklyAverages.carbs_g} target={gramGoals.carbs_g} suffix="g" />
+            <ProgressMetric label="Fat" value={weeklyAverages.fat_g} target={gramGoals.fat_g} suffix="g" />
+          </div>
+        </section>
 
         <div className="panel split-panel">
           <div>
@@ -211,12 +263,18 @@ export default async function Home({ searchParams }: PageProps) {
 
         <MealLogger disabled={!databaseReady || Boolean(databaseError)} error={error} />
 
-        <section className="entry-list">
-          {entries.length === 0 ? (
-            <div className="panel empty">No meals logged today.</div>
-          ) : (
-            entries.map((entry) => <EntryCard entry={entry} key={entry.id} />)
-          )}
+        <section className="history">
+          <div>
+            <span className="eyebrow">Meal history</span>
+            <strong>Today and recent meals</strong>
+          </div>
+          <div className="entry-list">
+            {historyEntries.length === 0 ? (
+              <div className="panel empty">No meals logged yet.</div>
+            ) : (
+              historyEntries.map((entry) => <EntryCard entry={entry} key={entry.id} />)
+            )}
+          </div>
         </section>
       </section>
     </main>

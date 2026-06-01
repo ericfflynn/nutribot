@@ -38,6 +38,7 @@ export function EntryCard({ entry }: { entry: MacroEntry }) {
     hour: "numeric",
     minute: "2-digit"
   });
+  const loggedAt = `${entry.entry_date} · ${createdAt}`;
 
   function resetEditedMacros() {
     setEditedMacros(initialAdjustedMacros(entry));
@@ -59,7 +60,7 @@ export function EntryCard({ entry }: { entry: MacroEntry }) {
           <div className="entry-head">
             <div>
               <span className="eyebrow">Edit meal</span>
-              <strong>{createdAt}</strong>
+              <strong>{loggedAt}</strong>
             </div>
             <button
               className="button secondary compact"
@@ -152,7 +153,7 @@ export function EntryCard({ entry }: { entry: MacroEntry }) {
     <article className="panel entry">
       <div className="entry-head">
         <p className="entry-text">{entry.raw_text}</p>
-        <span className="muted">{createdAt}</span>
+        <span className="muted">{loggedAt}</span>
       </div>
       <div className="macro-row">
         <span className="pill">{Math.round(entry.calories)} cal</span>

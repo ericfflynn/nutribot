@@ -14,6 +14,8 @@ This branch is a focused Next.js app. It does not use the old Python MCP/CLI imp
 - User-editable macro goals by calories and protein/carbs/fat percentage split.
 - Supabase Postgres persistence.
 - Today dashboard for calories, protein, carbs, and fat.
+- Week-to-date daily averages against each participant's goals.
+- Meal history with every meal logged today and at least the five most recent meals.
 
 ## Stack
 

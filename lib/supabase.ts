@@ -158,6 +158,94 @@ export async function listEntriesForDate(userName: string, entryDate: string) {
   return (data || []).map((row) => normalizeEntry(row as Omit<MacroEntry, "items"> & { items: unknown }));
 }
 
+export async function listEntriesForDateRange(userName: string, startDate: string, endDate: string) {
+  const db = getPool();
+  if (db) {
+    const { rows } = await db.query(
+      `
+      select
+        id::text,
+        user_name,
+        entry_date::text,
+        raw_text,
+        calories::float8,
+        protein_g::float8,
+        carbs_g::float8,
+        fat_g::float8,
+        items,
+        confidence::float8,
+        notes,
+        created_at::text
+      from public.macro_entries
+      where user_name = $1
+        and entry_date >= $2::date
+        and entry_date <= $3::date
+      order by entry_date desc, created_at desc
+      `,
+      [userName, startDate, endDate]
+    );
+    return rows.map(normalizeEntry);
+  }
+
+  const { data, error } = await getSupabase()
+    .from("macro_entries")
+    .select("*")
+    .eq("user_name", userName)
+    .gte("entry_date", startDate)
+    .lte("entry_date", endDate)
+    .order("entry_date", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+
+  return (data || []).map((row) => normalizeEntry(row as Omit<MacroEntry, "items"> & { items: unknown }));
+}
+
+export async function listRecentEntries(userName: string, limit = 5) {
+  const db = getPool();
+  if (db) {
+    const { rows } = await db.query(
+      `
+      select
+        id::text,
+        user_name,
+        entry_date::text,
+        raw_text,
+        calories::float8,
+        protein_g::float8,
+        carbs_g::float8,
+        fat_g::float8,
+        items,
+        confidence::float8,
+        notes,
+        created_at::text
+      from public.macro_entries
+      where user_name = $1
+      order by entry_date desc, created_at desc
+      limit $2
+      `,
+      [userName, limit]
+    );
+    return rows.map(normalizeEntry);
+  }
+
+  const { data, error } = await getSupabase()
+    .from("macro_entries")
+    .select("*")
+    .eq("user_name", userName)
+    .order("entry_date", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw error;
+  }
+
+  return (data || []).map((row) => normalizeEntry(row as Omit<MacroEntry, "items"> & { items: unknown }));
+}
+
 export async function saveMacroEntry(params: {
   userName: string;
   entryDate: string;
