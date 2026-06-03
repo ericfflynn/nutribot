@@ -100,17 +100,17 @@ export async function addMacroEntryAction(formData: FormData) {
   const rawText = String(formData.get("rawText") || "").trim();
   const parsedJson = String(formData.get("parsed") || "");
   if (!rawText) {
-    redirect("/?error=Enter%20what%20you%20ate%20first.");
+    redirect("/profile?error=Enter%20what%20you%20ate%20first.");
   }
   if (!parsedJson) {
-    redirect("/?error=Review%20the%20AI%20estimate%20before%20saving.");
+    redirect("/profile?error=Review%20the%20AI%20estimate%20before%20saving.");
   }
 
   let parsed: ParsedMacros;
   try {
     parsed = parseStoredMacros(parsedJson);
   } catch {
-    redirect(`/?error=${encodeURIComponent("Saved estimate was invalid. Please estimate the meal again.")}`);
+    redirect(`/profile?error=${encodeURIComponent("Saved estimate was invalid. Please estimate the meal again.")}`);
   }
 
   await saveMacroEntry({
@@ -121,7 +121,8 @@ export async function addMacroEntryAction(formData: FormData) {
   });
 
   revalidatePath("/");
-  redirect("/");
+  revalidatePath("/profile");
+  redirect("/profile");
 }
 
 export async function updateMacroEntryAction(formData: FormData) {
@@ -133,10 +134,10 @@ export async function updateMacroEntryAction(formData: FormData) {
   const id = String(formData.get("id") || "").trim();
   const rawText = String(formData.get("rawText") || "").trim();
   if (!id) {
-    redirect(`/?error=${encodeURIComponent("Meal entry is missing.")}`);
+    redirect(`/profile?error=${encodeURIComponent("Meal entry is missing.")}`);
   }
   if (!rawText) {
-    redirect(`/?error=${encodeURIComponent("Meal description is required.")}`);
+    redirect(`/profile?error=${encodeURIComponent("Meal description is required.")}`);
   }
 
   let parsed: ParsedMacros;
@@ -152,7 +153,7 @@ export async function updateMacroEntryAction(formData: FormData) {
       accuracy_suggestion: ""
     });
   } catch {
-    redirect(`/?error=${encodeURIComponent("Meal macros must be valid non-negative numbers.")}`);
+    redirect(`/profile?error=${encodeURIComponent("Meal macros must be valid non-negative numbers.")}`);
   }
 
   try {
@@ -164,12 +165,13 @@ export async function updateMacroEntryAction(formData: FormData) {
     });
   } catch (error) {
     redirect(
-      `/?error=${encodeURIComponent(error instanceof Error ? error.message : "Meal update failed.")}`
+      `/profile?error=${encodeURIComponent(error instanceof Error ? error.message : "Meal update failed.")}`
     );
   }
 
   revalidatePath("/");
-  redirect("/");
+  revalidatePath("/profile");
+  redirect("/profile");
 }
 
 export async function deleteMacroEntryAction(formData: FormData) {
@@ -180,19 +182,20 @@ export async function deleteMacroEntryAction(formData: FormData) {
 
   const id = String(formData.get("id") || "").trim();
   if (!id) {
-    redirect(`/?error=${encodeURIComponent("Meal entry is missing.")}`);
+    redirect(`/profile?error=${encodeURIComponent("Meal entry is missing.")}`);
   }
 
   try {
     await deleteMacroEntry(id, user.name);
   } catch (error) {
     redirect(
-      `/?error=${encodeURIComponent(error instanceof Error ? error.message : "Meal delete failed.")}`
+      `/profile?error=${encodeURIComponent(error instanceof Error ? error.message : "Meal delete failed.")}`
     );
   }
 
   revalidatePath("/");
-  redirect("/");
+  revalidatePath("/profile");
+  redirect("/profile");
 }
 
 export async function saveMacroGoalsAction(formData: FormData) {
@@ -210,5 +213,6 @@ export async function saveMacroGoalsAction(formData: FormData) {
 
   await saveUserMacroGoals(user.name, goals);
   revalidatePath("/");
-  redirect("/");
+  revalidatePath("/profile");
+  redirect("/profile");
 }
