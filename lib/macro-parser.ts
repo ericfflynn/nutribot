@@ -133,7 +133,7 @@ export async function parseMacros(
     ? `\n\nPrevious structured estimate to revise:\n${JSON.stringify(previousEstimate, null, 2)}`
     : "";
   const response = await client.chat.completions.create({
-    model: process.env.OPENAI_MODEL || "gpt-5-mini",
+    model: process.env.OPENAI_MODEL || "gpt-4o-mini",
     response_format: macroResponseFormat,
     messages: [
       {
