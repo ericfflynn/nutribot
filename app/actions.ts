@@ -66,6 +66,7 @@ export async function reviseMealForReviewAction(
 
   const rawText = String(formData.get("rawText") || "").trim();
   const feedback = String(formData.get("feedback") || "").trim();
+  const previousParsedJson = String(formData.get("previousParsed") || "");
 
   if (!rawText) {
     return { rawText: "", parsed: null, feedback: null, error: "Original meal text is missing." };
@@ -75,7 +76,8 @@ export async function reviseMealForReviewAction(
   }
 
   try {
-    const parsed = await parseMacros(rawText, feedback);
+    const previousParsed = previousParsedJson ? parseStoredMacros(previousParsedJson) : undefined;
+    const parsed = await parseMacros(rawText, feedback, previousParsed);
     return { rawText, parsed, feedback, error: null };
   } catch (error) {
     return {

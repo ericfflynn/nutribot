@@ -642,6 +642,11 @@ button {
   gap: 12px;
 }
 
+.meal-form-actions {
+  display: flex;
+  gap: 10px;
+}
+
 .entry {
   padding: 16px;
 }
@@ -1025,6 +1030,12 @@ button {
     grid-template-columns: 1fr;
   }
 
+  .meal-form-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .meal-form-actions .button,
   .review-actions > form,
   .review-actions .button,
   .revise-form .button {

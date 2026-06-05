@@ -21,6 +21,13 @@ const macroSchema = z.object({
   accuracy_suggestion: z.string().optional().default("")
 });
 
+const macroEstimateResponseSchema = z.object({
+  items: z.array(macroItemSchema).default([]),
+  confidence: z.coerce.number().min(0).max(1).default(0.6),
+  notes: z.string().optional().default(""),
+  accuracy_suggestion: z.string().optional().default("")
+});
+
 export type ParsedMacros = z.infer<typeof macroSchema>;
 
 export function parseMacroObject(input: unknown): ParsedMacros {
@@ -68,6 +75,17 @@ export function normalizeGeneratedMacroEstimate(parsed: ParsedMacros): ParsedMac
   };
 }
 
+function parseGeneratedMacroEstimate(input: unknown): ParsedMacros {
+  const parsed = macroEstimateResponseSchema.parse(input);
+  return normalizeGeneratedMacroEstimate({
+    ...parsed,
+    calories: 0,
+    protein_g: 0,
+    carbs_g: 0,
+    fat_g: 0
+  });
+}
+
 const macroResponseFormat = {
   type: "json_schema",
   json_schema: {
@@ -76,21 +94,8 @@ const macroResponseFormat = {
     schema: {
       type: "object",
       additionalProperties: false,
-      required: [
-        "calories",
-        "protein_g",
-        "carbs_g",
-        "fat_g",
-        "items",
-        "confidence",
-        "notes",
-        "accuracy_suggestion"
-      ],
+      required: ["items", "confidence", "notes", "accuracy_suggestion"],
       properties: {
-        calories: { type: "number", minimum: 0 },
-        protein_g: { type: "number", minimum: 0 },
-        carbs_g: { type: "number", minimum: 0 },
-        fat_g: { type: "number", minimum: 0 },
         items: {
           type: "array",
           items: {
@@ -115,13 +120,20 @@ const macroResponseFormat = {
   }
 } as const;
 
-export async function parseMacros(input: string, feedback?: string): Promise<ParsedMacros> {
+export async function parseMacros(
+  input: string,
+  feedback?: string,
+  previousEstimate?: ParsedMacros
+): Promise<ParsedMacros> {
   const client = new OpenAI();
   const correctionText = feedback?.trim()
     ? `\n\nUser correction/context to apply: ${feedback.trim()}`
     : "";
+  const previousEstimateText = previousEstimate
+    ? `\n\nPrevious structured estimate to revise:\n${JSON.stringify(previousEstimate, null, 2)}`
+    : "";
   const response = await client.chat.completions.create({
-    model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+    model: process.env.OPENAI_MODEL || "gpt-5-mini",
     response_format: macroResponseFormat,
     messages: [
       {
@@ -131,14 +143,10 @@ export async function parseMacros(input: string, feedback?: string): Promise<Par
       },
       {
         role: "user",
-        content: `Input: ${input}${correctionText}
+        content: `Input: ${input}${previousEstimateText}${correctionText}
 
 Return JSON with:
 {
-  "calories": number,
-  "protein_g": number,
-  "carbs_g": number,
-  "fat_g": number,
   "items": [
     {
       "name": "food item",
@@ -157,14 +165,16 @@ Return JSON with:
 Use reasonable estimates when exact quantities are missing. Never return null.
 Do not write generic notes like "estimated values are based on typical serving sizes", "actual values may vary", or "based on a typical serving".
 The notes field must contain a concrete assumption you made only if it matters, for example "Assumed 1 cup cooked orzo soup and 4 oz gyro meat."
-Break totals down by item. Item macros should sum closely to the total macros.
+Estimate nutrition at the food item level. The app will calculate meal totals from the item values.
 If confidence is below 0.75, accuracy_suggestion must ask for the single most useful missing detail, such as portion size, brand, cooking fat, weight, or quantity.
 Avoid generic notes like "values may vary." Tell the user exactly what would improve accuracy.
+If a correction is provided with a previous structured estimate, revise that previous estimate instead of estimating from scratch.
+If the correction changes only one food item, keep every other food item and its macros unchanged unless the correction explicitly affects them.
 If a correction is provided, apply it directly and explain the adjustment briefly in notes.`
       }
     ]
   });
 
   const content = response.choices[0].message.content || "{}";
-  return normalizeGeneratedMacroEstimate(macroSchema.parse(JSON.parse(content)));
+  return parseGeneratedMacroEstimate(JSON.parse(content));
 }

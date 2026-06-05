@@ -155,14 +155,26 @@ function AcceptButton() {
   );
 }
 
-export function MealLogger({
+export function MealLogger(props: {
+  disabled: boolean;
+  entryDate: string;
+  error?: string;
+}) {
+  const [resetKey, setResetKey] = useState(0);
+
+  return <MealLoggerContent {...props} key={resetKey} onCancel={() => setResetKey((key) => key + 1)} />;
+}
+
+function MealLoggerContent({
   disabled,
   entryDate,
-  error
+  error,
+  onCancel
 }: {
   disabled: boolean;
   entryDate: string;
   error?: string;
+  onCancel: () => void;
 }) {
   const [state, parseAction] = useActionState(parseMealForReviewAction, initialState);
   const [revisedState, reviseAction] = useActionState(reviseMealForReviewAction, initialState);
@@ -220,7 +232,12 @@ export function MealLogger({
             defaultValue={rawText}
           />
         </div>
-        <ParseButton disabled={disabled} />
+        <div className="meal-form-actions">
+          <ParseButton disabled={disabled} />
+          <button className="button secondary" type="button" onClick={onCancel}>
+            Cancel
+          </button>
+        </div>
         {error || activeState.error ? <p className="error">{error || activeState.error}</p> : null}
       </form>
 
@@ -312,8 +329,13 @@ export function MealLogger({
               <AcceptButton />
             </form>
 
+            <button className="button secondary" type="button" onClick={onCancel}>
+              Cancel
+            </button>
+
             <form className="revise-form" action={reviseAction}>
               <input type="hidden" name="rawText" value={rawText} />
+              <input type="hidden" name="previousParsed" value={JSON.stringify(adjustedParsed || parsed)} />
               <div className="field">
                 <label htmlFor="feedback">Correction</label>
                 <input
