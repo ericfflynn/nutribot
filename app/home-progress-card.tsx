@@ -21,6 +21,7 @@ type HomeProgressCardProps = {
   loggedMeals: number;
   today: MacroTotals;
   weekAverage: MacroTotals;
+  weekAverageDayCount: number;
   goals: MacroGoals;
 };
 
@@ -61,17 +62,26 @@ export function HomeProgressCard({
   loggedMeals,
   today,
   weekAverage,
+  weekAverageDayCount,
   goals
 }: HomeProgressCardProps) {
   const [view, setView] = useState<"today" | "week">("today");
   const activeTotals = view === "today" ? today : weekAverage;
+  const eyebrow =
+    view === "today"
+      ? loggedMeals
+        ? `${loggedMeals} logged today`
+        : "No meals yet"
+      : weekAverageDayCount
+        ? `${weekAverageDayCount} completed day${weekAverageDayCount === 1 ? "" : "s"} averaged`
+        : "No completed days yet";
   const caloriePercent = goals.calories > 0 ? Math.min(100, Math.round((activeTotals.calories / goals.calories) * 100)) : 0;
 
   return (
     <article className="panel home-progress-card">
       <div className="home-progress-head">
         <div>
-          <span className="eyebrow">{loggedMeals ? `${loggedMeals} logged today` : "No meals yet"}</span>
+          <span className="eyebrow">{eyebrow}</span>
           <strong>{userName}</strong>
         </div>
         <div className="home-period-toggle" aria-label={`${userName} progress period`}>

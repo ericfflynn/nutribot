@@ -102,7 +102,8 @@ export function AppShell({
 
 export function GoalsForm({
   goals,
-  disabled
+  disabled,
+  redirectDate
 }: {
   goals: {
     calories: number;
@@ -111,6 +112,7 @@ export function GoalsForm({
     fatPct: number;
   };
   disabled: boolean;
+  redirectDate?: string;
 }) {
   return (
     <details className="panel goals-disclosure">
@@ -124,6 +126,7 @@ export function GoalsForm({
         </span>
       </summary>
       <form className="goals-form" action={saveMacroGoalsAction}>
+        {redirectDate ? <input type="hidden" name="redirectDate" value={redirectDate} /> : null}
         <label>
           <span>Calories</span>
           <input name="calories" type="number" min="1" step="1" defaultValue={goals.calories} disabled={disabled} />

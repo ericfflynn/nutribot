@@ -1,51 +1,52 @@
 # NutriBot Macros
 
-A small private macro tracker built for quick deployment on Vercel.
+NutriBot Macros is a private macro tracker for logging meals in plain English, reviewing AI-generated estimates, and tracking progress against personal goals.
 
-This branch is a focused Next.js app. It does not use the old Python MCP/CLI implementation.
+It is built as a focused product demo: fast meal entry, transparent AI output, editable nutrition data, and a rolling 7-day view that reflects actual logged behavior.
 
-## What It Does
+## Highlights
 
-- Password login for two allowlisted users.
-- Plain-English meal input.
-- Server-side OpenAI macro estimation.
-- Review step before saving.
-- Correction/revision flow before accepting a meal.
-- User-editable macro goals by calories and protein/carbs/fat percentage split.
-- Supabase Postgres persistence.
-- Today dashboard for calories, protein, carbs, and fat.
-- Week-to-date daily averages against each participant's goals.
-- Meal history with every meal logged today and at least the five most recent meals.
+- Plain-English meal logging with OpenAI macro estimates.
+- Review step with calories, protein, carbs, fat, confidence, notes, and item breakdowns.
+- Correction flow for revising estimates before saving.
+- Manual macro editing when the user knows better than the model.
+- Rolling 7-day dashboard that excludes today and days with no logged meals.
+- Date picker for reviewing, editing, or backfilling recent days.
+- Per-user calorie and macro split goals.
+- Private auth, server-side AI calls, and Supabase persistence.
+
+## Product Flow
+
+1. Enter a meal like `Greek yogurt with berries, honey, and granola`.
+2. Review the generated estimate and item breakdown.
+3. Add a correction or manually adjust totals if needed.
+4. Save the meal to today or a selected previous day.
+5. Track today against goals and compare against completed logged days.
+
+## Screenshots
+
+![Home dashboard](docs/screenshots/home-dashboard.png)
+
+![Meal logging profile](docs/screenshots/profile-log.png)
 
 ## Stack
 
 - Next.js App Router
 - TypeScript
 - React Server Actions
-- OpenAI API
+- OpenAI structured outputs
 - Supabase Postgres
-- Vercel deployment target
+- Vercel
 
-## Project Structure
+## Developer Setup
 
-```text
-app/
-  actions.ts          server actions for auth, parsing, revision, and save
-  meal-logger.tsx     meal input, pending state, review, accept/revise UI
-  page.tsx            main dashboard page
-  globals.css         app styling
-lib/
-  auth.ts             cookie session and per-user password auth
-  dates.ts            app-local date helper
-  macro-parser.ts     OpenAI macro parser
-  supabase.ts         database reads/writes
-supabase/
-  schema.sql          macro_entries table
+Install dependencies:
+
+```bash
+npm install
 ```
 
-## Environment
-
-Create `.env.local` for local development:
+Create `.env.local`:
 
 ```bash
 APP_USERS=Eric,Bella
@@ -59,28 +60,47 @@ OPENAI_MODEL=gpt-4o-mini
 DATABASE_URL=postgresql://postgres.your-project-ref:[YOUR-PASSWORD]@aws-0-us-east-1.pooler.supabase.com:6543/postgres
 ```
 
-Generate `AUTH_SECRET` with:
+Generate `AUTH_SECRET`:
 
 ```bash
 openssl rand -base64 32
 ```
 
-For Vercel, set the same environment variables in Project Settings. Use Supabase's transaction pooler connection string for `DATABASE_URL`.
+Create tables:
 
-## Database
+```text
+Run supabase/schema.sql in the Supabase SQL editor.
+```
 
-Run [supabase/schema.sql](supabase/schema.sql) in the Supabase SQL editor before testing meal logging.
-
-## Run
+Run locally:
 
 ```bash
-nvm use
-npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`.
+Build:
 
-## Deploy
+```bash
+npm run build
+```
 
-Deploy as a normal Next.js app on Vercel. Keep all secrets server-side; do not use `NEXT_PUBLIC_` variables for OpenAI or the database.
+## Project Map
+
+```text
+app/
+  actions.ts              server actions
+  entry-card.tsx          saved meal display/editing
+  home-progress-card.tsx  progress card
+  meal-logger.tsx         meal input and review flow
+  page.tsx                home dashboard
+  profile/page.tsx        logging, history, date picker
+  shared-ui.tsx           shell, login, goals form
+
+lib/
+  auth.ts                 session auth
+  dates.ts                date helpers
+  goals.ts                macro goal helpers
+  macro-adjust.ts         manual macro adjustment
+  macro-parser.ts         OpenAI parser
+  supabase.ts             database access and summaries
+```

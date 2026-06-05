@@ -157,9 +157,11 @@ function AcceptButton() {
 
 export function MealLogger({
   disabled,
+  entryDate,
   error
 }: {
   disabled: boolean;
+  entryDate: string;
   error?: string;
 }) {
   const [state, parseAction] = useActionState(parseMealForReviewAction, initialState);
@@ -304,6 +306,7 @@ export function MealLogger({
 
           <div className="review-actions">
             <form action={addMacroEntryAction}>
+              <input type="hidden" name="entryDate" value={entryDate} />
               <input type="hidden" name="rawText" value={rawText} />
               <input type="hidden" name="parsed" value={JSON.stringify(adjustedParsed || parsed)} />
               <AcceptButton />

@@ -2,13 +2,14 @@ import Link from "next/link";
 import { HomeProgressCard } from "./home-progress-card";
 import { AppShell, Login } from "./shared-ui";
 import { getAllowedUsers, getSessionUser } from "@/lib/auth";
-import { currentWeekToDate, todayLocalDate } from "@/lib/dates";
+import { rollingDateWindow, todayLocalDate } from "@/lib/dates";
 import { getFallbackMacroGoals, gramsFromPercentGoals } from "@/lib/goals";
 import {
   getUserMacroGoals,
   isDatabaseConfigured,
   listEntriesForDate,
   listEntriesForDateRange,
+  summarizeCompletedLoggedDayAverages,
   summarizeEntries
 } from "@/lib/supabase";
 
@@ -18,29 +19,24 @@ type PageProps = {
   }>;
 };
 
-async function getHomeUserSummary(userName: string, entryDate: string, week: { startDate: string; endDate: string; elapsedDays: number }) {
+async function getHomeUserSummary(userName: string, entryDate: string, rollingStartDate: string) {
   const databaseReady = isDatabaseConfigured();
   const [entries, weeklyEntries, goals] = databaseReady
     ? await Promise.all([
         listEntriesForDate(userName, entryDate),
-        listEntriesForDateRange(userName, week.startDate, week.endDate),
+        listEntriesForDateRange(userName, rollingStartDate, entryDate),
         getUserMacroGoals(userName)
       ])
     : [[], [], getFallbackMacroGoals(userName)];
 
   const totals = summarizeEntries(entries);
-  const weeklyTotals = summarizeEntries(weeklyEntries);
-  const weeklyAverages = {
-    calories: weeklyTotals.calories / week.elapsedDays,
-    protein_g: weeklyTotals.protein_g / week.elapsedDays,
-    carbs_g: weeklyTotals.carbs_g / week.elapsedDays,
-    fat_g: weeklyTotals.fat_g / week.elapsedDays
-  };
+  const weeklySummary = summarizeCompletedLoggedDayAverages(weeklyEntries, entryDate);
 
   return {
     userName,
     totals,
-    weeklyAverages,
+    weeklyAverages: weeklySummary.averages,
+    weeklyAverageDayCount: weeklySummary.dayCount,
     goals,
     gramGoals: gramsFromPercentGoals(goals),
     loggedMeals: entries.length
@@ -57,11 +53,12 @@ export default async function Home({ searchParams }: PageProps) {
   }
 
   const entryDate = todayLocalDate();
-  const week = currentWeekToDate(entryDate);
+  const rollingDates = rollingDateWindow(entryDate, 7);
+  const rollingStartDate = rollingDates[0];
   const databaseReady = isDatabaseConfigured();
   let databaseError: string | null = null;
   const summaries = await Promise.all(
-    getAllowedUsers().map((userName) => getHomeUserSummary(userName, entryDate, week))
+    getAllowedUsers().map((userName) => getHomeUserSummary(userName, entryDate, rollingStartDate))
   ).catch((error: unknown) => {
     databaseError = error instanceof Error ? error.message : "Database connection failed.";
     return [];
@@ -107,6 +104,7 @@ export default async function Home({ searchParams }: PageProps) {
               today={summary.totals}
               userName={summary.userName}
               weekAverage={summary.weeklyAverages}
+              weekAverageDayCount={summary.weeklyAverageDayCount}
             />
           ))}
         </section>
@@ -114,9 +112,9 @@ export default async function Home({ searchParams }: PageProps) {
         <section className="weekly-summary">
           <div>
             <span className="eyebrow">Week</span>
-            <strong>Current week window</strong>
+            <strong>Rolling 7-day window</strong>
             <p className="muted">
-              {week.startDate} to {week.endDate} · {week.elapsedDays} elapsed {week.elapsedDays === 1 ? "day" : "days"}
+              {rollingStartDate} to {entryDate} · averages use completed days with logged meals
             </p>
           </div>
         </section>

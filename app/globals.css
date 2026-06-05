@@ -414,6 +414,73 @@ button {
   font-size: 13px;
 }
 
+.date-picker {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px;
+}
+
+.date-chip {
+  min-width: 0;
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: var(--muted);
+  padding: 9px 4px 8px;
+  text-align: center;
+  text-decoration: none;
+}
+
+.date-chip:hover {
+  background: #f2f5f0;
+}
+
+.date-chip.active {
+  border-color: rgba(33, 115, 91, 0.34);
+  background: #eef6f1;
+  color: var(--accent-strong);
+}
+
+.date-chip span,
+.date-chip small {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.date-chip span {
+  font-size: 11px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.date-chip strong {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  margin: 0;
+  border-radius: 50%;
+  background: #f2f5f0;
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.date-chip.active strong {
+  background: var(--accent);
+  color: white;
+}
+
+.date-chip small {
+  font-size: 11px;
+  font-weight: 750;
+}
+
 .metric {
   padding: 16px;
 }
@@ -920,6 +987,17 @@ button {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .date-picker {
+    gap: 6px;
+    overflow-x: auto;
+    grid-template-columns: repeat(7, minmax(68px, 1fr));
+    padding: 8px;
+  }
+
+  .date-chip {
+    padding-inline: 3px;
+  }
+
   .goals-form {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1029,6 +1107,16 @@ button {
   .weekly-summary,
   .history {
     gap: 8px;
+  }
+
+  .date-picker {
+    grid-template-columns: repeat(7, minmax(62px, 1fr));
+  }
+
+  .date-chip strong {
+    width: 32px;
+    height: 32px;
+    font-size: 15px;
   }
 
   .daily-summary strong,

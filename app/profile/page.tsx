@@ -1,24 +1,84 @@
+import Link from "next/link";
 import { EntryCard } from "../entry-card";
 import { HomeProgressCard } from "../home-progress-card";
 import { MealLogger } from "../meal-logger";
 import { AppShell, GoalsForm, Login } from "../shared-ui";
 import { getSessionUser } from "@/lib/auth";
-import { currentWeekToDate, todayLocalDate } from "@/lib/dates";
+import { isValidLocalDate, rollingDateWindow, todayLocalDate } from "@/lib/dates";
 import { gramsFromPercentGoals } from "@/lib/goals";
 import {
   getUserMacroGoals,
   isDatabaseConfigured,
   listEntriesForDate,
   listEntriesForDateRange,
-  listRecentEntries,
+  summarizeCompletedLoggedDayAverages,
   summarizeEntries
 } from "@/lib/supabase";
 
 type PageProps = {
   searchParams?: Promise<{
+    date?: string;
     error?: string;
   }>;
 };
+
+function formatDayLabel(entryDate: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "UTC",
+    weekday: "short"
+  }).format(new Date(`${entryDate}T00:00:00Z`));
+}
+
+function formatDayNumber(entryDate: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "UTC",
+    day: "numeric"
+  }).format(new Date(`${entryDate}T00:00:00Z`));
+}
+
+function formatDateText(entryDate: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "UTC",
+    month: "short",
+    day: "numeric",
+    year: "numeric"
+  }).format(new Date(`${entryDate}T00:00:00Z`));
+}
+
+function DatePicker({
+  dates,
+  selectedDate,
+  today,
+  entriesByDate
+}: {
+  dates: string[];
+  selectedDate: string;
+  today: string;
+  entriesByDate: Record<string, number>;
+}) {
+  return (
+    <nav className="date-picker panel" aria-label="Meal log dates">
+      {dates.map((date) => {
+        const isSelected = date === selectedDate;
+        const isToday = date === today;
+        const mealCount = entriesByDate[date] || 0;
+
+        return (
+          <Link
+            aria-current={isSelected ? "date" : undefined}
+            className={`date-chip ${isSelected ? "active" : ""}`}
+            href={`/profile?date=${date}`}
+            key={date}
+          >
+            <span>{isToday ? "Today" : formatDayLabel(date)}</span>
+            <strong>{formatDayNumber(date)}</strong>
+            <small>{mealCount ? `${mealCount} meal${mealCount === 1 ? "" : "s"}` : "No meals"}</small>
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
 
 export default async function Profile({ searchParams }: PageProps) {
   const params = await searchParams;
@@ -29,32 +89,28 @@ export default async function Profile({ searchParams }: PageProps) {
     return <Login error={error} />;
   }
 
-  const entryDate = todayLocalDate();
-  const week = currentWeekToDate(entryDate);
+  const today = todayLocalDate();
+  const entryDate = params?.date && isValidLocalDate(params.date) ? params.date : today;
+  const rollingDates = rollingDateWindow(today, 7);
+  const rollingStartDate = rollingDates[0];
   const databaseReady = isDatabaseConfigured();
   let databaseError: string | null = null;
-  const [entries, weeklyEntries, recentEntries] = databaseReady
+  const [entries, rollingEntries] = databaseReady
     ? await Promise.all([
         listEntriesForDate(user.name, entryDate),
-        listEntriesForDateRange(user.name, week.startDate, week.endDate),
-        listRecentEntries(user.name)
+        listEntriesForDateRange(user.name, rollingStartDate, today)
       ]).catch((error: unknown) => {
         databaseError = error instanceof Error ? error.message : "Database connection failed.";
-        return [[], [], []];
+        return [[], []];
       })
-    : [[], [], []];
+    : [[], []];
   const totals = summarizeEntries(entries);
-  const weeklyTotals = summarizeEntries(weeklyEntries);
-  const weeklyAverages = {
-    calories: weeklyTotals.calories / week.elapsedDays,
-    protein_g: weeklyTotals.protein_g / week.elapsedDays,
-    carbs_g: weeklyTotals.carbs_g / week.elapsedDays,
-    fat_g: weeklyTotals.fat_g / week.elapsedDays
-  };
-  const historyEntries = [
-    ...entries,
-    ...recentEntries.filter((recentEntry) => !entries.some((entry) => entry.id === recentEntry.id))
-  ];
+  const rollingSummary = summarizeCompletedLoggedDayAverages(rollingEntries, today);
+  const rollingAverages = rollingSummary.averages;
+  const entriesByDate = rollingEntries.reduce<Record<string, number>>((counts, entry) => {
+    counts[entry.entry_date] = (counts[entry.entry_date] || 0) + 1;
+    return counts;
+  }, {});
   const goals = databaseReady
     ? await getUserMacroGoals(user.name).catch((error: unknown) => {
         databaseError = error instanceof Error ? error.message : "Database connection failed.";
@@ -79,11 +135,12 @@ export default async function Profile({ searchParams }: PageProps) {
         <section className="profile-summary">
           <div>
             <span className="eyebrow">Profile</span>
-            <strong>Your progress</strong>
+            <strong>{formatDateText(entryDate)}</strong>
             <p className="muted">
-              {week.startDate} to {week.endDate} · {week.elapsedDays} elapsed {week.elapsedDays === 1 ? "day" : "days"}
+              Rolling 7 days · {rollingStartDate} to {today}
             </p>
           </div>
+          <DatePicker dates={rollingDates} selectedDate={entryDate} today={today} entriesByDate={entriesByDate} />
           <HomeProgressCard
             goals={{
               calories: goals.calories,
@@ -94,11 +151,12 @@ export default async function Profile({ searchParams }: PageProps) {
             loggedMeals={entries.length}
             today={totals}
             userName={user.name}
-            weekAverage={weeklyAverages}
+            weekAverage={rollingAverages}
+            weekAverageDayCount={rollingSummary.dayCount}
           />
         </section>
 
-        <GoalsForm goals={goals} disabled={!databaseReady || Boolean(databaseError)} />
+        <GoalsForm goals={goals} disabled={!databaseReady || Boolean(databaseError)} redirectDate={entryDate} />
 
         {!databaseReady || databaseError ? (
           <div className="panel entry-form">
@@ -110,18 +168,18 @@ export default async function Profile({ searchParams }: PageProps) {
           </div>
         ) : null}
 
-        <MealLogger disabled={!databaseReady || Boolean(databaseError)} error={error} />
+        <MealLogger disabled={!databaseReady || Boolean(databaseError)} entryDate={entryDate} error={error} />
 
         <section className="history">
           <div>
             <span className="eyebrow">Meal history</span>
-            <strong>Today and recent meals</strong>
+            <strong>{formatDateText(entryDate)}</strong>
           </div>
           <div className="entry-list">
-            {historyEntries.length === 0 ? (
-              <div className="panel empty">No meals logged yet.</div>
+            {entries.length === 0 ? (
+              <div className="panel empty">No meals logged for this day.</div>
             ) : (
-              historyEntries.map((entry) => <EntryCard entry={entry} key={entry.id} />)
+              entries.map((entry) => <EntryCard entry={entry} key={entry.id} selectedDate={entryDate} />)
             )}
           </div>
         </section>

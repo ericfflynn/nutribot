@@ -519,3 +519,21 @@ export function summarizeEntries(entries: MacroEntry[]) {
     { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
   );
 }
+
+export function summarizeCompletedLoggedDayAverages(entries: MacroEntry[], currentDate: string) {
+  const completedEntries = entries.filter((entry) => entry.entry_date < currentDate);
+  const loggedDayCount = new Set(completedEntries.map((entry) => entry.entry_date)).size;
+  const totals = summarizeEntries(completedEntries);
+  const divisor = loggedDayCount || 1;
+
+  return {
+    averages: {
+      calories: totals.calories / divisor,
+      protein_g: totals.protein_g / divisor,
+      carbs_g: totals.carbs_g / divisor,
+      fat_g: totals.fat_g / divisor
+    },
+    dayCount: loggedDayCount,
+    totals
+  };
+}

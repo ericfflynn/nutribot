@@ -30,7 +30,7 @@ function DeleteButton({
   );
 }
 
-export function EntryCard({ entry }: { entry: MacroEntry }) {
+export function EntryCard({ entry, selectedDate }: { entry: MacroEntry; selectedDate: string }) {
   const [isEditing, setIsEditing] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [editedMacros, setEditedMacros] = useState(() => initialAdjustedMacros(entry));
@@ -57,6 +57,7 @@ export function EntryCard({ entry }: { entry: MacroEntry }) {
       <article className="panel entry">
         <form className="edit-entry-form" action={updateMacroEntryAction}>
           <input type="hidden" name="id" value={entry.id} />
+          <input type="hidden" name="redirectDate" value={selectedDate} />
           <div className="entry-head">
             <div>
               <span className="eyebrow">Edit meal</span>
@@ -185,6 +186,7 @@ export function EntryCard({ entry }: { entry: MacroEntry }) {
         </button>
         <form action={deleteMacroEntryAction}>
           <input type="hidden" name="id" value={entry.id} />
+          <input type="hidden" name="redirectDate" value={selectedDate} />
           <DeleteButton
             confirming={confirmingDelete}
             onClick={() => {

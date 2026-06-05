@@ -31,6 +31,43 @@ export function parseStoredMacros(input: string): ParsedMacros {
   return parseMacroObject(JSON.parse(input));
 }
 
+type MacroTotalKey = "calories" | "protein_g" | "carbs_g" | "fat_g";
+
+function roundMacro(value: number) {
+  return Math.max(0, Math.round(Number(value) || 0));
+}
+
+function sumItemMacro(items: ParsedMacros["items"], key: MacroTotalKey) {
+  return items.reduce((sum, item) => sum + roundMacro(item[key]), 0);
+}
+
+export function normalizeGeneratedMacroEstimate(parsed: ParsedMacros): ParsedMacros {
+  if (!parsed.items.length) {
+    return {
+      ...parsed,
+      calories: roundMacro(parsed.calories),
+      protein_g: roundMacro(parsed.protein_g),
+      carbs_g: roundMacro(parsed.carbs_g),
+      fat_g: roundMacro(parsed.fat_g)
+    };
+  }
+
+  return {
+    ...parsed,
+    calories: sumItemMacro(parsed.items, "calories"),
+    protein_g: sumItemMacro(parsed.items, "protein_g"),
+    carbs_g: sumItemMacro(parsed.items, "carbs_g"),
+    fat_g: sumItemMacro(parsed.items, "fat_g"),
+    items: parsed.items.map((item) => ({
+      ...item,
+      calories: roundMacro(item.calories),
+      protein_g: roundMacro(item.protein_g),
+      carbs_g: roundMacro(item.carbs_g),
+      fat_g: roundMacro(item.fat_g)
+    }))
+  };
+}
+
 const macroResponseFormat = {
   type: "json_schema",
   json_schema: {
@@ -129,5 +166,5 @@ If a correction is provided, apply it directly and explain the adjustment briefl
   });
 
   const content = response.choices[0].message.content || "{}";
-  return macroSchema.parse(JSON.parse(content));
+  return normalizeGeneratedMacroEstimate(macroSchema.parse(JSON.parse(content)));
 }
