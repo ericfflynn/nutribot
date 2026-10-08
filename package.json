@@ -8,7 +8,9 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "health:sync": "node --env-file=.env.local --import tsx scripts/health-sync.ts",
+    "health:auth": "node --env-file=.env.local --import tsx scripts/health-auth.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.4",
@@ -24,6 +26,7 @@
     "@types/pg": "^8.20.0",
     "@types/react": "^19.1.5",
     "@types/react-dom": "^19.1.5",
+    "tsx": "^4.23.15",
     "typescript": "^5.8.3"
   }
 }

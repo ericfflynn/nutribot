@@ -43,7 +43,7 @@ function getPoolConfig(connectionString: string): PoolConfig {
   };
 }
 
-function getPool() {
+export function getPool() {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
     return null;

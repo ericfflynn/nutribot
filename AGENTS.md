@@ -6,7 +6,7 @@ Guidance for coding agents working in this repository. See [README.md](README.md
 
 NutriBot is a private macro tracker for two configured users: Next.js App Router, React, TypeScript, server actions. Meals are entered in plain English, estimated by an OpenAI model in `lib/macro-parser.ts`, reviewed, then saved to Supabase Postgres. `/` is a shared dashboard for all users; `/profile` is the signed-in user's logger, history, and goals.
 
-Direction: the app is moving toward a chat-first interface where tool calls write structured records (meals, workouts, habits, journal) and the dashboard becomes read-focused. Don't rebuild the existing meal flow without being asked.
+Direction: the app is moving toward a chat-first interface where tool calls write structured records and Google Health data is loaded into Postgres. Read [docs/mvp-plan.md](docs/mvp-plan.md) before starting feature work. Don't rebuild the existing meal flow without being asked.
 
 ## Commands
 
