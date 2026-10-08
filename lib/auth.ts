@@ -26,7 +26,7 @@ function safeEqual(a: string, b: string) {
 }
 
 export function getAllowedUsers() {
-  return (process.env.APP_USERS || "Eric,User 2")
+  return (process.env.APP_USERS || "Eric")
     .split(",")
     .map((user) => user.trim())
     .filter(Boolean);

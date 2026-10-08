@@ -35,7 +35,7 @@ export function Login({ error }: { error?: string }) {
     <main className="login">
       <section className="panel login-panel">
         <h1>NutriBot Macros</h1>
-        <p className="muted">Private meal logging for the two people using this app.</p>
+        <p className="muted">Private meal logging.</p>
         <form className="form-grid" action={loginAction}>
           <div className="field">
             <label htmlFor="name">User</label>

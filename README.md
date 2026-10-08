@@ -49,8 +49,8 @@ npm install
 Create `.env.local`:
 
 ```bash
-APP_USERS=Eric,Bella
-APP_USER_PASSWORDS=Eric:your-eric-password,Bella:your-bella-password
+APP_USERS=Eric
+APP_USER_PASSWORDS=Eric:your-eric-password
 AUTH_SECRET=your-long-random-cookie-signing-secret
 APP_TIME_ZONE=America/New_York
 

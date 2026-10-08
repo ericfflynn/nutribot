@@ -4,7 +4,7 @@ Guidance for coding agents working in this repository. See [README.md](README.md
 
 ## Project
 
-NutriBot is a private macro tracker for two configured users: Next.js App Router, React, TypeScript, server actions. Meals are entered in plain English, estimated by an OpenAI model in `lib/macro-parser.ts`, reviewed, then saved to Supabase Postgres. `/` is a shared dashboard for all users; `/profile` is the signed-in user's logger, history, and goals.
+NutriBot is a private, single-user (Eric) health and macro tracker: Next.js App Router, React, TypeScript, server actions. Meals are entered in plain English, estimated by an OpenAI model in `lib/macro-parser.ts`, reviewed, then saved to Supabase Postgres. `/` is the dashboard; `/profile` is the meal logger, history, and goals. Users come from `APP_USERS`; the code still scopes everything by user name.
 
 Direction: the app is moving toward a chat-first interface where tool calls write structured records and Google Health data is loaded into Postgres. Read [docs/mvp-plan.md](docs/mvp-plan.md) before starting feature work. Don't rebuild the existing meal flow without being asked.
 
@@ -67,7 +67,7 @@ psql "$DB" -c "select count(*) from macro_entries;"
 - **Private data:** meal and health records belong to real people. Don't paste rows into commits, docs, PRs, or screenshots. Use counts or synthetic examples.
 - **Deploys and pushes are outward-facing.** Confirm before pushing to `master`, running `vercel deploy --prod`, or changing Vercel env vars.
 - **Database access** goes through `lib/supabase.ts`. It uses `pg` when `DATABASE_URL` is set, otherwise the Supabase service-role client. Keep both paths working, or remove one deliberately.
-- **Auth** is custom (`lib/auth.ts`): users and passwords come from env vars, sessions are HMAC-signed cookies. It is not Supabase Auth. Every server action and query must scope by the session user, except the shared home dashboard.
+- **Auth** is custom (`lib/auth.ts`): users and passwords come from env vars, sessions are HMAC-signed cookies. It is not Supabase Auth. Every server action and query must scope by the session user.
 - **Dates** are local calendar dates in `APP_TIME_ZONE`; use the helpers in `lib/dates.ts` rather than `new Date()` math.
 - Match the existing style: server actions in `app/actions.ts`, Zod for validating model output, plain CSS in `app/globals.css`.
 - Work on a branch; `master` is the production branch.

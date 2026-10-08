@@ -72,7 +72,7 @@ export default async function Home({ searchParams }: PageProps) {
             <span className="eyebrow">Home</span>
             <strong>Daily and weekly progress</strong>
             <p className="muted">
-              Shared view for everyone using the app. Your logging tools live under Profile.
+              Your logging tools live under Profile.
             </p>
           </div>
           <Link className="button" href="/profile">

@@ -69,7 +69,7 @@ Storage is about 1.4 MB for January through early October.
 
 - Health records, meal logs and tokens stay out of Git, docs, PR text, screenshots and ordinary logs. Use counts or synthetic data.
 - Errors from the Google client report status codes, never response bodies or URLs.
-- Each user's records are scoped by the session user in every query. The shared home dashboard shows nutrition summaries only, never health records or chat.
+- The app has one user (Eric). Queries still scope by the session user so a second account can't see another's data if one is ever added.
 - Raw prompts and responses are not logged.
 - Missing data stays missing; it is never filled in as zero or inferred.
 
@@ -85,6 +85,5 @@ Storage is about 1.4 MB for January through early October.
 
 - **Google OAuth app status.** The current refresh token was issued with about a week of lifetime, which suggests the OAuth consent screen is in Testing mode. A scheduled sync needs a token that doesn't expire weekly: either publish the app or accept periodic re-authorization.
 - **Authentication.** The app uses its own login with env-var passwords and signed cookies. Move to Supabase Auth before adding health data and chat, or keep custom auth for the MVP?
-- **Second user.** Does the second app user get Google Health sync, or is health data single-user for now?
 - **Model disclosure.** Which records may be sent to the Claude API in chat context (all logged data, health summaries, raw payloads)?
 - **Health fields.** Which payload fields become views or dashboard metrics, once the raw data is loaded and inspected.
