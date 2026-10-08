@@ -34,7 +34,7 @@ This repo is the base. The existing meal logger, dashboard and goals stay workin
 - Next.js App Router on Vercel, TypeScript, server actions. Production: https://nutribot-dusky.vercel.app
 - Supabase Postgres, accessed from the server through `DATABASE_URL` (`pg`).
 - Claude API from server code only. API keys and Google tokens never reach the browser.
-- Health sync runs as a local script first, then as a Vercel cron route.
+- Health sync runs daily as a Vercel Cron route (`vercel.json`), and on demand with `npm run health:sync`.
 
 ## Data
 
@@ -77,7 +77,7 @@ Storage is about 1.4 MB for January through early October.
 
 1. **Plan** (this document).
 2. **Raw health load.** Done locally: health tables in Supabase, `npm run health:auth` and `npm run health:sync`.
-3. **Scheduled sync.** Vercel cron route that runs the incremental sync within function time limits; Google refresh token stored server-side.
+3. **Scheduled sync.** Done: daily Vercel Cron (`/api/cron/health-sync`, 11:00 UTC), Google credentials in Vercel env vars, every run logged in `health_sync_runs`.
 4. **Chat.** `/chat` page, Claude tool loop, the six tools, new write tables, persisted conversation history.
 5. **Dashboard.** Mobile views over logged data and health data.
 

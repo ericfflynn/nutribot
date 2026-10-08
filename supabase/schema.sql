@@ -52,8 +52,22 @@ create table if not exists public.health_sync_state (
   primary key (user_name, data_type)
 );
 
+-- One row per sync run, scheduled or manual.
+create table if not exists public.health_sync_runs (
+  id bigint generated always as identity primary key,
+  user_name text not null,
+  trigger text not null check (trigger in ('cron', 'manual')),
+  started_at timestamptz not null default now(),
+  finished_at timestamptz,
+  status text not null default 'running' check (status in ('running', 'succeeded', 'failed')),
+  records integer,
+  failed_types text[] not null default '{}',
+  error text
+);
+
 alter table public.health_records enable row level security;
 alter table public.health_sync_state enable row level security;
+alter table public.health_sync_runs enable row level security;
 
 -- Readable views over health_records. Views store nothing; they unpack payloads on read.
 create or replace function public.health_civil_date(value jsonb) returns date

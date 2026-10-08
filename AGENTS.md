@@ -60,6 +60,13 @@ psql "$DB" -c "select count(*) from macro_entries;"
 
 `DATABASE_URL` uses the transaction pooler (port 6543), which works for ordinary queries but not for session features such as `LISTEN` or prepared statements across calls.
 
+## Health sync
+
+- Google Health data lands in `health_records` (raw JSONB) and is read through the `health_daily` and `health_workouts` views. Code is in `lib/health/`.
+- Runs daily via Vercel Cron (`vercel.json` → `/api/cron/health-sync`, guarded by `CRON_SECRET`), or locally with `npm run health:sync`.
+- Every run is logged in `health_sync_runs` (status, records, failed types). Check there first when data looks stale.
+- If runs fail with `invalid_grant`, the Google refresh token was revoked: run `npm run health:auth`, then update `GOOGLE_REFRESH_TOKEN` in Vercel (`vercel env add GOOGLE_REFRESH_TOKEN production --sensitive`).
+
 ## Guidelines
 
 - **Database writes need the owner's approval.** Read-only queries are fine. Ask before any `insert`, `update`, `delete`, or DDL. This is the only copy of the data and there is no migration runner or backup process in the repo.

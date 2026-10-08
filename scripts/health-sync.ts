@@ -1,8 +1,8 @@
 // Local Google Health sync: npm run health:sync -- [--user NAME] [--types a b] [--start YYYY-MM-DD]
 // Reads GOOGLE_* and DATABASE_URL from .env.local.
-import { addDays, isValidLocalDate, todayLocalDate } from "../lib/dates";
-import { GoogleHealthClient, HEALTH_DATA_TYPES, isHealthDataType, type HealthDataType } from "../lib/health/google";
-import { syncHealth } from "../lib/health/sync";
+import { isValidLocalDate } from "../lib/dates";
+import { HEALTH_DATA_TYPES, isHealthDataType, type HealthDataType } from "../lib/health/google";
+import { runHealthSync } from "../lib/health/sync";
 import { getPool } from "../lib/supabase";
 
 function parseArgs(argv: string[]) {
@@ -43,13 +43,13 @@ async function main() {
   }
 
   try {
-    const failures = await syncHealth(db, new GoogleHealthClient(), {
+    const result = await runHealthSync(db, {
+      trigger: "manual",
       userName,
       types: options.types.length ? options.types : HEALTH_DATA_TYPES,
-      end: addDays(todayLocalDate(), 1),
       replayFrom: options.start
     });
-    process.exitCode = failures ? 1 : 0;
+    process.exitCode = result.failedTypes.length ? 1 : 0;
   } finally {
     await db.end();
   }

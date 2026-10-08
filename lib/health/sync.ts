@@ -2,6 +2,7 @@
 // Ported from nutribot-core/nutribot/health/sync.py and store.py.
 import { createHash } from "crypto";
 import type { Pool } from "pg";
+import { addDays, todayLocalDate } from "../dates";
 import { GoogleHealthClient, GoogleHealthError, type HealthDataType } from "./google";
 
 export const HEALTH_SYNC_START = "2026-01-01";
@@ -115,11 +116,20 @@ export type HealthSyncOptions = {
   report?: (message: string) => void;
 };
 
-// Returns the number of data types that failed. Other types keep going after a failure.
-export async function syncHealth(db: Pool, google: GoogleHealthClient, options: HealthSyncOptions) {
+export type HealthSyncResult = {
+  records: number;
+  failedTypes: HealthDataType[];
+};
+
+// Other types keep going after a failure; failed types are listed in the result.
+export async function syncHealth(
+  db: Pool,
+  google: GoogleHealthClient,
+  options: HealthSyncOptions
+): Promise<HealthSyncResult> {
   const report = options.report ?? console.log;
   const overlapDays = options.overlapDays ?? 7;
-  let failures = 0;
+  const result: HealthSyncResult = { records: 0, failedTypes: [] };
 
   for (const kind of options.types) {
     try {
@@ -150,16 +160,54 @@ export async function syncHealth(db: Pool, google: GoogleHealthClient, options: 
           }
         }
         await commitPartition(db, { userName: options.userName, kind, month, end: upper, records });
+        result.records += records.size;
         report(`${kind}: ${month}, ${records.size} records, covered through ${upper} (exclusive)`);
         lower = upper;
       }
     } catch (error) {
-      failures += 1;
+      result.failedTypes.push(kind);
       // Only our own error messages are safe to print; others may contain personal data.
       const message = error instanceof GoogleHealthError ? error.message : error instanceof Error ? error.name : "error";
       report(`${kind}: failed (${message}); rerun to resume`);
     }
   }
 
-  return failures;
+  return result;
+}
+
+// Runs a sync through today and records it in health_sync_runs.
+export async function runHealthSync(
+  db: Pool,
+  options: Omit<HealthSyncOptions, "end"> & { trigger: "cron" | "manual" }
+) {
+  const { trigger, ...syncOptions } = options;
+  const { rows } = await db.query<{ id: string }>(
+    `insert into public.health_sync_runs (user_name, trigger) values ($1, $2) returning id::text`,
+    [options.userName, trigger]
+  );
+  const runId = rows[0].id;
+
+  try {
+    const result = await syncHealth(db, new GoogleHealthClient(), {
+      ...syncOptions,
+      end: addDays(todayLocalDate(), 1)
+    });
+    await db.query(
+      `
+      update public.health_sync_runs
+      set finished_at = now(), status = $2, records = $3, failed_types = $4
+      where id = $1
+      `,
+      [runId, result.failedTypes.length ? "failed" : "succeeded", result.records, result.failedTypes]
+    );
+    return result;
+  } catch (error) {
+    // Only our own error messages are safe to store; others may contain personal data.
+    const message = error instanceof GoogleHealthError ? error.message : error instanceof Error ? error.name : "error";
+    await db.query(
+      `update public.health_sync_runs set finished_at = now(), status = 'failed', error = $2 where id = $1`,
+      [runId, message]
+    );
+    throw error;
+  }
 }
