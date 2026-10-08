@@ -6,8 +6,9 @@ const TOKEN_URL = "https://oauth2.googleapis.com/token";
 
 // Record types: one data point per day or per session, fetched with `list` and
 // filtered to Fitbit records. The value is the API filter field.
-// Excluded on purpose: minute-level `heart-rate`, and `floors` /
-// `basal-energy-burned`, which come back without a data source.
+// Excluded on purpose: minute-level `heart-rate`; `floors` and
+// `basal-energy-burned`, which come back without a data source; and the
+// nutrition and hydration logs, which need a scope the app doesn't request.
 const RECORD_TYPES = {
   "daily-resting-heart-rate": "daily_resting_heart_rate.date",
   "daily-heart-rate-variability": "daily_heart_rate_variability.date",
@@ -17,8 +18,6 @@ const RECORD_TYPES = {
   "daily-heart-rate-zones": "daily_heart_rate_zones.date",
   "daily-respiratory-rate": "daily_respiratory_rate.date",
   exercise: "exercise.interval.civil_start_time",
-  "nutrition-log": "nutrition_log.interval.civil_start_time",
-  "hydration-log": "hydration_log.interval.civil_start_time",
   weight: "weight.sample_time.civil_time",
   "body-fat": "body_fat.sample_time.civil_time",
   sleep: "sleep.interval.civil_end_time"

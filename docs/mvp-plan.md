@@ -55,13 +55,13 @@ Ported from the tested Python implementation in `../../nutribot-core`, then narr
 
 - **Fitbit only.** Google Health also returns Apple Health (`HEALTH_KIT`) and untagged records; they are dropped before storage.
 - **Daily totals for activity.** Steps, distance, active energy, total calories, active minutes and active zone minutes come from the `dailyRollUp` endpoint, restricted to the `google-wearables` source family (Fitbit and Google trackers). One row per day. Minute-level data is never downloaded.
-- **Daily and session records as returned.** Resting heart rate, HRV, sleep, SpO2, respiratory rate, VO2 max, heart rate zones, sleep temperature, and one record per workout (`exercise`: start/end, type, active duration, calories, average heart rate, distance, steps, time in zones). Weight, body fat, nutrition and hydration are synced if they are ever logged in Fitbit.
+- **Daily and session records as returned.** Resting heart rate, HRV, sleep, SpO2, respiratory rate, VO2 max, heart rate zones, sleep temperature, and one record per workout (`exercise`: start/end, type, active duration, calories, average heart rate, distance, steps, time in zones). Weight and body fat are synced if they are ever logged in Fitbit.
 - **Not synced:** minute-level heart rate, and floors and basal energy, which the API returns without a data source.
 - **Backfill** starts January 1, 2026; Fitbit data begins in June.
 - **Monthly snapshots.** Each data type is fetched one calendar month at a time, then one transaction replaces that month's rows and advances the checkpoint. A failure leaves the previous snapshot and checkpoint intact; rerunning resumes.
 - **Incremental runs** start seven days before the last checkpoint, rounded down to the start of that month, so late uploads and corrections are picked up.
 - **Record keys:** the API record name, or the date for daily totals.
-- **Credentials:** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN` as server env vars. Read-only scopes. `npm run health:auth` issues a new refresh token.
+- **Credentials:** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN` as server env vars. Three read-only scopes: activity and fitness, health metrics, sleep. `npm run health:auth` issues a new refresh token.
 
 Storage is about 1.4 MB for January through early October.
 
@@ -83,7 +83,7 @@ Storage is about 1.4 MB for January through early October.
 
 ## Open questions
 
-- **Google OAuth app status.** The current refresh token was issued with about a week of lifetime, which suggests the OAuth consent screen is in Testing mode. A scheduled sync needs a token that doesn't expire weekly: either publish the app or accept periodic re-authorization.
+- **Google re-authorization.** The OAuth app is published (unverified, which is fine for personal use), so refresh tokens no longer expire after 7 days. Re-auth is `npm run health:auth`; an in-app connect flow can come later if needed.
 - **Authentication.** The app uses its own login with env-var passwords and signed cookies. Move to Supabase Auth before adding health data and chat, or keep custom auth for the MVP?
 - **Model disclosure.** Which records may be sent to the Claude API in chat context (all logged data, health summaries, raw payloads)?
 - **Health fields.** Which payload fields become views or dashboard metrics, once the raw data is loaded and inspected.

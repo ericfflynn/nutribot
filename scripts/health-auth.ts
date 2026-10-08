@@ -7,17 +7,11 @@ import { readFileSync, writeFileSync } from "fs";
 import { createInterface } from "readline/promises";
 
 const ENV_FILE = ".env.local";
-const SCOPES = [
-  "health_metrics_and_measurements",
-  "sleep",
-  "activity_and_fitness",
-  "profile",
-  "nutrition",
-  "location",
-  "ecg",
-  "irn",
-  "settings"
-].map((scope) => `https://www.googleapis.com/auth/googlehealth.${scope}.readonly`);
+// Only what the sync reads: activity totals and workouts, daily health
+// metrics (resting heart rate, HRV, SpO2, VO2 max, weight), and sleep.
+const SCOPES = ["activity_and_fitness", "health_metrics_and_measurements", "sleep"].map(
+  (scope) => `https://www.googleapis.com/auth/googlehealth.${scope}.readonly`
+);
 
 function requireEnv(name: string) {
   const value = process.env[name];
