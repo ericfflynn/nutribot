@@ -32,3 +32,6 @@ pnpm-debug.log*
 
 # macOS
 .DS_Store
+
+# Supabase CLI
+supabase/.temp/
