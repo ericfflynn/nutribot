@@ -1288,3 +1288,18 @@ button {
     content: "Calories";
   }
 }
+
+.privacy {
+  max-width: 720px;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+
+.privacy h2 {
+  margin-top: 24px;
+  font-size: 1.1rem;
+}
+
+.privacy ul {
+  padding-left: 20px;
+}
