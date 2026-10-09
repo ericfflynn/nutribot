@@ -91,4 +91,4 @@ Storage is about 1.4 MB for January through early October.
 
 ## Ideas for later
 
-- **Rolling stress signal.** Combine journal entries (once chat journaling exists) with recent load, meaning repeated heavy workouts close together, into a rolling stress measure. When it runs high, especially alongside HRV below baseline, surface a reminder to prioritize recovery and take it easy. Builds on the recovery estimate in `lib/health/scores.ts` and the `writeJournalEntry` tool.
+- **Rolling stress signal.** Combine journal entries (once chat journaling exists) with recent load, meaning repeated heavy workouts close together, into a rolling stress measure. When it runs high, especially alongside HRV below baseline, surface a reminder to prioritize recovery and take it easy. Builds on the recovery and strain scores ([scores.md](scores.md)) and the `writeJournalEntry` tool.

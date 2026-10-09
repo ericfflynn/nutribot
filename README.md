@@ -7,7 +7,7 @@ Production: https://nutribot-dusky.vercel.app · Direction and roadmap: [docs/mv
 ## Features
 
 - **Today:** one iPhone-style page. Whoop-inspired dials for Sleep, Recovery and Activity (strain) up top, then nutrition (calories and macros vs goals), recovery details (sleep, HRV, resting heart rate vs the past week), and workouts ranked by intensity. A Refresh button pulls the latest Fitbit data on demand.
-- **Scores** (`lib/health/scores.ts`, NutriBot's own estimates, not Whoop's formulas): Sleep is hours asleep vs an 8-hour need; Recovery (0-100%, green/yellow/red) compares today's HRV and resting heart rate with your 30-day baseline, plus sleep; Strain (0-21) weights heart-rate zone minutes by intensity, plus steps, for the day and for each workout.
+- **Scores** (`lib/health/scores.ts`, NutriBot's own estimates, not Whoop's formulas; full reference in [docs/scores.md](docs/scores.md)): Sleep is hours asleep vs an 8-hour need; Recovery (0-100%, green/yellow/red) compares today's HRV and resting heart rate with your 30-day baseline, plus sleep; Strain (0-21) weights heart-rate zone minutes by intensity, plus steps, for the day and for each workout.
 - **Log:** plain-English meal logging with OpenAI macro estimates, a review step, corrections, manual edits and goals.
 - Fitbit data synced from Google Health several times a day: activity totals, resting heart rate, HRV, sleep, SpO2, VO2 max and workout summaries.
 

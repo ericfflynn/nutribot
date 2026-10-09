@@ -1,5 +1,6 @@
 // Whoop-style daily scores computed from Fitbit data. These are NutriBot's own
-// transparent estimates, not Whoop's proprietary formulas.
+// transparent estimates, not Whoop's proprietary formulas. Rationale,
+// calibration history and limitations: docs/scores.md (keep it in sync).
 import type { HealthDay, HealthWorkout } from "./queries";
 
 export const SLEEP_NEED_MINUTES = 8 * 60;
