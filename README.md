@@ -1,19 +1,14 @@
-# NutriBot Macros
+# NutriBot
 
-NutriBot Macros is a private macro tracker for logging meals in plain English, reviewing AI-generated estimates, and tracking progress against personal goals.
+NutriBot is a private, single-user health app: plain-English meal logging with AI macro estimates, plus Fitbit data synced daily from Google Health.
 
-It is built as a focused product demo: fast meal entry, transparent AI output, editable nutrition data, and a rolling 7-day view that reflects actual logged behavior.
+Production: https://nutribot-dusky.vercel.app · Direction and roadmap: [docs/mvp-plan.md](docs/mvp-plan.md) · Agent guidelines: [AGENTS.md](AGENTS.md)
 
-## Highlights
+## Features
 
-- Plain-English meal logging with OpenAI macro estimates.
-- Review step with calories, protein, carbs, fat, confidence, notes, and item breakdowns.
-- Correction flow for revising estimates before saving.
-- Manual macro editing when the user knows better than the model.
-- Rolling 7-day dashboard that excludes today and days with no logged meals.
-- Date picker for reviewing, editing, or backfilling recent days.
-- Per-user calorie and macro split goals.
-- Private auth, server-side AI calls, and Supabase persistence.
+- Plain-English meal logging with OpenAI macro estimates, a review step, corrections and manual edits.
+- Calorie and macro goals, with a rolling 7-day view of completed logged days.
+- Daily Fitbit sync from Google Health: activity totals, resting heart rate, HRV, sleep, SpO2, VO2 max and workout summaries.
 
 ## Product Flow
 
@@ -31,76 +26,126 @@ It is built as a focused product demo: fast meal entry, transparent AI output, e
 
 ## Stack
 
-- Next.js App Router
-- TypeScript
-- React Server Actions
-- OpenAI structured outputs
-- Supabase Postgres
-- Vercel
+- Next.js App Router, TypeScript, React Server Actions
+- OpenAI structured outputs for meal estimates
+- Supabase Postgres (accessed server-side with `pg`)
+- Google Health API for Fitbit data
+- Vercel hosting and Vercel Cron
 
 ## Developer Setup
-
-Install dependencies:
 
 ```bash
 npm install
 ```
 
-Create `.env.local`:
+Create `.env.local` (see `.env.example`):
 
 ```bash
 APP_USERS=Eric
-APP_USER_PASSWORDS=Eric:your-eric-password
-AUTH_SECRET=your-long-random-cookie-signing-secret
+APP_USER_PASSWORDS=Eric:your-password
+AUTH_SECRET=your-long-random-cookie-signing-secret   # openssl rand -base64 32
 APP_TIME_ZONE=America/New_York
 
 OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-4o-mini
 
 DATABASE_URL=postgresql://postgres.your-project-ref:[YOUR-PASSWORD]@aws-0-us-east-1.pooler.supabase.com:6543/postgres
+
+# Google Health sync
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+GOOGLE_REFRESH_TOKEN=...   # written by npm run health:auth
+GOOGLE_HEALTH_USER=Eric
+CRON_SECRET=...            # any long random string; Vercel Cron sends it
 ```
 
-Generate `AUTH_SECRET`:
+Create or update tables (idempotent):
 
 ```bash
-openssl rand -base64 32
+psql "$DATABASE_URL" -f supabase/schema.sql
 ```
 
-Create tables:
-
-```text
-Run supabase/schema.sql in the Supabase SQL editor.
-```
-
-Run locally:
+Run and build:
 
 ```bash
 npm run dev
-```
-
-Build:
-
-```bash
 npm run build
 ```
+
+## Fitbit health data
+
+Data comes from the Google Health API and is stored Fitbit-only: Apple Health and other sources are dropped at ingest, and minute-level data is never downloaded.
+
+| What | How it's stored |
+| --- | --- |
+| Steps, distance, active and total calories, active minutes, zone minutes | One daily total per day, from the API's `dailyRollUp` endpoint |
+| Resting heart rate, HRV, SpO2, breathing rate, VO2 max, sleep temperature | One record per day |
+| Sleep | One record per sleep session, including stage summaries |
+| Workouts | One record per session: type, times, duration, calories, average heart rate, distance, steps, heart rate zones |
+
+Raw payloads live in `health_records` (JSONB). Read them through two views:
+
+- `health_daily`: one row per day with plain columns for activity, heart, sleep and other metrics.
+- `health_workouts`: one row per workout, times in local time.
+
+Each sync replaces whole months (the current month, plus the previous one early in a month) in a single transaction, so reruns never create duplicates.
+
+### Authorizing Google
+
+```bash
+npm run health:auth
+```
+
+Opens Google's consent page (three read-only scopes: activity and fitness, health metrics, sleep), then asks for the redirected URL and saves `GOOGLE_REFRESH_TOKEN` to `.env.local`. The OAuth app is published but unverified, so Google shows an "unverified app" warning: choose **Advanced → Go to NutriBot**. After re-authorizing, copy the token to Vercel:
+
+```bash
+vercel env add GOOGLE_REFRESH_TOKEN production --sensitive
+```
+
+### Syncing
+
+- **Daily:** Vercel Cron calls `/api/cron/health-sync` at 11:00 UTC (`vercel.json`). The route requires `Authorization: Bearer $CRON_SECRET`.
+- **Manual:** `npm run health:sync`. Options: `--types daily-steps sleep`, `--start 2026-06-01` to replay from a date.
+
+Every run is logged in `health_sync_runs`:
+
+```sql
+select id, trigger, status, records, failed_types, error,
+       started_at at time zone 'America/New_York' as started_et
+from health_sync_runs
+order by id desc
+limit 5;
+```
+
+`status` is `succeeded`, `failed` or `running`; `failed_types` lists data types that failed while the rest continued. An `invalid_grant` error means the Google token needs re-authorizing.
 
 ## Project Map
 
 ```text
 app/
-  actions.ts              server actions
-  entry-card.tsx          saved meal display/editing
-  home-progress-card.tsx  progress card
-  meal-logger.tsx         meal input and review flow
-  page.tsx                home dashboard
-  profile/page.tsx        logging, history, date picker
-  shared-ui.tsx           shell, login, goals form
+  actions.ts                     server actions
+  api/cron/health-sync/route.ts  daily health sync endpoint (Vercel Cron)
+  entry-card.tsx                 saved meal display/editing
+  home-progress-card.tsx         progress card
+  meal-logger.tsx                meal input and review flow
+  page.tsx                       home dashboard
+  privacy/page.tsx               public privacy policy (linked from Google OAuth)
+  profile/page.tsx               logging, history, date picker
+  shared-ui.tsx                  shell, login, goals form
 
 lib/
-  auth.ts                 session auth
-  dates.ts                date helpers
-  goals.ts                macro goal helpers
-  macro-adjust.ts         manual macro adjustment
-  macro-parser.ts         OpenAI parser
-  supabase.ts             database access and summaries
+  auth.ts                        session auth
+  dates.ts                       date helpers
+  goals.ts                       macro goal helpers
+  health/google.ts               Google Health API client
+  health/sync.ts                 monthly snapshot sync and run logging
+  macro-adjust.ts                manual macro adjustment
+  macro-parser.ts                OpenAI parser
+  supabase.ts                    database access and summaries
+
+scripts/
+  health-auth.ts                 npm run health:auth
+  health-sync.ts                 npm run health:sync
+
+supabase/schema.sql              all tables and views (idempotent)
 ```
