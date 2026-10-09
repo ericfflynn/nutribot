@@ -6,6 +6,8 @@ import { getPool } from "@/lib/supabase";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+const RECENT_DAYS = 3;
+
 // Vercel Cron sends `Authorization: Bearer $CRON_SECRET`.
 function isAuthorized(request: Request) {
   const secret = process.env.CRON_SECRET;
@@ -30,7 +32,14 @@ export async function GET(request: Request) {
   }
 
   try {
-    const result = await runHealthSync(db, { trigger: "cron", userName, types: HEALTH_DATA_TYPES });
+    // ?mode=recent refetches the last few days; the default replaces whole months.
+    const recent = new URL(request.url).searchParams.get("mode") === "recent";
+    const result = await runHealthSync(db, {
+      trigger: "cron",
+      userName,
+      types: HEALTH_DATA_TYPES,
+      recentDays: recent ? RECENT_DAYS : undefined
+    });
     return Response.json(result, { status: result.failedTypes.length ? 500 : 200 });
   } catch {
     // The run row holds the sanitized error; don't echo exception details here.

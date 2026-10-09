@@ -34,8 +34,8 @@ export function Login({ error }: { error?: string }) {
   return (
     <main className="login">
       <section className="panel login-panel">
-        <h1>NutriBot Macros</h1>
-        <p className="muted">Private meal logging.</p>
+        <h1>NutriBot</h1>
+        <p className="muted">Meals, activity and recovery.</p>
         <form className="form-grid" action={loginAction}>
           <div className="field">
             <label htmlFor="name">User</label>
@@ -61,42 +61,75 @@ export function Login({ error }: { error?: string }) {
   );
 }
 
+const titleDateFormat = new Intl.DateTimeFormat("en-US", {
+  weekday: "long",
+  month: "long",
+  day: "numeric",
+  timeZone: "UTC"
+});
+
+function TodayIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 13h4v7H4zM10 8h4v12h-4zM16 4h4v16h-4z" />
+    </svg>
+  );
+}
+
+function LogIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M11 4h2v7h7v2h-7v7h-2v-7H4v-2h7z" />
+    </svg>
+  );
+}
+
+// iOS-style shell: large title, content, and a bottom tab bar.
 export function AppShell({
-  user,
   date,
   active,
+  title,
   children
 }: {
   user: SessionUser;
   date: string;
   active: "home" | "profile";
+  title: string;
   children: ReactNode;
 }) {
   return (
-    <main className="shell">
-      <header className="topbar app-header">
-        <div className="brand">
-          <h1>NutriBot Macros</h1>
-          <span>
-            {user.name} · {date}
-          </span>
+    <div className="app">
+      <header className="app-titlebar">
+        <div>
+          <span className="app-date">{titleDateFormat.format(new Date(`${date}T00:00:00Z`))}</span>
+          <h1>{title}</h1>
         </div>
-        <nav className="app-nav" aria-label="Primary">
-          <Link className={`nav-link ${active === "home" ? "active" : ""}`} href="/">
-            Home
-          </Link>
-          <Link className={`nav-link ${active === "profile" ? "active" : ""}`} href="/profile">
-            Profile
-          </Link>
-        </nav>
         <form action={logoutAction}>
-          <button className="button secondary" type="submit">
+          <button className="text-button" type="submit">
             Sign out
           </button>
         </form>
       </header>
-      {children}
-    </main>
+      <main className="app-content">{children}</main>
+      <nav className="tab-bar" aria-label="Primary">
+        <Link
+          className={active === "home" ? "active" : ""}
+          href="/"
+          aria-current={active === "home" ? "page" : undefined}
+        >
+          <TodayIcon />
+          <span>Today</span>
+        </Link>
+        <Link
+          className={active === "profile" ? "active" : ""}
+          href="/profile"
+          aria-current={active === "profile" ? "page" : undefined}
+        >
+          <LogIcon />
+          <span>Log</span>
+        </Link>
+      </nav>
+    </div>
   );
 }
 

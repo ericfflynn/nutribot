@@ -6,9 +6,10 @@ Production: https://nutribot-dusky.vercel.app · Direction and roadmap: [docs/mv
 
 ## Features
 
-- Plain-English meal logging with OpenAI macro estimates, a review step, corrections and manual edits.
-- Calorie and macro goals, with a rolling 7-day view of completed logged days.
-- Daily Fitbit sync from Google Health: activity totals, resting heart rate, HRV, sleep, SpO2, VO2 max and workout summaries.
+- **Today:** one iPhone-style page. Whoop-inspired dials for Sleep, Recovery and Activity (strain) up top, then nutrition (calories and macros vs goals), recovery details (sleep, HRV, resting heart rate vs the past week), and workouts ranked by intensity. A Refresh button pulls the latest Fitbit data on demand.
+- **Scores** (`lib/health/scores.ts`, NutriBot's own estimates, not Whoop's formulas): Sleep is hours asleep vs an 8-hour need; Recovery (0-100%, green/yellow/red) compares today's HRV and resting heart rate with your 30-day baseline, plus sleep; Strain (0-21) weights heart-rate zone minutes by intensity, plus steps, for the day and for each workout.
+- **Log:** plain-English meal logging with OpenAI macro estimates, a review step, corrections, manual edits and goals.
+- Fitbit data synced from Google Health several times a day: activity totals, resting heart rate, HRV, sleep, SpO2, VO2 max and workout summaries.
 
 ## Product Flow
 
@@ -88,7 +89,7 @@ Raw payloads live in `health_records` (JSONB). Read them through two views:
 - `health_daily`: one row per day with plain columns for activity, heart, sleep and other metrics.
 - `health_workouts`: one row per workout, times in local time.
 
-Each sync replaces whole months (the current month, plus the previous one early in a month) in a single transaction, so reruns never create duplicates.
+Full syncs replace whole months (the current month, plus the previous one early in a month) in a single transaction; recent syncs upsert the last 3 days by record key. Either way, reruns never create duplicates.
 
 ### Authorizing Google
 
@@ -104,41 +105,48 @@ vercel env add GOOGLE_REFRESH_TOKEN production --sensitive
 
 ### Syncing
 
-- **Daily:** Vercel Cron calls `/api/cron/health-sync` at 11:00 UTC (`vercel.json`). The route requires `Authorization: Bearer $CRON_SECRET`.
-- **Manual:** `npm run health:sync`. Options: `--types daily-steps sleep`, `--start 2026-06-01` to replay from a date.
+- **Scheduled:** six Vercel Cron jobs in `vercel.json` call `/api/cron/health-sync`, each once a day (the Hobby plan limit), ±59 minutes:
+  - 11:00 UTC (7 AM Eastern in summer): **full** run, replacing whole months. Also removes records Fitbit deleted.
+  - 14:00, 17:00, 20:00, 23:00, 02:00 UTC: **recent** runs (`?mode=recent`), upserting the last 3 days.
+  - The route requires `Authorization: Bearer $CRON_SECRET`.
+- **Manual:** `npm run health:sync`. Options: `--recent` for a light run, `--types daily-steps sleep`, `--start 2026-06-01` to replay from a date.
 
 Every run is logged in `health_sync_runs`:
 
 ```sql
-select id, trigger, status, records, failed_types, error,
+select id, trigger, scope, status, records, failed_types, error,
        started_at at time zone 'America/New_York' as started_et
 from health_sync_runs
 order by id desc
 limit 5;
 ```
 
-`status` is `succeeded`, `failed` or `running`; `failed_types` lists data types that failed while the rest continued. An `invalid_grant` error means the Google token needs re-authorizing.
+`scope` is `full` or `recent`; `status` is `succeeded`, `failed` or `running`; `failed_types` lists data types that failed while the rest continued. An `invalid_grant` error means the Google token needs re-authorizing.
 
 ## Project Map
 
 ```text
 app/
   actions.ts                     server actions
-  api/cron/health-sync/route.ts  daily health sync endpoint (Vercel Cron)
+  api/cron/health-sync/route.ts  health sync endpoint (Vercel Cron; ?mode=recent for light runs)
+  charts.tsx                     inline SVG column and line charts (client; currently unused)
   entry-card.tsx                 saved meal display/editing
-  home-progress-card.tsx         progress card
+  home-progress-card.tsx         nutrition progress card (Log page)
   meal-logger.tsx                meal input and review flow
-  page.tsx                       home dashboard
+  page.tsx                       Today: score dials, nutrition, recovery, activity and workouts
   privacy/page.tsx               public privacy policy (linked from Google OAuth)
-  profile/page.tsx               logging, history, date picker
-  shared-ui.tsx                  shell, login, goals form
+  refresh-button.tsx             manual Fitbit sync button on Today
+  profile/page.tsx               Log: meal logging, history, date picker, goals
+  shared-ui.tsx                  iOS shell (title, tab bar), login, goals form
 
 lib/
   auth.ts                        session auth
   dates.ts                       date helpers
   goals.ts                       macro goal helpers
   health/google.ts               Google Health API client
-  health/sync.ts                 monthly snapshot sync and run logging
+  health/queries.ts              dashboard reads from health_daily / health_workouts
+  health/scores.ts               sleep, recovery and strain scores
+  health/sync.ts                 full and recent sync, run logging
   macro-adjust.ts                manual macro adjustment
   macro-parser.ts                OpenAI parser
   supabase.ts                    database access and summaries

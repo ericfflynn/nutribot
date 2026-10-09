@@ -4,7 +4,7 @@ Guidance for coding agents working in this repository. See [README.md](README.md
 
 ## Project
 
-NutriBot is a private, single-user (Eric) health and macro tracker: Next.js App Router, React, TypeScript, server actions. Meals are entered in plain English, estimated by an OpenAI model in `lib/macro-parser.ts`, reviewed, then saved to Supabase Postgres. `/` is the dashboard; `/profile` is the meal logger, history, and goals. Users come from `APP_USERS`; the code still scopes everything by user name.
+NutriBot is a private, single-user (Eric) health and macro tracker: Next.js App Router, React, TypeScript, server actions. Meals are entered in plain English, estimated by an OpenAI model in `lib/macro-parser.ts`, reviewed, then saved to Supabase Postgres. `/` (Today) is the combined dashboard: Sleep / Recovery / Strain dials (scored in `lib/health/scores.ts`), nutrition, recovery details and workouts; `/profile` (Log) is the meal logger, history, and goals. The UI is iPhone-first: iOS-style shell with a large title and bottom tab bar (`AppShell` in `app/shared-ui.tsx`). Users come from `APP_USERS`; the code still scopes everything by user name.
 
 Direction: the app is moving toward a chat-first interface where tool calls write structured records and Google Health data is loaded into Postgres. Read [docs/mvp-plan.md](docs/mvp-plan.md) before starting feature work. Don't rebuild the existing meal flow without being asked.
 
@@ -63,8 +63,8 @@ psql "$DB" -c "select count(*) from macro_entries;"
 ## Health sync
 
 - Google Health data lands in `health_records` (raw JSONB) and is read through the `health_daily` and `health_workouts` views. Code is in `lib/health/`.
-- Runs daily via Vercel Cron (`vercel.json` → `/api/cron/health-sync`, guarded by `CRON_SECRET`), or locally with `npm run health:sync`.
-- Every run is logged in `health_sync_runs` (status, records, failed types). Check there first when data looks stale.
+- Runs on six daily Vercel Cron jobs (`vercel.json` → `/api/cron/health-sync`, guarded by `CRON_SECRET`): a full month-replacing run at 11:00 UTC and five `?mode=recent` runs that upsert the last 3 days. The Hobby plan allows each cron job once a day, so more frequent syncs mean more entries, not a tighter schedule. Locally: `npm run health:sync` (`--recent` for a light run).
+- Every run is logged in `health_sync_runs` (scope, status, records, failed types). Check there first when data looks stale.
 - If runs fail with `invalid_grant`, the Google refresh token was revoked: run `npm run health:auth`, then update `GOOGLE_REFRESH_TOKEN` in Vercel (`vercel env add GOOGLE_REFRESH_TOKEN production --sensitive`).
 
 ## Guidelines
@@ -76,7 +76,9 @@ psql "$DB" -c "select count(*) from macro_entries;"
 - **Database access** goes through `lib/supabase.ts`. It uses `pg` when `DATABASE_URL` is set, otherwise the Supabase service-role client. Keep both paths working, or remove one deliberately.
 - **Auth** is custom (`lib/auth.ts`): users and passwords come from env vars, sessions are HMAC-signed cookies. It is not Supabase Auth. Every server action and query must scope by the session user.
 - **Dates** are local calendar dates in `APP_TIME_ZONE`; use the helpers in `lib/dates.ts` rather than `new Date()` math.
-- Match the existing style: server actions in `app/actions.ts`, Zod for validating model output, plain CSS in `app/globals.css`.
+- Match the existing style: server actions in `app/actions.ts`, Zod for validating model output, plain CSS in `app/globals.css` using its tokens (`--bg`, `--surface`, `--ink`, `--muted`, `--line`, `--accent`).
+- Charts are hand-rolled SVG in `app/charts.tsx` (no chart library). Keep one y-axis per chart, a legend for two or more series, and missing days as gaps, never zeros.
+- For UI changes, run `npm run dev` and let the owner check it on their phone rather than building screenshot tooling.
 - Work on a branch; `master` is the production branch.
 
 ## Shell gotcha

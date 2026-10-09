@@ -34,7 +34,7 @@ This repo is the base. The existing meal logger, dashboard and goals stay workin
 - Next.js App Router on Vercel, TypeScript, server actions. Production: https://nutribot-dusky.vercel.app
 - Supabase Postgres, accessed from the server through `DATABASE_URL` (`pg`).
 - Claude API from server code only. API keys and Google tokens never reach the browser.
-- Health sync runs daily as a Vercel Cron route (`vercel.json`), and on demand with `npm run health:sync`.
+- Health sync runs several times a day as Vercel Cron routes (`vercel.json`), and on demand with `npm run health:sync`.
 
 ## Data
 
@@ -59,7 +59,8 @@ Ported from the tested Python implementation in `../../nutribot-core`, then narr
 - **Not synced:** minute-level heart rate, and floors and basal energy, which the API returns without a data source.
 - **Backfill** starts January 1, 2026; Fitbit data begins in June.
 - **Monthly snapshots.** Each data type is fetched one calendar month at a time, then one transaction replaces that month's rows and advances the checkpoint. A failure leaves the previous snapshot and checkpoint intact; rerunning resumes.
-- **Incremental runs** start seven days before the last checkpoint, rounded down to the start of that month, so late uploads and corrections are picked up.
+- **Incremental full runs** start seven days before the last checkpoint, rounded down to the start of that month, so late uploads and corrections are picked up.
+- **Recent runs** refetch only the last 3 days and upsert them, for fresher data through the day without rewriting the month.
 - **Record keys:** the API record name, or the date for daily totals.
 - **Credentials:** `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN` as server env vars. Three read-only scopes: activity and fitness, health metrics, sleep. `npm run health:auth` issues a new refresh token.
 
@@ -77,9 +78,9 @@ Storage is about 1.4 MB for January through early October.
 
 1. **Plan** (this document).
 2. **Raw health load.** Done locally: health tables in Supabase, `npm run health:auth` and `npm run health:sync`.
-3. **Scheduled sync.** Done: daily Vercel Cron (`/api/cron/health-sync`, 11:00 UTC), Google credentials in Vercel env vars, every run logged in `health_sync_runs`.
+3. **Scheduled sync.** Done: six daily Vercel Cron jobs (a full run at 11:00 UTC, five light "last 3 days" runs through the day), Google credentials in Vercel env vars, every run logged in `health_sync_runs`.
 4. **Chat.** `/chat` page, Claude tool loop, the six tools, new write tables, persisted conversation history.
-5. **Dashboard.** Mobile views over logged data and health data.
+5. **Dashboard.** In progress: Today page in an iPhone-style shell with Whoop-inspired Sleep / Recovery / Strain dials, nutrition, recovery details and intensity-ranked workouts, plus a manual Refresh.
 
 ## Open questions
 
@@ -87,3 +88,7 @@ Storage is about 1.4 MB for January through early October.
 - **Authentication.** The app uses its own login with env-var passwords and signed cookies. Move to Supabase Auth before adding health data and chat, or keep custom auth for the MVP?
 - **Model disclosure.** Which records may be sent to the Claude API in chat context (all logged data, health summaries, raw payloads)?
 - **Health fields.** Which payload fields become views or dashboard metrics, once the raw data is loaded and inspected.
+
+## Ideas for later
+
+- **Rolling stress signal.** Combine journal entries (once chat journaling exists) with recent load, meaning repeated heavy workouts close together, into a rolling stress measure. When it runs high, especially alongside HRV below baseline, surface a reminder to prioritize recovery and take it easy. Builds on the recovery estimate in `lib/health/scores.ts` and the `writeJournalEntry` tool.

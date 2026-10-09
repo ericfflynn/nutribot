@@ -130,16 +130,9 @@ export default async function Profile({ searchParams }: PageProps) {
   const gramGoals = gramsFromPercentGoals(goals);
 
   return (
-    <AppShell user={user} date={entryDate} active="profile">
+    <AppShell user={user} date={today} active="profile" title="Log">
       <section className="dashboard">
         <section className="profile-summary">
-          <div>
-            <span className="eyebrow">Profile</span>
-            <strong>{formatDateText(entryDate)}</strong>
-            <p className="muted">
-              Rolling 7 days · {rollingStartDate} to {today}
-            </p>
-          </div>
           <DatePicker dates={rollingDates} selectedDate={entryDate} today={today} entriesByDate={entriesByDate} />
           <HomeProgressCard
             goals={{

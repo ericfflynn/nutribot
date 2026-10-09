@@ -65,6 +65,10 @@ create table if not exists public.health_sync_runs (
   error text
 );
 
+-- 'full' replaces whole months; 'recent' upserts the last few days.
+alter table public.health_sync_runs
+  add column if not exists scope text not null default 'full' check (scope in ('full', 'recent'));
+
 alter table public.health_records enable row level security;
 alter table public.health_sync_state enable row level security;
 alter table public.health_sync_runs enable row level security;

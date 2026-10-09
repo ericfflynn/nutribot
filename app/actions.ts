@@ -6,7 +6,9 @@ import { clearSession, createSession, getSessionUser } from "@/lib/auth";
 import { isValidLocalDate, todayLocalDate } from "@/lib/dates";
 import { parseMacroGoals } from "@/lib/goals";
 import { parseMacroObject, parseMacros, parseStoredMacros, type ParsedMacros } from "@/lib/macro-parser";
-import { deleteMacroEntry, saveMacroEntry, saveUserMacroGoals, updateMacroEntry } from "@/lib/supabase";
+import { HEALTH_DATA_TYPES } from "@/lib/health/google";
+import { runHealthSync } from "@/lib/health/sync";
+import { deleteMacroEntry, getPool, saveMacroEntry, saveUserMacroGoals, updateMacroEntry } from "@/lib/supabase";
 
 export type MealReviewState = {
   rawText: string;
@@ -230,4 +232,34 @@ export async function saveMacroGoalsAction(formData: FormData) {
   revalidatePath("/");
   revalidatePath("/profile");
   redirect(profilePath(redirectDate));
+}
+
+// Manual "Refresh" on Today: the same light sync the scheduled jobs run.
+export async function refreshHealthAction() {
+  const user = await getSessionUser();
+  if (!user) {
+    redirect("/");
+  }
+  const db = getPool();
+  if (!db || user.name !== process.env.GOOGLE_HEALTH_USER) {
+    return;
+  }
+
+  // Don't stack syncs from repeated taps.
+  const { rows } = await db.query(
+    `
+    select 1 from public.health_sync_runs
+    where user_name = $1 and status = 'running' and started_at > now() - interval '2 minutes'
+    limit 1
+    `,
+    [user.name]
+  );
+  if (!rows.length) {
+    try {
+      await runHealthSync(db, { trigger: "manual", userName: user.name, types: HEALTH_DATA_TYPES, recentDays: 3 });
+    } catch {
+      // The failure is recorded in health_sync_runs and shown on Today.
+    }
+  }
+  revalidatePath("/");
 }

@@ -1,4 +1,5 @@
-// Local Google Health sync: npm run health:sync -- [--user NAME] [--types a b] [--start YYYY-MM-DD]
+// Local Google Health sync:
+//   npm run health:sync -- [--user NAME] [--types a b] [--start YYYY-MM-DD | --recent]
 // Reads GOOGLE_* and DATABASE_URL from .env.local.
 import { isValidLocalDate } from "../lib/dates";
 import { HEALTH_DATA_TYPES, isHealthDataType, type HealthDataType } from "../lib/health/google";
@@ -6,11 +7,13 @@ import { runHealthSync } from "../lib/health/sync";
 import { getPool } from "../lib/supabase";
 
 function parseArgs(argv: string[]) {
-  const options: { user?: string; types: HealthDataType[]; start?: string } = { types: [] };
+  const options: { user?: string; types: HealthDataType[]; start?: string; recent?: boolean } = { types: [] };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--user") {
       options.user = argv[++index];
+    } else if (arg === "--recent") {
+      options.recent = true;
     } else if (arg === "--start") {
       options.start = argv[++index];
     } else if (arg === "--types") {
@@ -47,7 +50,8 @@ async function main() {
       trigger: "manual",
       userName,
       types: options.types.length ? options.types : HEALTH_DATA_TYPES,
-      replayFrom: options.start
+      replayFrom: options.start,
+      recentDays: options.recent ? 3 : undefined
     });
     process.exitCode = result.failedTypes.length ? 1 : 0;
   } finally {

@@ -61,7 +61,15 @@ async function getCheckpoint(db: Pool, userName: string, kind: HealthDataType) {
 // Replaces one month's rows and advances the checkpoint in a single transaction.
 async function commitPartition(
   db: Pool,
-  params: { userName: string; kind: HealthDataType; month: string; end: string; records: Map<string, string> }
+  params: {
+    userName: string;
+    kind: HealthDataType;
+    month: string;
+    end: string;
+    records: Map<string, string>;
+    // Full runs replace the month snapshot; recent runs upsert and leave the checkpoint alone.
+    replace: boolean;
+  }
 ) {
   const client = await db.connect();
   try {
@@ -70,10 +78,12 @@ async function commitPartition(
     await client.query("select pg_advisory_xact_lock(hashtext($1))", [
       `health-sync:${params.userName}:${params.kind}`
     ]);
-    await client.query(
-      `delete from public.health_records where user_name = $1 and data_type = $2 and partition_month = $3`,
-      [params.userName, params.kind, params.month]
-    );
+    if (params.replace) {
+      await client.query(
+        `delete from public.health_records where user_name = $1 and data_type = $2 and partition_month = $3`,
+        [params.userName, params.kind, params.month]
+      );
+    }
     const entries = [...params.records.entries()];
     for (let index = 0; index < entries.length; index += INSERT_CHUNK) {
       const chunk = entries.slice(index, index + INSERT_CHUNK);
@@ -82,20 +92,29 @@ async function commitPartition(
         insert into public.health_records (user_name, data_type, partition_month, record_key, payload)
         select $1, $2, $3, record.key, record.payload::jsonb
         from unnest($4::text[], $5::text[]) as record(key, payload)
+        on conflict (user_name, data_type, partition_month, record_key) do update
+          set payload = excluded.payload, fetched_at = now()
         `,
         [params.userName, params.kind, params.month, chunk.map(([key]) => key), chunk.map(([, payload]) => payload)]
       );
     }
-    await client.query(
-      `
-      insert into public.health_sync_state (user_name, data_type, covered_until, last_success_at)
-      values ($1, $2, $3::date, now())
-      on conflict (user_name, data_type) do update set
-        covered_until = greatest(public.health_sync_state.covered_until, excluded.covered_until),
-        last_success_at = excluded.last_success_at
-      `,
-      [params.userName, params.kind, params.end]
-    );
+    if (params.replace) {
+      await client.query(
+        `
+        insert into public.health_sync_state (user_name, data_type, covered_until, last_success_at)
+        values ($1, $2, $3::date, now())
+        on conflict (user_name, data_type) do update set
+          covered_until = greatest(public.health_sync_state.covered_until, excluded.covered_until),
+          last_success_at = excluded.last_success_at
+        `,
+        [params.userName, params.kind, params.end]
+      );
+    } else {
+      await client.query(
+        `update public.health_sync_state set last_success_at = now() where user_name = $1 and data_type = $2`,
+        [params.userName, params.kind]
+      );
+    }
     await client.query("commit");
   } catch (error) {
     await client.query("rollback");
@@ -112,6 +131,9 @@ export type HealthSyncOptions = {
   end: string;
   // Replay every month from this date instead of resuming from checkpoints.
   replayFrom?: string;
+  // Light run: refetch only the last N days and upsert them. Full runs (the
+  // default) replace whole months, which also removes records Fitbit deleted.
+  recentDays?: number;
   overlapDays?: number;
   report?: (message: string) => void;
 };
@@ -133,10 +155,13 @@ export async function syncHealth(
 
   for (const kind of options.types) {
     try {
-      const checkpoint = await getCheckpoint(db, options.userName, kind);
+      const checkpoint = options.recentDays ? null : await getCheckpoint(db, options.userName, kind);
       const typeEnd = checkpoint && checkpoint > options.end ? checkpoint : options.end;
+      const fetchFrom = options.recentDays ? minusDays(options.end, options.recentDays) : null;
       let lower: string;
-      if (options.replayFrom) {
+      if (fetchFrom) {
+        lower = fetchFrom;
+      } else if (options.replayFrom) {
         lower = options.replayFrom;
       } else if (checkpoint) {
         const resume = minusDays(checkpoint, overlapDays);
@@ -150,7 +175,8 @@ export async function syncHealth(
         const month = lower.slice(0, 7);
         const upper = nextMonth(lower) < typeEnd ? nextMonth(lower) : typeEnd;
         const records = new Map<string, string>();
-        for await (const points of google.pages(kind, lower, upper)) {
+        const from = fetchFrom && fetchFrom > lower ? fetchFrom : lower;
+        for await (const points of google.pages(kind, from, upper)) {
           for (const point of points) {
             if (!point || typeof point !== "object" || !Object.keys(point).length) {
               throw new GoogleHealthError("Invalid data point response");
@@ -159,9 +185,16 @@ export async function syncHealth(
             records.set(recordKey(point, payload), payload);
           }
         }
-        await commitPartition(db, { userName: options.userName, kind, month, end: upper, records });
+        await commitPartition(db, {
+          userName: options.userName,
+          kind,
+          month,
+          end: upper,
+          records,
+          replace: !fetchFrom
+        });
         result.records += records.size;
-        report(`${kind}: ${month}, ${records.size} records, covered through ${upper} (exclusive)`);
+        report(`${kind}: ${from} to ${upper} (exclusive), ${records.size} records${fetchFrom ? " upserted" : ""}`);
         lower = upper;
       }
     } catch (error) {
@@ -182,8 +215,8 @@ export async function runHealthSync(
 ) {
   const { trigger, ...syncOptions } = options;
   const { rows } = await db.query<{ id: string }>(
-    `insert into public.health_sync_runs (user_name, trigger) values ($1, $2) returning id::text`,
-    [options.userName, trigger]
+    `insert into public.health_sync_runs (user_name, trigger, scope) values ($1, $2, $3) returning id::text`,
+    [options.userName, trigger, options.recentDays ? "recent" : "full"]
   );
   const runId = rows[0].id;
 
