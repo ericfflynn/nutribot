@@ -103,4 +103,4 @@ Tested against the Fitbit history (June–October 2026): with the type filter, 4
 ## Trying it
 
 - `npm run brain -- "chest and tris, hard"` runs one turn in the terminal. It reads the database but writes nothing: no chat rows, no sync. Add `--date YYYY-MM-DD` to log against another day.
-- `npm run dev`, then tap **Log** on any tab.
+- `npm run dev`, then tap **Chat** on any tab.

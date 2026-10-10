@@ -308,9 +308,9 @@ export function ChatSheet({ date, today }: { date: string; today: string }) {
       {open ? null : (
         <button type="button" className="fab" onClick={() => setOpen(true)}>
           <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M12 5v14M5 12h14" />
+            <path d="M4 5h16v11H9l-5 4z" />
           </svg>
-          Log
+          Chat
         </button>
       )}
       {open ? (

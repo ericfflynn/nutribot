@@ -2173,7 +2173,7 @@ button {
   margin: 0 0 56px;
 }
 
-/* Floating "Log a meal" button above the tab bar */
+/* Floating "Chat" button above the tab bar */
 .fab {
   position: fixed;
   right: max(16px, calc((100vw - 680px) / 2 + 16px));
