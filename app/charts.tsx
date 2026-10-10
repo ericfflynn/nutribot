@@ -430,3 +430,58 @@ export function LineChart({
     </ChartFrame>
   );
 }
+
+// Small trend line for a tile: no axes, missing days break the line, and the
+// latest value gets a dot.
+export function Sparkline({ values, color, label }: { values: (number | null)[]; color: string; label: string }) {
+  const width = 140;
+  const height = 40;
+  const pad = 5;
+  const present = values.filter((value): value is number => value != null);
+  if (!present.length) {
+    return <svg className="sparkline" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${label}: no data`} />;
+  }
+  const lo = Math.min(...present);
+  const hi = Math.max(...present);
+  const x = (index: number) => pad + (index / Math.max(1, values.length - 1)) * (width - 2 * pad);
+  const y = (value: number) => (hi === lo ? height / 2 : height - pad - ((value - lo) / (hi - lo)) * (height - 2 * pad));
+
+  const segments: { x: number; y: number }[][] = [];
+  let current: { x: number; y: number }[] = [];
+  values.forEach((value, index) => {
+    if (value == null) {
+      if (current.length) {
+        segments.push(current);
+      }
+      current = [];
+    } else {
+      current.push({ x: x(index), y: y(value) });
+    }
+  });
+  if (current.length) {
+    segments.push(current);
+  }
+  const lastIndex = values.length - 1;
+  const last = values[lastIndex];
+
+  return (
+    <svg className="sparkline" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={label}>
+      {segments.map((points) =>
+        points.length > 1 ? (
+          <polyline
+            key={`${points[0].x}`}
+            points={points.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ")}
+            fill="none"
+            stroke={color}
+            strokeWidth="2"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+        ) : (
+          <circle key={`${points[0].x}`} cx={points[0].x} cy={points[0].y} r="2" fill={color} />
+        )
+      )}
+      {last != null ? <circle cx={x(lastIndex)} cy={y(last)} r="4" fill={color} stroke={SURFACE} strokeWidth="2" /> : null}
+    </svg>
+  );
+}

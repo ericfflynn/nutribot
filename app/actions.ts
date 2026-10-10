@@ -8,7 +8,14 @@ import { parseMacroGoals } from "@/lib/goals";
 import { parseMacroObject, parseMacros, parseStoredMacros, type ParsedMacros } from "@/lib/macro-parser";
 import { HEALTH_DATA_TYPES } from "@/lib/health/google";
 import { runHealthSync } from "@/lib/health/sync";
-import { deleteMacroEntry, getPool, saveMacroEntry, saveUserMacroGoals, updateMacroEntry } from "@/lib/supabase";
+import {
+  addWaterEntry,
+  deleteMacroEntry,
+  getPool,
+  saveMacroEntry,
+  saveUserMacroGoals,
+  updateMacroEntry
+} from "@/lib/supabase";
 
 export type MealReviewState = {
   rawText: string;
@@ -232,6 +239,23 @@ export async function saveMacroGoalsAction(formData: FormData) {
   revalidatePath("/");
   revalidatePath("/profile");
   redirect(profilePath(redirectDate));
+}
+
+const WATER_AMOUNTS = new Set([8, 16, 24]);
+
+// Quick-add buttons on Today. The day comes from the page so past days can be filled in.
+export async function addWaterAction(formData: FormData) {
+  const user = await getSessionUser();
+  if (!user) {
+    redirect("/");
+  }
+  const ounces = Number(formData.get("oz"));
+  if (!WATER_AMOUNTS.has(ounces)) {
+    return;
+  }
+  const entryDate = getFormDate(formData);
+  await addWaterEntry(user.name, entryDate > todayLocalDate() ? todayLocalDate() : entryDate, ounces);
+  revalidatePath("/");
 }
 
 // Manual "Refresh" on Today: the same light sync the scheduled jobs run.

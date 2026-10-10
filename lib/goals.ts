@@ -5,6 +5,9 @@ export type MacroGoals = {
   fatPct: number;
 };
 
+// Daily water target. Fixed for now; it can move into user_macro_goals later.
+export const WATER_GOAL_OZ = 100;
+
 export const fallbackGoals: MacroGoals = {
   calories: 2200,
   proteinPct: 30,

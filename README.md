@@ -6,7 +6,7 @@ Production: https://nutribot-dusky.vercel.app · Direction and roadmap: [docs/mv
 
 ## Features
 
-- **Today:** one iPhone-style page. Whoop-inspired dials for Sleep, Recovery and Activity (strain) up top, then nutrition (calories and macros vs goals), recovery details (sleep, HRV, resting heart rate vs the past week), and workouts ranked by intensity. A Refresh button pulls the latest Fitbit data on demand.
+- **Today:** one iPhone-style page for any day: a scrolling strip of the last 28 days (`?date=`), concentric Sleep / Recovery / Strain rings, nutrition (calories, macros vs goals, water with quick-add buttons), a timeline of the day (sleep, recovery, meals grouped by meal, workouts), and 7-day trend lines. A Refresh button pulls the latest Fitbit data on demand.
 - **Scores** (`lib/health/scores.ts`, NutriBot's own estimates, not Whoop's formulas; full reference in [docs/scores.md](docs/scores.md)): Sleep is hours asleep vs an 8-hour need; Recovery (0-100%, green/yellow/red) compares today's HRV and resting heart rate with your 30-day baseline, plus sleep; Strain (0-21) weights heart-rate zone minutes by intensity, plus steps, for the day and for each workout.
 - **Log:** plain-English meal logging with OpenAI macro estimates, a review step, corrections, manual edits and goals.
 - Fitbit data synced from Google Health several times a day: activity totals, resting heart rate, HRV, sleep, SpO2, VO2 max and workout summaries.
@@ -129,11 +129,12 @@ limit 5;
 app/
   actions.ts                     server actions
   api/cron/health-sync/route.ts  health sync endpoint (Vercel Cron; ?mode=recent for light runs)
-  charts.tsx                     inline SVG column and line charts (client; currently unused)
+  charts.tsx                     inline SVG charts; Sparkline is used by the Today trend tiles
   entry-card.tsx                 saved meal display/editing
   home-progress-card.tsx         nutrition progress card (Log page)
   meal-logger.tsx                meal input and review flow
-  page.tsx                       Today: score dials, nutrition, recovery, activity and workouts
+  page.tsx                       Today: day strip, score rings, nutrition and water, day timeline, 7-day trends
+  day-strip.tsx                  scrolling day picker on Today
   privacy/page.tsx               public privacy policy (linked from Google OAuth)
   refresh-button.tsx             manual Fitbit sync button on Today
   profile/page.tsx               Log: meal logging, history, date picker, goals

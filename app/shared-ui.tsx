@@ -89,12 +89,14 @@ export function AppShell({
   date,
   active,
   title,
+  headerAction,
   children
 }: {
   user: SessionUser;
   date: string;
   active: "home" | "profile";
   title: string;
+  headerAction?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -104,11 +106,14 @@ export function AppShell({
           <span className="app-date">{titleDateFormat.format(new Date(`${date}T00:00:00Z`))}</span>
           <h1>{title}</h1>
         </div>
-        <form action={logoutAction}>
-          <button className="text-button" type="submit">
-            Sign out
-          </button>
-        </form>
+        <div className="app-titlebar-actions">
+          {headerAction}
+          <form action={logoutAction}>
+            <button className="text-button" type="submit">
+              Sign out
+            </button>
+          </form>
+        </div>
       </header>
       <main className="app-content">{children}</main>
       <nav className="tab-bar" aria-label="Primary">

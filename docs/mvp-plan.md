@@ -12,7 +12,7 @@ This repo is the base. The existing meal logger, dashboard and goals stay workin
 
 1. **Google Health data in Postgres.** Raw payloads loaded into JSONB tables on a schedule. No normalized health schema yet; views get added once we know which fields matter.
 2. **Chat with tool use.** Claude API with a manual tool loop on the server, replacing the OpenAI meal parser. Six tools:
-   - `logMeal`: items and macro estimates, saved to `macro_entries`.
+   - `logMeal`: items and macro estimates, saved to `macro_entries`. It should also classify the meal (breakfast, lunch, dinner, snack) from the foods and the time eaten, stored in a new `meal_type` column. Until then, Today guesses the meal from the time it was logged.
    - `logWorkout`: type, duration, intensity, notes.
    - `logHabitEvent`: a named habit and when it happened.
    - `writeJournalEntry`: free text for the day.
@@ -47,7 +47,9 @@ Google Health raw store (schema in `supabase/schema.sql`):
 | `health_records` | One row per daily total, daily metric, sleep session or workout: user, data type, monthly partition, record key, raw `payload` JSONB, fetch time. |
 | `health_sync_state` | Per user and data type: covered-through date and last successful sync. |
 
-New tables for chat writes (workouts, habit events, journal entries, chat messages) get designed with the tools in milestone 3.
+New tables for chat writes (workouts, habit events, journal entries, chat messages) get designed with the tools in milestone 3. The proposed workout tables (sessions, exercises, sets) are in [training-plan.md](training-plan.md).
+
+Water intake is stored in `water_entries`: one row per drink, summed per day on Today.
 
 ## Google Health ingestion
 

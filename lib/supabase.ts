@@ -203,6 +203,75 @@ export async function listEntriesForDateRange(userName: string, startDate: strin
   return (data || []).map((row) => normalizeEntry(row as Omit<MacroEntry, "items"> & { items: unknown }));
 }
 
+// Undefined-table errors from Postgres and from PostgREST.
+function isMissingTable(error: unknown) {
+  const code = (error as { code?: string } | null)?.code;
+  return code === "42P01" || code === "PGRST205";
+}
+
+// Ounces of water logged on a day, or null when the water_entries table
+// hasn't been created yet (Today hides the water row in that case).
+export async function getWaterOunces(userName: string, entryDate: string): Promise<number | null> {
+  const db = getPool();
+  if (db) {
+    try {
+      const { rows } = await db.query(
+        `
+        select coalesce(sum(amount_oz), 0)::float8 as ounces
+        from public.water_entries
+        where user_name = $1 and entry_date = $2::date
+        `,
+        [userName, entryDate]
+      );
+      return rows[0].ounces;
+    } catch (error) {
+      if (isMissingTable(error)) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  const { data, error } = await getSupabase()
+    .from("water_entries")
+    .select("amount_oz")
+    .eq("user_name", userName)
+    .eq("entry_date", entryDate);
+
+  if (error) {
+    if (isMissingTable(error)) {
+      return null;
+    }
+    throw error;
+  }
+
+  return (data || []).reduce((sum, row) => sum + Number(row.amount_oz), 0);
+}
+
+export async function addWaterEntry(userName: string, entryDate: string, ounces: number) {
+  const db = getPool();
+  if (db) {
+    await db.query(
+      `
+      insert into public.water_entries (user_name, entry_date, amount_oz)
+      values ($1, $2::date, $3)
+      `,
+      [userName, entryDate, ounces]
+    );
+    return;
+  }
+
+  const { error } = await getSupabase().from("water_entries").insert({
+    user_name: userName,
+    entry_date: entryDate,
+    amount_oz: ounces
+  });
+
+  if (error) {
+    throw error;
+  }
+}
+
 export async function listRecentEntries(userName: string, limit = 5) {
   const db = getPool();
   if (db) {

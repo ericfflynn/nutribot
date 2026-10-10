@@ -26,8 +26,21 @@ create table if not exists public.user_macro_goals (
   updated_at timestamptz not null default now()
 );
 
+-- Water intake: one row per drink, summed per local day.
+create table if not exists public.water_entries (
+  id uuid primary key default gen_random_uuid(),
+  user_name text not null,
+  entry_date date not null,
+  amount_oz numeric not null check (amount_oz > 0 and amount_oz <= 64),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists water_entries_user_date_idx
+  on public.water_entries (user_name, entry_date);
+
 alter table public.macro_entries enable row level security;
 alter table public.user_macro_goals enable row level security;
+alter table public.water_entries enable row level security;
 
 -- The app writes from server-side code only. Do not expose DATABASE_URL in browser code.
 
