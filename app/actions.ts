@@ -9,7 +9,7 @@ import { parseMacroObject, parseMacros, parseStoredMacros, type ParsedMacros } f
 import { HEALTH_DATA_TYPES } from "@/lib/health/google";
 import { runHealthSync } from "@/lib/health/sync";
 import type { Draft } from "@/lib/brain";
-import { withDraft } from "@/lib/chat";
+import { newConversation, withDraft } from "@/lib/chat";
 import { listFitbitWorkouts, saveWorkoutSession } from "@/lib/workouts";
 import {
   addWaterEntry,
@@ -381,4 +381,14 @@ export async function discardDraftAction(messageId: string, draftId: string): Pr
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Couldn't discard the draft." };
   }
+}
+
+// "New chat": later messages go to a fresh conversation, so Claude stops
+// seeing the old one. The old conversation stays in the database.
+export async function newChatAction(): Promise<{ ok: boolean }> {
+  const user = await getSessionUser();
+  const db = getPool();
+  if (!user || !db) return { ok: false };
+  await newConversation(db, user.name);
+  return { ok: true };
 }

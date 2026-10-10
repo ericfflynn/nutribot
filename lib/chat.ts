@@ -1,6 +1,7 @@
-// The chat thread (chat_messages): one continuous thread per user. Assistant
-// rows carry the drafts shown with that reply; saving a draft records the new
-// row's id on the draft so it can't be saved twice.
+// The chat (chat_conversations, chat_messages). The current conversation is
+// the user's latest; "New chat" starts another. Assistant rows carry the
+// drafts shown with that reply; saving a draft records the new row's id on
+// the draft so it can't be saved twice.
 import type { Pool } from "pg";
 import type { BrainReply, Draft, Turn } from "./brain";
 
@@ -16,19 +17,46 @@ export type ChatMessage = {
 export const HISTORY_TURNS = 10;
 const OPEN_DRAFT_MESSAGES = 3;
 
-export async function listMessages(db: Pool, userName: string, limit: number): Promise<ChatMessage[]> {
+export async function newConversation(db: Pool, userName: string) {
+  const { rows } = await db.query<{ id: string }>(
+    `insert into public.chat_conversations (user_name) values ($1) returning id::text`,
+    [userName]
+  );
+  return rows[0].id;
+}
+
+// The latest conversation, started on first use.
+export async function currentConversation(db: Pool, userName: string) {
+  const { rows } = await db.query<{ id: string }>(
+    `
+    select id::text from public.chat_conversations
+    where user_name = $1
+    order by created_at desc
+    limit 1
+    `,
+    [userName]
+  );
+  return rows[0]?.id ?? newConversation(db, userName);
+}
+
+export async function listMessages(
+  db: Pool,
+  userName: string,
+  conversationId: string,
+  limit: number
+): Promise<ChatMessage[]> {
   const { rows } = await db.query<ChatMessage>(
     `
     select id::text as "id", role, content, drafts, created_at::text as "createdAt"
     from (
       select * from public.chat_messages
-      where user_name = $1
+      where user_name = $1 and conversation_id = $2
       order by id desc
-      limit $2
+      limit $3
     ) recent
     order by id
     `,
-    [userName, limit]
+    [userName, conversationId, limit]
   );
   return rows;
 }
@@ -47,21 +75,27 @@ export function openDraftsFrom(messages: ChatMessage[]): Draft[] {
   return [...byId.values()].filter((draft) => !draft.saved_id && !draft.discarded);
 }
 
-export async function appendExchange(db: Pool, userName: string, userText: string, reply: BrainReply) {
+export async function appendExchange(
+  db: Pool,
+  userName: string,
+  conversationId: string,
+  userText: string,
+  reply: BrainReply
+) {
   const client = await db.connect();
   try {
     await client.query("begin");
-    await client.query(`insert into public.chat_messages (user_name, role, content) values ($1, 'user', $2)`, [
-      userName,
-      userText
-    ]);
+    await client.query(
+      `insert into public.chat_messages (user_name, conversation_id, role, content) values ($1, $2, 'user', $3)`,
+      [userName, conversationId, userText]
+    );
     const { rows } = await client.query<{ id: string }>(
       `
-      insert into public.chat_messages (user_name, role, content, drafts)
-      values ($1, 'assistant', $2, $3::jsonb)
+      insert into public.chat_messages (user_name, conversation_id, role, content, drafts)
+      values ($1, $2, 'assistant', $3, $4::jsonb)
       returning id::text
       `,
-      [userName, reply.reply, JSON.stringify(reply.drafts)]
+      [userName, conversationId, reply.reply, JSON.stringify(reply.drafts)]
     );
     await client.query("commit");
     return rows[0].id;

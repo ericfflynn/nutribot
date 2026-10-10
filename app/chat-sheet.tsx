@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { discardDraftAction, saveDraftAction } from "./actions";
+import { discardDraftAction, newChatAction, saveDraftAction } from "./actions";
 import type { Draft, MealDraft, WorkoutDraft } from "@/lib/brain";
 import type { ChatMessage } from "@/lib/chat";
 import type { FitbitWorkout } from "@/lib/workouts";
@@ -278,6 +278,17 @@ export function ChatSheet({ date, today }: { date: string; today: string }) {
     }
   }
 
+  async function startNewChat() {
+    if (sending) return;
+    const result = await newChatAction();
+    if (!result.ok) {
+      setError("Couldn't start a new chat.");
+      return;
+    }
+    setMessages([]);
+    setError(null);
+  }
+
   function replaceDraft(messageId: string, draft: Draft) {
     setMessages((current) =>
       current.map((message) =>
@@ -312,6 +323,14 @@ export function ChatSheet({ date, today }: { date: string; today: string }) {
             onClick={(event) => event.stopPropagation()}
           >
             <header className="chat-header">
+              <button
+                type="button"
+                className="text-button"
+                onClick={startNewChat}
+                disabled={sending || !messages.length}
+              >
+                New chat
+              </button>
               <strong>NutriBot</strong>
               <button type="button" className="chat-close" aria-label="Close" onClick={() => setOpen(false)}>
                 ✕

@@ -290,3 +290,23 @@ create index if not exists chat_messages_user_created_idx
 
 alter table public.workout_sessions enable row level security;
 alter table public.chat_messages enable row level security;
+
+-- Chat conversations: "New chat" starts one. Claude sees only the current
+-- conversation's messages. Messages from before conversations existed have
+-- no conversation_id and aren't shown.
+create table if not exists public.chat_conversations (
+  id uuid primary key default gen_random_uuid(),
+  user_name text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists chat_conversations_user_created_idx
+  on public.chat_conversations (user_name, created_at desc);
+
+alter table public.chat_messages
+  add column if not exists conversation_id uuid references public.chat_conversations (id) on delete cascade;
+
+create index if not exists chat_messages_conversation_idx
+  on public.chat_messages (conversation_id, id);
+
+alter table public.chat_conversations enable row level security;

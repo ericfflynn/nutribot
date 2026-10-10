@@ -1,7 +1,7 @@
 import { getSessionUser } from "@/lib/auth";
 import { runBrain } from "@/lib/brain";
 import { BrainError } from "@/lib/claude-brain";
-import { appendExchange, historyFrom, listMessages, openDraftsFrom } from "@/lib/chat";
+import { appendExchange, currentConversation, historyFrom, listMessages, openDraftsFrom } from "@/lib/chat";
 import { isValidLocalDate, todayLocalDate } from "@/lib/dates";
 import { getPool } from "@/lib/supabase";
 
@@ -12,14 +12,15 @@ export const maxDuration = 300;
 const MAX_TEXT = 8000;
 const THREAD_LIMIT = 40;
 
-// The thread for the chat sheet.
+// The current conversation for the chat sheet.
 export async function GET() {
   const user = await getSessionUser();
   const db = getPool();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
   if (!db) return Response.json({ error: "DATABASE_URL is required" }, { status: 500 });
 
-  return Response.json({ messages: await listMessages(db, user.name, THREAD_LIMIT) });
+  const conversationId = await currentConversation(db, user.name);
+  return Response.json({ messages: await listMessages(db, user.name, conversationId, THREAD_LIMIT) });
 }
 
 // One chat turn: { message, date } in; { message_id, reply, drafts, meta } out.
@@ -37,7 +38,8 @@ export async function POST(request: Request) {
   }
 
   try {
-    const thread = await listMessages(db, user.name, THREAD_LIMIT);
+    const conversationId = await currentConversation(db, user.name);
+    const thread = await listMessages(db, user.name, conversationId, THREAD_LIMIT);
     const reply = await runBrain(message, {
       db,
       userName: user.name,
@@ -46,7 +48,7 @@ export async function POST(request: Request) {
       openDrafts: openDraftsFrom(thread),
       syncIfMissing: true
     });
-    const messageId = await appendExchange(db, user.name, message, reply);
+    const messageId = await appendExchange(db, user.name, conversationId, message, reply);
     return Response.json({ message_id: messageId, ...reply });
   } catch (error) {
     // Don't echo raw errors; they can include request details.

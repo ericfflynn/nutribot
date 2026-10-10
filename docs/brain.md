@@ -5,7 +5,7 @@ Status: built October 10, 2026, on branch `claude-brain-spike`. This is the cont
 ## How a turn runs
 
 1. The chat sheet (`app/chat-sheet.tsx`) posts `{ message, date }` to `/api/brain`.
-2. The route loads the last 10 turns and any unsaved drafts from `chat_messages`, then calls `runBrain` (`lib/brain.ts`).
+2. The route loads the current conversation's last 10 turns and any unsaved drafts from `chat_messages`, then calls `runBrain` (`lib/brain.ts`).
 3. `runBrain` calls `runClaude` (`lib/claude-brain.ts`), which uses the Claude Agent SDK. The SDK starts the Claude Code binary, which signs in with `CLAUDE_CODE_OAUTH_TOKEN` (the owner's subscription; issue one with `claude setup-token`). It runs with our system prompt and our tools only: no built-in tools, no settings from disk, no saved sessions.
 4. Claude answers in text and calls our tools. The tools run inside the same Vercel function, validate their input with Zod, and build drafts.
 5. The route stores the user message and the reply (with its drafts) in `chat_messages` and returns them.
@@ -30,7 +30,11 @@ Model: `claude-sonnet-5-5` at low effort, overridable with `CLAUDE_MODEL`. A tur
 }
 ```
 
-`GET /api/brain` returns the last 40 messages: `{ messages: { id, role, content, drafts, createdAt }[] }`.
+`GET /api/brain` returns the current conversation's last 40 messages: `{ messages: { id, role, content, drafts, createdAt }[] }`.
+
+## Memory
+
+Claude remembers nothing between requests. Each turn it sees only what the route sends: the current conversation's last 10 messages, its unsaved drafts, and today's date and time. **New chat** (`newChatAction`) starts a fresh conversation; the old one stays in the database but isn't shown or sent. Long-term memory is the logged data itself, which Claude will read through tools.
 
 ## Tools
 
@@ -91,7 +95,8 @@ Tested against the Fitbit history (June–October 2026): with the type filter, 4
 
 `supabase/schema.sql` has the definitions.
 
-- `chat_messages`: one continuous thread per user. Assistant rows carry their drafts in `drafts` (JSONB).
+- `chat_conversations`: one row per conversation; the latest is current.
+- `chat_messages`: the messages, each in a conversation. Assistant rows carry their drafts in `drafts` (JSONB).
 - `workout_sessions`: one row per logged workout. `match_status` is `linked` (with `health_record_key`), `pending` or `untracked`. A unique index stops one Fitbit workout from being linked twice.
 - `macro_entries.meal_type`: set for meals saved from chat.
 
