@@ -2688,3 +2688,334 @@ button.fab {
   color: var(--bad);
   font-size: 14px;
 }
+
+/* Training tab (mockup: "Training tab" artboard) */
+.training-range {
+  margin: -16px 0 0;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.training-missing {
+  gap: 6px;
+  border: 1.5px dashed var(--bad);
+}
+
+.training-missing-label {
+  color: var(--bad);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.training-missing strong {
+  font-size: 18px;
+}
+
+.training-missing-note {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.training-unlabeled {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.training-unlabeled li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.training-unlabeled li > span {
+  display: grid;
+  gap: 2px;
+}
+
+.training-unlabeled small {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* Coverage grid: one row per muscle group, one cell per day */
+.coverage {
+  display: grid;
+  grid-template-columns: 68px minmax(0, 1fr) 34px;
+  gap: 6px;
+  align-items: center;
+}
+
+.coverage-row {
+  display: contents;
+}
+
+.coverage-cells {
+  display: grid;
+  grid-template-columns: repeat(14, minmax(0, 1fr));
+  gap: 3px;
+}
+
+.coverage-dow,
+.coverage-since-head {
+  color: #8e8e93;
+  font-size: 10px;
+  text-align: center;
+}
+
+.coverage-since-head {
+  text-align: right;
+}
+
+.coverage-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.coverage-since {
+  font-size: 13px;
+  font-weight: 700;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.coverage-name.missing,
+.coverage-since.missing {
+  color: var(--bad);
+}
+
+.coverage-cell {
+  display: block;
+  height: 18px;
+  border-radius: 4px;
+  background: var(--bg);
+}
+
+.coverage-cell.level-1 {
+  background: #f7c9b3;
+}
+
+.coverage-cell.level-2 {
+  background: #f0a27f;
+}
+
+.coverage-cell.level-3 {
+  background: var(--strain);
+}
+
+.coverage-legend {
+  display: flex;
+  gap: 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.coverage-legend span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.coverage-legend .coverage-cell {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+
+/* Sessions per muscle group */
+.training-volume {
+  display: grid;
+  gap: 10px;
+}
+
+.training-volume-row {
+  display: grid;
+  grid-template-columns: 68px minmax(0, 1fr) 28px;
+  gap: 8px;
+  align-items: center;
+  font-size: 14px;
+}
+
+.training-volume-row > span {
+  font-weight: 600;
+}
+
+.training-volume-row strong {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.training-volume-track {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #fbe1d6;
+}
+
+.training-volume-track > div {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--strain);
+}
+
+/* Recent workouts */
+.training-recent-title {
+  margin: 0 4px;
+}
+
+.training-workout {
+  gap: 10px;
+}
+
+.training-workout-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.training-workout-head > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.training-workout-head strong {
+  font-size: 17px;
+}
+
+.training-workout-when,
+.training-workout-detail {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.training-workout-detail {
+  font-size: 14px;
+}
+
+.training-workout-strain {
+  display: grid;
+  justify-items: end;
+}
+
+.training-workout-strain strong {
+  color: var(--strain-ink);
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+.training-workout-strain span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.training-workout-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.training-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.training-chips span {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fdebe3;
+  color: #a8441a;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.workout-edit-toggle {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+}
+
+.workout-editor {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--bg);
+}
+
+.workout-editor-field {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.workout-editor-field input,
+.workout-editor-field select {
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+}
+
+.workout-editor-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.workout-editor-groups legend {
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.muscle-toggle {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.muscle-toggle.on {
+  border-color: var(--strain);
+  background: #fdebe3;
+  color: #a8441a;
+  font-weight: 600;
+}
+
+.workout-editor-error {
+  margin: 0;
+  color: var(--bad);
+  font-size: 13px;
+}
+
+.workout-editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workout-editor-spacer {
+  flex: 1;
+}

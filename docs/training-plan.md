@@ -1,6 +1,6 @@
 # Training data plan
 
-Status: revised October 10, 2026. Session-level logging is built (branch `claude-brain-spike`, see [brain.md](brain.md)); the Training tab is not. Per-exercise sets are deferred.
+Status: built October 10, 2026, on branch `claude-brain-spike`: session-level logging through chat ([brain.md](brain.md)) and the Training tab (`app/training/page.tsx`). Per-exercise sets are deferred.
 
 Design: the "Training tab" artboard in the Today redesign mockup, https://claude.ai/artifact/EhsjJ6o5xx4eXhnrBV1xaG (private to the owner). Build the tab to match it, with the changes below.
 
@@ -32,15 +32,16 @@ Matching rules are in [brain.md](brain.md#matching-workouts-to-fitbit).
 
 ## Muscle groups
 
-Chest, Back, Shoulders, Biceps, Triceps, Legs, Abs, Cardio. Runs, rides and walks count as Cardio.
+Chest, Back, Shoulders, Biceps, Triceps, Legs, Abs, Cardio. Runs, rides and walks logged in chat are tagged Cardio.
 
 ## What the Training tab reads
 
 - **Days since each muscle group was trained:** the latest session per muscle group.
 - **14-day coverage grid:** sessions per day per muscle group, shaded by RPE. This replaces "hard sets per muscle group", which needs per-set data.
-- **Recent workouts:** sessions joined to Fitbit for duration, heart rate and strain.
+- **Recent workouts:** Fitbit workouts (unlabeled walks left out) joined to their sessions for duration, heart rate and strain, plus sessions with no Fitbit link. Each logged one opens to edit its name, muscle groups and RPE, or to delete it; deleting makes its Fitbit workout unlabeled again.
 - **Unlabeled workouts:** Fitbit lifting, sport and class workouts with no session (walks excluded), each with a "What did you train?" prompt that opens chat. `listUnlabeledWorkouts` in `lib/workouts.ts`.
-- **Gaps:** muscle groups not trained in 7 or more days.
+- **Missing:** muscle groups not trained in 7 or more days, looking back a year, with a suggested next session.
+- Unlabeled runs and rides count as Cardio; walks don't.
 
 ## Later: per-exercise sets
 
@@ -49,4 +50,4 @@ If set-level detail becomes worth typing, add an `exercises` catalog (name, alia
 ## Open questions
 
 - Whether 7 days is the right threshold for "missing".
-- Whether golf and walks should count as Cardio on the coverage grid.
+- Whether unlabeled Fitbit walks and golf should count as Cardio. They don't for now.

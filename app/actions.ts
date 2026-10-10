@@ -10,7 +10,14 @@ import { HEALTH_DATA_TYPES } from "@/lib/health/google";
 import { runHealthSync } from "@/lib/health/sync";
 import type { Draft } from "@/lib/brain";
 import { newConversation, withDraft } from "@/lib/chat";
-import { listFitbitWorkouts, saveWorkoutSession } from "@/lib/workouts";
+import { z } from "zod";
+import {
+  MUSCLE_GROUPS,
+  deleteWorkoutSession,
+  listFitbitWorkouts,
+  saveWorkoutSession,
+  updateWorkoutSession
+} from "@/lib/workouts";
 import {
   addWaterEntry,
   deleteMacroEntry,
@@ -284,5 +291,40 @@ export async function newChatAction(): Promise<{ ok: boolean }> {
   const db = getPool();
   if (!user || !db) return { ok: false };
   await newConversation(db, user.name);
+  return { ok: true };
+}
+
+const workoutEditSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  muscleGroups: z.array(z.enum(MUSCLE_GROUPS)).min(1),
+  rpe: z.number().min(1).max(10).nullable()
+});
+
+// Training page: fix a logged workout's label or effort.
+export async function updateWorkoutSessionAction(
+  id: string,
+  changes: { name: string; muscleGroups: string[]; rpe: number | null }
+): Promise<{ ok: boolean; error?: string }> {
+  const user = await getSessionUser();
+  const db = getPool();
+  if (!user || !db) return { ok: false, error: "Log in again." };
+
+  const parsed = workoutEditSchema.safeParse(changes);
+  if (!parsed.success) return { ok: false, error: "Pick at least one muscle group and an RPE from 1 to 10." };
+  const updated = await updateWorkoutSession(db, user.name, id, parsed.data);
+  if (!updated) return { ok: false, error: "That workout no longer exists." };
+  revalidatePath("/training");
+  return { ok: true };
+}
+
+// Training page: remove a logged workout. Its Fitbit workout becomes unlabeled again.
+export async function deleteWorkoutSessionAction(id: string): Promise<{ ok: boolean; error?: string }> {
+  const user = await getSessionUser();
+  const db = getPool();
+  if (!user || !db) return { ok: false, error: "Log in again." };
+
+  const deleted = await deleteWorkoutSession(db, user.name, id);
+  if (!deleted) return { ok: false, error: "That workout no longer exists." };
+  revalidatePath("/training");
   return { ok: true };
 }

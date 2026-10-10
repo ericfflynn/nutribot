@@ -9,6 +9,7 @@ Production: https://nutribot-dusky.vercel.app · Direction and roadmap: [docs/mv
 - **Today:** one iPhone-style page for any day: a scrolling strip of the last 28 days (`?date=`), a Sleep / Recovery / Strain summary, nutrition (calories, macros vs goals, water with quick-add buttons), a timeline of the day (sleep, recovery, meals grouped by meal, workouts), and 7-day trend lines. A Refresh button pulls the latest Fitbit data on demand.
 - **Scores** (`lib/health/scores.ts`, NutriBot's own estimates, not Whoop's formulas; full reference in [docs/scores.md](docs/scores.md)): Sleep is hours asleep vs an 8-hour need; Recovery (0-100%, green/yellow/red) compares today's HRV and resting heart rate with your 30-day baseline, plus sleep; Strain (0-21) weights heart-rate zone minutes by intensity, plus steps, for the day and for each workout.
 - **Chat:** tell Claude what you ate or trained ("eggs and toast", "chest and tris, hard"). It replies with review cards: meals with item-level macro estimates, workouts with muscle groups and effort, matched to the Fitbit workout. Nothing is saved until you tap Save. The Chat tab is the thread; a floating Chat button opens it from any tab. Details: [docs/brain.md](docs/brain.md).
+- **Training:** the last 14 days of workouts: muscle groups not trained in a week, Fitbit workouts with nothing logged (tap Label to tell the chat), a coverage grid by muscle group shaded by effort, sessions per muscle group, and recent workouts with strain. Logged workouts can be edited or deleted. Plan: [docs/training-plan.md](docs/training-plan.md).
 - **Meal edits and goals** live on Today: open a meal in the timeline to edit or delete it; macro goals are under Nutrition.
 - Fitbit data synced from Google Health several times a day: activity totals, resting heart rate, HRV, sleep, SpO2, VO2 max and workout summaries.
 
@@ -130,6 +131,8 @@ app/
   api/brain/route.ts             chat turns (POST) and the current conversation (GET)
   chat-sheet.tsx                 chat thread, draft cards, floating Chat button and sheet
   chat/page.tsx                  Chat tab
+  training/page.tsx              Training tab
+  training-ui.tsx                Label button and workout editor
   page.tsx                       Today: day strip, score summary, nutrition and water, day timeline, 7-day trends
   day-strip.tsx                  scrolling day picker on Today
   privacy/page.tsx               public privacy policy (linked from Google OAuth)

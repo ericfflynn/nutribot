@@ -257,3 +257,99 @@ export async function autoLinkPendingSessions(db: Pool, userName: string) {
   }
   return linked;
 }
+
+export type WorkoutSession = {
+  id: string;
+  date: string;
+  name: string;
+  workoutType: WorkoutType;
+  muscleGroups: MuscleGroup[];
+  rpe: number | null;
+  durationMin: number | null;
+  matchStatus: "linked" | "pending" | "untracked";
+  healthRecordKey: string | null;
+  notes: string | null;
+};
+
+export async function listWorkoutSessions(
+  db: Pick<Pool, "query">,
+  userName: string,
+  startDate: string,
+  endDate: string
+): Promise<WorkoutSession[]> {
+  const { rows } = await db.query(
+    `
+    select
+      id::text as "id",
+      entry_date::text as "date",
+      name as "name",
+      workout_type as "workoutType",
+      muscle_groups as "muscleGroups",
+      rpe::float8 as "rpe",
+      duration_min as "durationMin",
+      match_status as "matchStatus",
+      health_record_key as "healthRecordKey",
+      notes as "notes"
+    from public.workout_sessions
+    where user_name = $1 and entry_date >= $2::date and entry_date <= $3::date
+    order by entry_date desc, created_at desc
+    `,
+    [userName, startDate, endDate]
+  );
+  return rows;
+}
+
+// Unlabeled runs and rides still count as Cardio; walks don't.
+export const CARDIO_FITBIT_TYPES = ["RUNNING", "TREADMILL", "BIKING", "SPINNING"];
+
+// The last date each muscle group was trained, on or before endDate, over the
+// past year: from logged sessions, plus unlabeled Fitbit runs and rides as Cardio.
+export async function lastTrainedByMuscle(db: Pick<Pool, "query">, userName: string, endDate: string) {
+  const { rows } = await db.query<{ muscle: MuscleGroup; day: string }>(
+    `
+    select muscle, max(day)::text as "day"
+    from (
+      select unnest(muscle_groups) as muscle, entry_date as day
+      from public.workout_sessions
+      where user_name = $1 and entry_date <= $2::date and entry_date > $2::date - 365
+      union all
+      select 'Cardio', w.day
+      from public.health_workouts w
+      where w.user_name = $1 and w.day <= $2::date and w.day > $2::date - 365
+        and w.type = any($3)
+        and not exists (
+          select 1 from public.workout_sessions s
+          where s.user_name = w.user_name and s.health_record_key = w.id
+        )
+    ) trained
+    group by muscle
+    `,
+    [userName, endDate, CARDIO_FITBIT_TYPES]
+  );
+  return new Map(rows.map((row) => [row.muscle, row.day]));
+}
+
+export async function updateWorkoutSession(
+  db: Pick<Pool, "query">,
+  userName: string,
+  id: string,
+  changes: { name: string; muscleGroups: MuscleGroup[]; rpe: number | null }
+) {
+  const { rowCount } = await db.query(
+    `
+    update public.workout_sessions
+    set name = $3, muscle_groups = $4, rpe = $5
+    where id = $1 and user_name = $2
+    `,
+    [id, userName, changes.name, changes.muscleGroups, changes.rpe]
+  );
+  return (rowCount ?? 0) > 0;
+}
+
+export async function deleteWorkoutSession(db: Pick<Pool, "query">, userName: string, id: string) {
+  const { rowCount } = await db.query(`delete from public.workout_sessions where id = $1 and user_name = $2`, [
+    id,
+    userName
+  ]);
+  return (rowCount ?? 0) > 0;
+}
