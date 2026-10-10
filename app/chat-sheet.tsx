@@ -216,10 +216,36 @@ export function ChatSheet({ date, today }: { date: string; today: string }) {
     if (!open) return;
     const onKey = (event: KeyboardEvent) => event.key === "Escape" && setOpen(false);
     document.addEventListener("keydown", onKey);
-    document.body.style.overflow = "hidden";
+
+    // iOS Safari ignores overflow: hidden on body, so pin the page in place
+    // while the sheet is open and restore the scroll position afterwards.
+    const scrollY = window.scrollY;
+    const { body } = document;
+    body.style.position = "fixed";
+    body.style.top = `-${scrollY}px`;
+    body.style.left = "0";
+    body.style.right = "0";
+
+    // Size the sheet to the visible area so the keyboard doesn't cover the composer.
+    const viewport = window.visualViewport;
+    const fit = () => {
+      if (!viewport) return;
+      document.documentElement.style.setProperty("--chat-height", `${viewport.height}px`);
+      document.documentElement.style.setProperty("--chat-top", `${viewport.offsetTop}px`);
+    };
+    fit();
+    viewport?.addEventListener("resize", fit);
+    viewport?.addEventListener("scroll", fit);
+
     return () => {
       document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = "";
+      viewport?.removeEventListener("resize", fit);
+      viewport?.removeEventListener("scroll", fit);
+      body.style.position = "";
+      body.style.top = "";
+      body.style.left = "";
+      body.style.right = "";
+      window.scrollTo(0, scrollY);
     };
   }, [open]);
 

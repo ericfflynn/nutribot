@@ -2208,33 +2208,68 @@ button.fab {
   font-family: inherit;
 }
 
-/* Chat sheet: opens from the floating button, over every tab */
+/* Chat sheet: opens from the floating button, over every tab. Full screen on
+   phones; a centered sheet on wider screens. Height follows the visible
+   viewport (--chat-height, set in chat-sheet.tsx) so the keyboard never
+   covers the composer. */
 .chat-backdrop {
   position: fixed;
-  inset: 0;
+  top: var(--chat-top, 0);
+  left: 0;
+  right: 0;
   z-index: 30;
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.32);
+  height: var(--chat-height, 100dvh);
+  background: var(--bg);
+  overscroll-behavior: none;
+  touch-action: none;
 }
 
 .chat-sheet {
   display: flex;
   flex-direction: column;
   width: 100%;
-  max-width: 680px;
-  height: min(88dvh, 820px);
-  border-radius: 18px 18px 0 0;
+  height: 100%;
   background: var(--bg);
+  padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
+  touch-action: auto;
+  animation: chat-sheet-in 0.22s ease-out;
+}
+
+@keyframes chat-sheet-in {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-sheet {
+    animation: none;
+  }
+}
+
+@media (min-width: 720px) {
+  .chat-backdrop {
+    background: rgba(0, 0, 0, 0.32);
+  }
+
+  .chat-sheet {
+    max-width: 680px;
+    height: min(88%, 820px);
+    border-radius: 18px 18px 0 0;
+  }
 }
 
 .chat-header {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 16px 10px;
+  padding: 12px 16px 10px;
   border-bottom: 1px solid var(--line);
   font-size: 17px;
 }
@@ -2298,6 +2333,7 @@ button.fab {
 
 .chat-composer {
   display: flex;
+  flex-shrink: 0;
   gap: 8px;
   padding: 10px 12px;
   border-top: 1px solid var(--line);
