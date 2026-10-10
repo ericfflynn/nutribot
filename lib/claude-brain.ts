@@ -1,12 +1,11 @@
 import { mkdirSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { query } from "@anthropic-ai/claude-agent-sdk";
-import { z } from "zod";
+import { query, type McpSdkServerConfigWithInstance } from "@anthropic-ai/claude-agent-sdk";
 
-// Runs one structured request through the Claude Code binary (Agent SDK),
-// authenticated by CLAUDE_CODE_OAUTH_TOKEN. No built-in tools, no settings,
-// no saved sessions: the model reads the prompt and returns JSON matching the schema.
+// Runs one request through the Claude Code binary (Agent SDK), authenticated by
+// CLAUDE_CODE_OAUTH_TOKEN. No built-in tools, no settings from disk and no
+// saved sessions: Claude sees our system prompt, our tools and the prompt.
 
 const DEFAULT_MODEL = "claude-sonnet-5-5";
 
@@ -15,26 +14,29 @@ const DEFAULT_MODEL = "claude-sonnet-5-5";
 // ~/.claude (memory, plugins, MCP servers) out of the app's requests.
 const configDir = join(tmpdir(), "nutribot-claude");
 
-export type BrainResult<T> = {
-  data: T;
+export type ClaudeRun = {
+  text: string;
   model: string;
   durationMs: number;
-  costUsd: number;
+  turns: number;
 };
 
 export class BrainError extends Error {}
 
-export async function askClaude<Schema extends z.ZodType>({
+export async function runClaude({
   system,
   prompt,
-  schema,
-  effort = "medium"
+  server,
+  effort = "low",
+  maxTurns = 8
 }: {
   system: string;
   prompt: string;
-  schema: Schema;
+  // In-process MCP server holding our tools; every tool on it is pre-approved.
+  server?: { name: string; config: McpSdkServerConfigWithInstance; tools: string[] };
   effort?: "low" | "medium" | "high";
-}): Promise<BrainResult<z.infer<Schema>>> {
+  maxTurns?: number;
+}): Promise<ClaudeRun> {
   if (!process.env.CLAUDE_CODE_OAUTH_TOKEN) {
     throw new BrainError("CLAUDE_CODE_OAUTH_TOKEN is not set.");
   }
@@ -54,14 +56,13 @@ export async function askClaude<Schema extends z.ZodType>({
       tools: [],
       settingSources: [],
       persistSession: false,
-      maxTurns: 3,
+      maxTurns,
       cwd: tmpdir(),
       env: { ...env, CLAUDE_CONFIG_DIR: configDir } as Record<string, string>,
-      // The CLI validates schemas as draft-07; Zod's default 2020-12 tag is rejected.
-      outputFormat: {
-        type: "json_schema",
-        schema: z.toJSONSchema(schema, { target: "draft-7" }) as Record<string, unknown>
-      }
+      mcpServers: server ? { [server.name]: server.config } : {},
+      allowedTools: server ? server.tools.map((tool) => `mcp__${server.name}__${tool}`) : [],
+      // Anything not pre-approved above is denied rather than prompted for.
+      permissionMode: "dontAsk"
     }
   });
 
@@ -70,16 +71,7 @@ export async function askClaude<Schema extends z.ZodType>({
     if (message.subtype !== "success") {
       throw new BrainError(`Claude run failed: ${message.subtype}`);
     }
-    const parsed = schema.safeParse(message.structured_output);
-    if (!parsed.success) {
-      throw new BrainError("Claude returned output that doesn't match the schema.");
-    }
-    return {
-      data: parsed.data,
-      model,
-      durationMs: Date.now() - started,
-      costUsd: message.total_cost_usd
-    };
+    return { text: message.result, model, durationMs: Date.now() - started, turns: message.num_turns };
   }
   throw new BrainError("Claude run ended without a result.");
 }

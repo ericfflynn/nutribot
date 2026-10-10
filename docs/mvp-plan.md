@@ -11,7 +11,7 @@ This repo is the base. The existing meal logger, dashboard and goals stay workin
 ## MVP scope
 
 1. **Google Health data in Postgres.** Raw payloads loaded into JSONB tables on a schedule. No normalized health schema yet; views get added once we know which fields matter.
-2. **Chat with tool use.** Claude API with a manual tool loop on the server, replacing the OpenAI meal parser. Six tools:
+2. **Chat with tool use.** Built as the chat brain ([brain.md](brain.md)): the Agent SDK on the owner's Claude subscription, with draft tools for meals and workouts. The OpenAI meal parser stays on the Log tab for now. Planned tools:
    - `logMeal`: items and macro estimates, saved to `macro_entries`. It should also classify the meal (breakfast, lunch, dinner, snack) from the foods and the time eaten, stored in a new `meal_type` column. Until then, Today guesses the meal from the time it was logged.
    - `logWorkout`: type, duration, intensity, notes.
    - `logHabitEvent`: a named habit and when it happened.

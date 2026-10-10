@@ -11,7 +11,7 @@
     "start": "next start",
     "health:sync": "node --env-file=.env.local --import tsx scripts/health-sync.ts",
     "health:auth": "node --env-file=.env.local --import tsx scripts/health-auth.ts",
-    "brain:workout": "node --env-file=.env.local --import tsx scripts/workout-parse.ts"
+    "brain": "node --env-file=.env.local --import tsx scripts/brain.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.296",

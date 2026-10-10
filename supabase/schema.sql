@@ -237,3 +237,56 @@ select
 from public.health_records r,
   lateral (select r.payload->'exercise' as e) exercise
 where data_type = 'exercise';
+
+-- Chat brain (docs/brain.md). Meals the chat logs can carry a meal type.
+alter table public.macro_entries
+  add column if not exists meal_type text check (meal_type in ('breakfast', 'lunch', 'dinner', 'snack'));
+
+-- One row per logged workout: what was trained and how hard. Linked to the
+-- matching Fitbit workout (health_workouts.id) when there is one; 'pending'
+-- sessions are linked after a later sync, 'untracked' ones never are.
+create table if not exists public.workout_sessions (
+  id uuid primary key default gen_random_uuid(),
+  user_name text not null,
+  entry_date date not null,
+  name text not null,
+  workout_type text not null
+    check (workout_type in ('strength', 'run', 'walk', 'ride', 'sport', 'class', 'other')),
+  muscle_groups text[] not null default '{}',
+  rpe numeric check (rpe between 1 and 10),
+  duration_min integer check (duration_min > 0),
+  match_status text not null default 'pending' check (match_status in ('linked', 'pending', 'untracked')),
+  health_record_key text,
+  linked_by text check (linked_by in ('auto', 'user')),
+  -- Local wall-clock window from "this morning", "after work"; used when matching.
+  time_hint_start time,
+  time_hint_end time,
+  raw_text text not null,
+  notes text,
+  created_at timestamptz not null default now(),
+  check ((match_status = 'linked') = (health_record_key is not null))
+);
+
+create index if not exists workout_sessions_user_date_idx
+  on public.workout_sessions (user_name, entry_date desc);
+
+-- One Fitbit workout belongs to at most one session.
+create unique index if not exists workout_sessions_health_record_idx
+  on public.workout_sessions (user_name, health_record_key) where health_record_key is not null;
+
+-- The chat thread: one continuous thread per user. Assistant rows carry the
+-- drafts shown with that reply, and whether each was saved.
+create table if not exists public.chat_messages (
+  id bigint generated always as identity primary key,
+  user_name text not null,
+  role text not null check (role in ('user', 'assistant')),
+  content text not null,
+  drafts jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists chat_messages_user_created_idx
+  on public.chat_messages (user_name, created_at desc);
+
+alter table public.workout_sessions enable row level security;
+alter table public.chat_messages enable row level security;

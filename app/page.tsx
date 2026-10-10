@@ -772,12 +772,6 @@ export default async function Home({ searchParams }: PageProps) {
         <RefreshButton />
       </div>
 
-      <Link className="fab" href={`/profile?date=${date}`}>
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M12 5v14M5 12h14" />
-        </svg>
-        Log a meal
-      </Link>
     </AppShell>
   );
 }

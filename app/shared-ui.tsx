@@ -1,7 +1,9 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { loginAction, logoutAction, saveMacroGoalsAction } from "./actions";
+import { ChatSheet } from "./chat-sheet";
 import { getAllowedUsers, type SessionUser } from "@/lib/auth";
+import { todayLocalDate } from "@/lib/dates";
 
 export function ProgressMetric({
   label,
@@ -116,6 +118,7 @@ export function AppShell({
         </div>
       </header>
       <main className="app-content">{children}</main>
+      <ChatSheet date={date} today={todayLocalDate()} />
       <nav className="tab-bar" aria-label="Primary">
         <Link
           className={active === "home" ? "active" : ""}

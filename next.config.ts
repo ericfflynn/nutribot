@@ -8,7 +8,7 @@ const nextConfig: NextConfig = {
   // require.resolve. Keep the SDK unbundled and ship the Linux binary explicitly.
   serverExternalPackages: ["@anthropic-ai/claude-agent-sdk"],
   outputFileTracingIncludes: {
-    "/api/workouts/parse": ["./node_modules/@anthropic-ai/claude-agent-sdk-linux-x64/**"]
+    "/api/brain": ["./node_modules/@anthropic-ai/claude-agent-sdk-linux-x64/**"]
   }
 };
 

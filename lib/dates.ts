@@ -49,3 +49,20 @@ export function currentWeekToDate(entryDate: string) {
     elapsedDays: daysSinceMonday + 1
   };
 }
+
+// Local wall-clock time in APP_TIME_ZONE as "YYYY-MM-DDTHH:MM", the format the
+// health views use for workout times.
+export function localDateTime(at = new Date()) {
+  const timeZone = process.env.APP_TIME_ZONE || "America/New_York";
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(at);
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "00";
+  return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}`;
+}

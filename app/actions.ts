@@ -8,6 +8,9 @@ import { parseMacroGoals } from "@/lib/goals";
 import { parseMacroObject, parseMacros, parseStoredMacros, type ParsedMacros } from "@/lib/macro-parser";
 import { HEALTH_DATA_TYPES } from "@/lib/health/google";
 import { runHealthSync } from "@/lib/health/sync";
+import type { Draft } from "@/lib/brain";
+import { withDraft } from "@/lib/chat";
+import { listFitbitWorkouts, saveWorkoutSession } from "@/lib/workouts";
 import {
   addWaterEntry,
   deleteMacroEntry,
@@ -286,4 +289,96 @@ export async function refreshHealthAction() {
     }
   }
   revalidatePath("/");
+}
+
+export type DraftActionResult = { ok: true; draft: Draft } | { ok: false; error: string };
+
+// Saves a chat draft from the server's stored copy, never from client data.
+// For workouts, fitbitWorkoutId overrides the match: an id picks that watch
+// workout, null saves it unlinked (pending), undefined keeps the suggestion.
+export async function saveDraftAction(
+  messageId: string,
+  draftId: string,
+  fitbitWorkoutId?: string | null
+): Promise<DraftActionResult> {
+  const user = await getSessionUser();
+  const db = getPool();
+  if (!user) return { ok: false, error: "Log in again." };
+  if (!db) return { ok: false, error: "DATABASE_URL is required." };
+
+  try {
+    const draft = await withDraft(db, user.name, messageId, draftId, async (stored, client) => {
+      let savedId: string;
+      let saved: Draft;
+      if (stored.type === "meal") {
+        savedId = await saveMacroEntry({
+          userName: user.name,
+          entryDate: stored.date,
+          rawText: stored.raw_text,
+          parsed: stored.estimate,
+          mealType: stored.meal_type,
+          client
+        });
+        saved = { ...stored, saved_id: savedId };
+      } else {
+        let healthRecordKey = stored.untracked ? null : (stored.match.match?.id ?? null);
+        let linkedBy = stored.linked_by;
+        if (fitbitWorkoutId !== undefined && !stored.untracked) {
+          healthRecordKey = fitbitWorkoutId;
+          linkedBy = fitbitWorkoutId ? "user" : null;
+          if (fitbitWorkoutId) {
+            const workouts = await listFitbitWorkouts(client, user.name, stored.date, stored.date);
+            const chosen = workouts.find((w) => w.id === fitbitWorkoutId);
+            if (!chosen || chosen.sessionId) throw new Error("That watch workout isn't available.");
+          }
+        }
+        savedId = await saveWorkoutSession(client, user.name, {
+          date: stored.date,
+          rawText: stored.raw_text,
+          name: stored.name,
+          workoutType: stored.workout_type,
+          muscleGroups: stored.muscle_groups,
+          rpe: stored.rpe,
+          durationMin: stored.duration_min,
+          notes: stored.notes,
+          timeHint: stored.time_hint,
+          untracked: stored.untracked,
+          healthRecordKey,
+          linkedBy
+        });
+        saved = { ...stored, linked_by: linkedBy, saved_id: savedId };
+      }
+      return { draft: saved, result: saved };
+    });
+    revalidatePath("/");
+    revalidatePath("/profile");
+    return { ok: true, draft };
+  } catch (error) {
+    // A unique-index violation means another session claimed that watch workout.
+    const code = (error as { code?: string })?.code;
+    const message =
+      code === "23505"
+        ? "That watch workout is already linked to another session."
+        : error instanceof Error && !code
+          ? error.message
+          : "Couldn't save the draft.";
+    return { ok: false, error: message };
+  }
+}
+
+export async function discardDraftAction(messageId: string, draftId: string): Promise<DraftActionResult> {
+  const user = await getSessionUser();
+  const db = getPool();
+  if (!user) return { ok: false, error: "Log in again." };
+  if (!db) return { ok: false, error: "DATABASE_URL is required." };
+
+  try {
+    const draft = await withDraft(db, user.name, messageId, draftId, async (stored) => {
+      const discarded = { ...stored, discarded: true };
+      return { draft: discarded, result: discarded };
+    });
+    return { ok: true, draft };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Couldn't discard the draft." };
+  }
 }

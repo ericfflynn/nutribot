@@ -3,6 +3,7 @@
 import { createHash } from "crypto";
 import type { Pool } from "pg";
 import { addDays, todayLocalDate } from "../dates";
+import { autoLinkPendingSessions } from "../workouts";
 import { GoogleHealthClient, GoogleHealthError, type HealthDataType } from "./google";
 
 export const HEALTH_SYNC_START = "2026-01-01";
@@ -233,6 +234,12 @@ export async function runHealthSync(
       `,
       [runId, result.failedTypes.length ? "failed" : "succeeded", result.records, result.failedTypes]
     );
+    if (options.types.includes("exercise") && !result.failedTypes.includes("exercise")) {
+      // Link chat-logged workouts that were waiting for this sync. Never fails the sync.
+      await autoLinkPendingSessions(db, options.userName).catch(() => {
+        options.report?.("workout auto-link failed");
+      });
+    }
     return result;
   } catch (error) {
     // Only our own error messages are safe to store; others may contain personal data.

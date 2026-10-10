@@ -12,6 +12,8 @@ export type MacroFoodItem = {
   assumption?: string;
 };
 
+export type MealType = "breakfast" | "lunch" | "dinner" | "snack";
+
 export type MacroEntry = {
   id: string;
   user_name: string;
@@ -320,11 +322,14 @@ export async function saveMacroEntry(params: {
   entryDate: string;
   rawText: string;
   parsed: ParsedMacros;
-}) {
+  mealType?: MealType;
+  // A transaction's client, when the insert is part of a larger write.
+  client?: Pick<Pool, "query">;
+}): Promise<string> {
   const { parsed } = params;
-  const db = getPool();
+  const db = params.client ?? getPool();
   if (db) {
-    await db.query(
+    const { rows } = await db.query<{ id: string }>(
       `
       insert into public.macro_entries (
         user_name,
@@ -336,9 +341,11 @@ export async function saveMacroEntry(params: {
         fat_g,
         items,
         confidence,
-        notes
+        notes,
+        meal_type
       )
-      values ($1, $2::date, $3, $4, $5, $6, $7, $8::jsonb, $9, $10)
+      values ($1, $2::date, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11)
+      returning id::text
       `,
       [
         params.userName,
@@ -350,13 +357,14 @@ export async function saveMacroEntry(params: {
         Math.round(parsed.fat_g),
         JSON.stringify(parsed.items),
         parsed.confidence,
-        parsed.notes || null
+        parsed.notes || null,
+        params.mealType ?? null
       ]
     );
-    return;
+    return rows[0].id;
   }
 
-  const { error } = await getSupabase().from("macro_entries").insert({
+  const { data, error } = await getSupabase().from("macro_entries").insert({
     user_name: params.userName,
     entry_date: params.entryDate,
     raw_text: params.rawText,
@@ -366,12 +374,14 @@ export async function saveMacroEntry(params: {
     fat_g: Math.round(parsed.fat_g),
     items: parsed.items,
     confidence: parsed.confidence,
-    notes: parsed.notes || null
-  });
+    notes: parsed.notes || null,
+    meal_type: params.mealType ?? null
+  }).select("id").single();
 
   if (error) {
     throw error;
   }
+  return String(data.id);
 }
 
 export async function updateMacroEntry(params: {
