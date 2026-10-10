@@ -4,7 +4,8 @@ import { addWaterAction } from "./actions";
 import { Sparkline } from "./charts";
 import { DayStrip, type StripDay } from "./day-strip";
 import { RefreshButton } from "./refresh-button";
-import { AppShell, Login } from "./shared-ui";
+import { EntryCard } from "./entry-card";
+import { AppShell, GoalsForm, Login } from "./shared-ui";
 import { getSessionUser } from "@/lib/auth";
 import { addDays, isValidLocalDate, rollingDateWindow, todayLocalDate } from "@/lib/dates";
 import { gramsFromPercentGoals, WATER_GOAL_OZ } from "@/lib/goals";
@@ -279,7 +280,7 @@ function MacroChips({ totals }: { totals: { protein_g: number; carbs_g: number; 
   );
 }
 
-function MealDetails({ entries }: { entries: MacroEntry[] }) {
+function MealDetails({ entries, date }: { entries: MacroEntry[]; date: string }) {
   return (
     <ul className="meal-details">
       {entries.map((entry) => (
@@ -301,6 +302,7 @@ function MealDetails({ entries }: { entries: MacroEntry[] }) {
               ))}
             </ul>
           ) : null}
+          <EntryCard entry={entry} selectedDate={date} compact />
         </li>
       ))}
     </ul>
@@ -622,7 +624,8 @@ export default async function Home({ searchParams }: PageProps) {
     const loggedAt = localWallClock(entry.created_at);
     const sameDay = loggedAt != null && loggedAt.slice(0, 10) === date;
     const minute = sameDay ? minuteOfDay(loggedAt) : null;
-    const label = mealSlot(minute);
+    // Chat-logged meals carry their type; older ones are guessed from the time.
+    const label = entry.meal_type ? entry.meal_type[0].toUpperCase() + entry.meal_type.slice(1) : mealSlot(minute);
     const group = mealGroups.get(label);
     if (group) {
       group.entries.push(entry);
@@ -647,7 +650,7 @@ export default async function Home({ searchParams }: PageProps) {
       extra: <MacroChips totals={total} />,
       value: integer.format(total.calories),
       unit: "kcal",
-      details: <MealDetails entries={group.entries} />
+      details: <MealDetails entries={group.entries} date={date} />
     });
   }
   for (const workout of workouts) {
@@ -728,6 +731,12 @@ export default async function Home({ searchParams }: PageProps) {
     <AppShell user={user} date={date} active="home" title={dayTitle(date, today)} headerAction={headerAction}>
       <DayStrip days={stripDays} earlierHref={`/?date=${addDays(stripDates[0], -1)}`} />
 
+      {params?.error ? (
+        <p className="page-error" role="alert">
+          {params.error}
+        </p>
+      ) : null}
+
       <ScoreSummary scores={scores} />
 
       <section className="card nutrition-card" aria-label="Nutrition">
@@ -762,6 +771,8 @@ export default async function Home({ searchParams }: PageProps) {
         <p className={`nutrition-callout ${callout.tone}`}>{callout.text}</p>
         {waterOunces != null ? <WaterRow ounces={waterOunces} date={date} /> : null}
       </section>
+
+      <GoalsForm goals={goals} disabled={false} redirectDate={date} />
 
       <Timeline title={isToday ? "Today so far" : "The day"} events={events} />
 

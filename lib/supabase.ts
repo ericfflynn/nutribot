@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { Pool, type PoolConfig } from "pg";
 import { getFallbackMacroGoals, parseMacroGoals, type MacroGoals } from "./goals";
-import type { ParsedMacros } from "./macro-parser";
+import type { ParsedMacros } from "./macros";
 
 export type MacroFoodItem = {
   name: string;
@@ -26,6 +26,7 @@ export type MacroEntry = {
   items: MacroFoodItem[];
   confidence: number;
   notes: string | null;
+  meal_type: MealType | null;
   created_at: string;
 };
 
@@ -136,6 +137,7 @@ export async function listEntriesForDate(userName: string, entryDate: string) {
         items,
         confidence::float8,
         notes,
+        meal_type,
         created_at::text
       from public.macro_entries
       where user_name = $1 and entry_date = $2::date
@@ -177,6 +179,7 @@ export async function listEntriesForDateRange(userName: string, startDate: strin
         items,
         confidence::float8,
         notes,
+        meal_type,
         created_at::text
       from public.macro_entries
       where user_name = $1
@@ -291,6 +294,7 @@ export async function listRecentEntries(userName: string, limit = 5) {
         items,
         confidence::float8,
         notes,
+        meal_type,
         created_at::text
       from public.macro_entries
       where user_name = $1

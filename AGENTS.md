@@ -4,11 +4,11 @@ Guidance for coding agents working in this repository. See [README.md](README.md
 
 ## Project
 
-NutriBot is a private, single-user (Eric) health and macro tracker: Next.js App Router, React, TypeScript, server actions. Meals are entered in plain English, estimated by an OpenAI model in `lib/macro-parser.ts`, reviewed, then saved to Supabase Postgres. `/` (Today, any day via `?date=`) is the combined dashboard: Sleep / Recovery / Strain scores (scored in `lib/health/scores.ts`; formulas, calibration and limitations in [docs/scores.md](docs/scores.md), which must be updated whenever the scoring changes), nutrition and water, a timeline of the day and 7-day trends; `/profile` (Log) is the meal logger, history, and goals. The UI is iPhone-first: iOS-style shell with a large title and bottom tab bar (`AppShell` in `app/shared-ui.tsx`). Users come from `APP_USERS`; the code still scopes everything by user name.
+NutriBot is a private, single-user (Eric) health and macro tracker: Next.js App Router, React, TypeScript, server actions. Meals and workouts are logged by chatting with Claude (the chat brain), reviewed as draft cards, then saved to Supabase Postgres. `/` (Today, any day via `?date=`) is the combined dashboard: Sleep / Recovery / Strain scores (scored in `lib/health/scores.ts`; formulas, calibration and limitations in [docs/scores.md](docs/scores.md), which must be updated whenever the scoring changes), nutrition, goals and water, a timeline of the day (meals open to edit or delete) and 7-day trends; `/chat` is the chat thread. `/profile` only redirects to `/chat`. The UI is iPhone-first: iOS-style shell with a large title and bottom tab bar (`AppShell` in `app/shared-ui.tsx`). Users come from `APP_USERS`; the code still scopes everything by user name.
 
 The chat brain ([docs/brain.md](docs/brain.md)) is the floating **Chat** button on every tab: `/api/brain` runs Claude through the Agent SDK on the owner's subscription, and its tools build meal and workout drafts that are saved only when the owner taps Save. Workouts are matched to Fitbit workouts in `lib/workouts.ts`. Read brain.md before changing the prompt, tools or draft shapes.
 
-Direction: the app is moving toward a chat-first interface where tool calls write structured records and Google Health data is loaded into Postgres. Read [docs/mvp-plan.md](docs/mvp-plan.md) before starting feature work. Don't rebuild the existing meal flow without being asked.
+Direction: the app is chat-first. Chat tools build structured drafts that the owner saves, and Google Health data is loaded into Postgres. Read [docs/mvp-plan.md](docs/mvp-plan.md) before starting feature work.
 
 ## Commands
 

@@ -9,7 +9,7 @@ import { runClaude } from "./claude-brain";
 import { addDays, isValidLocalDate, localDateTime } from "./dates";
 import { HEALTH_DATA_TYPES } from "./health/google";
 import { runHealthSync } from "./health/sync";
-import { normalizeGeneratedMacroEstimate, type ParsedMacros } from "./macro-parser";
+import { normalizeGeneratedMacroEstimate, type ParsedMacros } from "./macros";
 import type { MealType } from "./supabase";
 import {
   MUSCLE_GROUPS,

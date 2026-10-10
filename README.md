@@ -1,6 +1,6 @@
 # NutriBot
 
-NutriBot is a private, single-user health app: plain-English meal logging with AI macro estimates, plus Fitbit data synced daily from Google Health.
+NutriBot is a private, single-user health app: log meals and workouts by chatting with Claude, plus Fitbit data synced daily from Google Health.
 
 Production: https://nutribot-dusky.vercel.app · Direction and roadmap: [docs/mvp-plan.md](docs/mvp-plan.md) · Agent guidelines: [AGENTS.md](AGENTS.md)
 
@@ -8,27 +8,24 @@ Production: https://nutribot-dusky.vercel.app · Direction and roadmap: [docs/mv
 
 - **Today:** one iPhone-style page for any day: a scrolling strip of the last 28 days (`?date=`), a Sleep / Recovery / Strain summary, nutrition (calories, macros vs goals, water with quick-add buttons), a timeline of the day (sleep, recovery, meals grouped by meal, workouts), and 7-day trend lines. A Refresh button pulls the latest Fitbit data on demand.
 - **Scores** (`lib/health/scores.ts`, NutriBot's own estimates, not Whoop's formulas; full reference in [docs/scores.md](docs/scores.md)): Sleep is hours asleep vs an 8-hour need; Recovery (0-100%, green/yellow/red) compares today's HRV and resting heart rate with your 30-day baseline, plus sleep; Strain (0-21) weights heart-rate zone minutes by intensity, plus steps, for the day and for each workout.
-- **Log:** plain-English meal logging with OpenAI macro estimates, a review step, corrections, manual edits and goals.
+- **Chat:** tell Claude what you ate or trained ("eggs and toast", "chest and tris, hard"). It replies with review cards: meals with item-level macro estimates, workouts with muscle groups and effort, matched to the Fitbit workout. Nothing is saved until you tap Save. The Chat tab is the thread; a floating Chat button opens it from any tab. Details: [docs/brain.md](docs/brain.md).
+- **Meal edits and goals** live on Today: open a meal in the timeline to edit or delete it; macro goals are under Nutrition.
 - Fitbit data synced from Google Health several times a day: activity totals, resting heart rate, HRV, sleep, SpO2, VO2 max and workout summaries.
 
 ## Product Flow
 
-1. Enter a meal like `Greek yogurt with berries, honey, and granola`.
-2. Review the generated estimate and item breakdown.
-3. Add a correction or manually adjust totals if needed.
-4. Save the meal to today or a selected previous day.
-5. Track today against goals and compare against completed logged days.
+1. In chat, write what you ate or trained, for today or an earlier day ("yesterday", "Tuesday").
+2. Review the draft cards. Correct anything in chat ("actually 2 eggs") or pick a different Fitbit workout.
+3. Tap Save. The meal or workout shows on Today.
 
 ## Screenshots
 
 ![Home dashboard](docs/screenshots/home-dashboard.png)
 
-![Meal logging profile](docs/screenshots/profile-log.png)
-
 ## Stack
 
 - Next.js App Router, TypeScript, React Server Actions
-- OpenAI structured outputs for meal estimates
+- Claude (Agent SDK, on the owner's subscription) for chat, with tools that build meal and workout drafts
 - Supabase Postgres (accessed server-side with `pg`)
 - Google Health API for Fitbit data
 - Vercel hosting and Vercel Cron
@@ -47,8 +44,7 @@ APP_USER_PASSWORDS=Eric:your-password
 AUTH_SECRET=your-long-random-cookie-signing-secret   # openssl rand -base64 32
 APP_TIME_ZONE=America/New_York
 
-OPENAI_API_KEY=sk-...
-OPENAI_MODEL=gpt-4o-mini
+CLAUDE_CODE_OAUTH_TOKEN=...   # claude setup-token; leave ANTHROPIC_API_KEY unset
 
 DATABASE_URL=postgresql://postgres.your-project-ref:[YOUR-PASSWORD]@aws-0-us-east-1.pooler.supabase.com:6543/postgres
 
@@ -130,15 +126,16 @@ app/
   actions.ts                     server actions
   api/cron/health-sync/route.ts  health sync endpoint (Vercel Cron; ?mode=recent for light runs)
   charts.tsx                     inline SVG charts; Sparkline is used by the Today trend tiles
-  entry-card.tsx                 saved meal display/editing
-  home-progress-card.tsx         nutrition progress card (Log page)
-  meal-logger.tsx                meal input and review flow
+  entry-card.tsx                 saved meal edit and delete
+  api/brain/route.ts             chat turns (POST) and the current conversation (GET)
+  chat-sheet.tsx                 chat thread, draft cards, floating Chat button and sheet
+  chat/page.tsx                  Chat tab
   page.tsx                       Today: day strip, score summary, nutrition and water, day timeline, 7-day trends
   day-strip.tsx                  scrolling day picker on Today
   privacy/page.tsx               public privacy policy (linked from Google OAuth)
   refresh-button.tsx             manual Fitbit sync button on Today
-  profile/page.tsx               Log: meal logging, history, date picker, goals
-  shared-ui.tsx                  iOS shell (title, tab bar), login, goals form
+  profile/page.tsx               redirects old Log links to /chat
+  shared-ui.tsx                  iOS shell (title, tab bar, Chat button), login, goals form
 
 lib/
   auth.ts                        session auth
@@ -149,10 +146,15 @@ lib/
   health/scores.ts               sleep, recovery and strain scores
   health/sync.ts                 full and recent sync, run logging
   macro-adjust.ts                manual macro adjustment
-  macro-parser.ts                OpenAI parser
+  brain.ts                       chat brain: system prompt, draft tools (docs/brain.md)
+  chat.ts                        conversations, messages, draft saving
+  claude-brain.ts                runs Claude through the Agent SDK
+  macros.ts                      meal macro schema and totals
   supabase.ts                    database access and summaries
+  workouts.ts                    logged workouts and Fitbit matching
 
 scripts/
+  brain.ts                       npm run brain: one chat turn in the terminal, writes nothing
   health-auth.ts                 npm run health:auth
   health-sync.ts                 npm run health:sync
 

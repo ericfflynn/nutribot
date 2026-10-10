@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { clearSession, createSession, getSessionUser } from "@/lib/auth";
 import { isValidLocalDate, todayLocalDate } from "@/lib/dates";
 import { parseMacroGoals } from "@/lib/goals";
-import { parseMacroObject, parseMacros, parseStoredMacros, type ParsedMacros } from "@/lib/macro-parser";
+import { parseMacroObject, type ParsedMacros } from "@/lib/macros";
 import { HEALTH_DATA_TYPES } from "@/lib/health/google";
 import { runHealthSync } from "@/lib/health/sync";
 import type { Draft } from "@/lib/brain";
@@ -20,85 +20,18 @@ import {
   updateMacroEntry
 } from "@/lib/supabase";
 
-export type MealReviewState = {
-  rawText: string;
-  parsed: ParsedMacros | null;
-  feedback: string | null;
-  error: string | null;
-};
-
 function getFormDate(formData: FormData) {
   const entryDate = String(formData.get("entryDate") || formData.get("redirectDate") || "").trim();
   return isValidLocalDate(entryDate) ? entryDate : todayLocalDate();
 }
 
-function profilePath(entryDate: string, error?: string) {
+// Today for that day, with an optional error shown above the timeline.
+function todayPath(entryDate: string, error?: string) {
   const params = new URLSearchParams({ date: entryDate });
   if (error) {
     params.set("error", error);
   }
-  return `/profile?${params.toString()}`;
-}
-
-export async function parseMealForReviewAction(
-  _state: MealReviewState,
-  formData: FormData
-): Promise<MealReviewState> {
-  const user = await getSessionUser();
-  if (!user) {
-    redirect("/");
-  }
-
-  const rawText = String(formData.get("rawText") || "").trim();
-  if (!rawText) {
-    return { rawText: "", parsed: null, feedback: null, error: "Enter what you ate first." };
-  }
-
-  try {
-    const parsed = await parseMacros(rawText);
-    return { rawText, parsed, feedback: null, error: null };
-  } catch (error) {
-    return {
-      rawText,
-      parsed: null,
-      feedback: null,
-      error: error instanceof Error ? error.message : "Macro estimate failed."
-    };
-  }
-}
-
-export async function reviseMealForReviewAction(
-  _state: MealReviewState,
-  formData: FormData
-): Promise<MealReviewState> {
-  const user = await getSessionUser();
-  if (!user) {
-    redirect("/");
-  }
-
-  const rawText = String(formData.get("rawText") || "").trim();
-  const feedback = String(formData.get("feedback") || "").trim();
-  const previousParsedJson = String(formData.get("previousParsed") || "");
-
-  if (!rawText) {
-    return { rawText: "", parsed: null, feedback: null, error: "Original meal text is missing." };
-  }
-  if (!feedback) {
-    return { rawText, parsed: null, feedback: null, error: "Add a correction first." };
-  }
-
-  try {
-    const previousParsed = previousParsedJson ? parseStoredMacros(previousParsedJson) : undefined;
-    const parsed = await parseMacros(rawText, feedback, previousParsed);
-    return { rawText, parsed, feedback, error: null };
-  } catch (error) {
-    return {
-      rawText,
-      parsed: null,
-      feedback,
-      error: error instanceof Error ? error.message : "Macro revision failed."
-    };
-  }
+  return `/?${params.toString()}`;
 }
 
 export async function loginAction(formData: FormData) {
@@ -118,41 +51,6 @@ export async function logoutAction() {
   redirect("/");
 }
 
-export async function addMacroEntryAction(formData: FormData) {
-  const user = await getSessionUser();
-  if (!user) {
-    redirect("/");
-  }
-
-  const rawText = String(formData.get("rawText") || "").trim();
-  const parsedJson = String(formData.get("parsed") || "");
-  const entryDate = getFormDate(formData);
-  if (!rawText) {
-    redirect(profilePath(entryDate, "Enter what you ate first."));
-  }
-  if (!parsedJson) {
-    redirect(profilePath(entryDate, "Review the AI estimate before saving."));
-  }
-
-  let parsed: ParsedMacros;
-  try {
-    parsed = parseStoredMacros(parsedJson);
-  } catch {
-    redirect(profilePath(entryDate, "Saved estimate was invalid. Please estimate the meal again."));
-  }
-
-  await saveMacroEntry({
-    userName: user.name,
-    entryDate,
-    rawText,
-    parsed
-  });
-
-  revalidatePath("/");
-  revalidatePath("/profile");
-  redirect(profilePath(entryDate));
-}
-
 export async function updateMacroEntryAction(formData: FormData) {
   const user = await getSessionUser();
   if (!user) {
@@ -163,10 +61,10 @@ export async function updateMacroEntryAction(formData: FormData) {
   const rawText = String(formData.get("rawText") || "").trim();
   const redirectDate = getFormDate(formData);
   if (!id) {
-    redirect(profilePath(redirectDate, "Meal entry is missing."));
+    redirect(todayPath(redirectDate, "Meal entry is missing."));
   }
   if (!rawText) {
-    redirect(profilePath(redirectDate, "Meal description is required."));
+    redirect(todayPath(redirectDate, "Meal description is required."));
   }
 
   let parsed: ParsedMacros;
@@ -182,7 +80,7 @@ export async function updateMacroEntryAction(formData: FormData) {
       accuracy_suggestion: ""
     });
   } catch {
-    redirect(profilePath(redirectDate, "Meal macros must be valid non-negative numbers."));
+    redirect(todayPath(redirectDate, "Meal macros must be valid non-negative numbers."));
   }
 
   try {
@@ -193,12 +91,11 @@ export async function updateMacroEntryAction(formData: FormData) {
       parsed
     });
   } catch (error) {
-    redirect(profilePath(redirectDate, error instanceof Error ? error.message : "Meal update failed."));
+    redirect(todayPath(redirectDate, error instanceof Error ? error.message : "Meal update failed."));
   }
 
   revalidatePath("/");
-  revalidatePath("/profile");
-  redirect(profilePath(redirectDate));
+  redirect(todayPath(redirectDate));
 }
 
 export async function deleteMacroEntryAction(formData: FormData) {
@@ -210,18 +107,17 @@ export async function deleteMacroEntryAction(formData: FormData) {
   const id = String(formData.get("id") || "").trim();
   const redirectDate = getFormDate(formData);
   if (!id) {
-    redirect(profilePath(redirectDate, "Meal entry is missing."));
+    redirect(todayPath(redirectDate, "Meal entry is missing."));
   }
 
   try {
     await deleteMacroEntry(id, user.name);
   } catch (error) {
-    redirect(profilePath(redirectDate, error instanceof Error ? error.message : "Meal delete failed."));
+    redirect(todayPath(redirectDate, error instanceof Error ? error.message : "Meal delete failed."));
   }
 
   revalidatePath("/");
-  revalidatePath("/profile");
-  redirect(profilePath(redirectDate));
+  redirect(todayPath(redirectDate));
 }
 
 export async function saveMacroGoalsAction(formData: FormData) {
@@ -240,8 +136,7 @@ export async function saveMacroGoalsAction(formData: FormData) {
 
   await saveUserMacroGoals(user.name, goals);
   revalidatePath("/");
-  revalidatePath("/profile");
-  redirect(profilePath(redirectDate));
+  redirect(todayPath(redirectDate));
 }
 
 const WATER_AMOUNTS = new Set([8, 16, 24]);
@@ -351,7 +246,6 @@ export async function saveDraftAction(
       return { draft: saved, result: saved };
     });
     revalidatePath("/");
-    revalidatePath("/profile");
     return { ok: true, draft };
   } catch (error) {
     // A unique-index violation means another session claimed that watch workout.

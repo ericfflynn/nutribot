@@ -30,7 +30,17 @@ function DeleteButton({
   );
 }
 
-export function EntryCard({ entry, selectedDate }: { entry: MacroEntry; selectedDate: string }) {
+// A saved meal with Edit and Delete. compact shows only the buttons, for use
+// under a meal that's already displayed (Today's timeline).
+export function EntryCard({
+  entry,
+  selectedDate,
+  compact = false
+}: {
+  entry: MacroEntry;
+  selectedDate: string;
+  compact?: boolean;
+}) {
   const [isEditing, setIsEditing] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [editedMacros, setEditedMacros] = useState(() => initialAdjustedMacros(entry));
@@ -150,6 +160,42 @@ export function EntryCard({ entry, selectedDate }: { entry: MacroEntry; selected
     );
   }
 
+  const actions = (
+    <div className="entry-actions">
+      <button
+        className="button secondary compact"
+        type="button"
+        onClick={() => {
+          resetEditedMacros();
+          setIsEditing(true);
+        }}
+      >
+        Edit
+      </button>
+      <form action={deleteMacroEntryAction}>
+        <input type="hidden" name="id" value={entry.id} />
+        <input type="hidden" name="redirectDate" value={selectedDate} />
+        <DeleteButton
+          confirming={confirmingDelete}
+          onClick={() => {
+            if (!confirmingDelete) {
+              setConfirmingDelete(true);
+            }
+          }}
+        />
+      </form>
+      {confirmingDelete ? (
+        <button className="button secondary compact" type="button" onClick={() => setConfirmingDelete(false)}>
+          Cancel
+        </button>
+      ) : null}
+    </div>
+  );
+
+  if (compact) {
+    return actions;
+  }
+
   return (
     <article className="panel entry">
       <div className="entry-head">
@@ -173,35 +219,7 @@ export function EntryCard({ entry, selectedDate }: { entry: MacroEntry; selected
         </div>
       ) : null}
       {entry.notes ? <p className="muted">{entry.notes}</p> : null}
-      <div className="entry-actions">
-        <button
-          className="button secondary compact"
-          type="button"
-          onClick={() => {
-            resetEditedMacros();
-            setIsEditing(true);
-          }}
-        >
-          Edit
-        </button>
-        <form action={deleteMacroEntryAction}>
-          <input type="hidden" name="id" value={entry.id} />
-          <input type="hidden" name="redirectDate" value={selectedDate} />
-          <DeleteButton
-            confirming={confirmingDelete}
-            onClick={() => {
-              if (!confirmingDelete) {
-                setConfirmingDelete(true);
-              }
-            }}
-          />
-        </form>
-        {confirmingDelete ? (
-          <button className="button secondary compact" type="button" onClick={() => setConfirmingDelete(false)}>
-            Cancel
-          </button>
-        ) : null}
-      </div>
+      {actions}
     </article>
   );
 }

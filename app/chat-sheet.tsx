@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { discardDraftAction, newChatAction, saveDraftAction } from "./actions";
 import type { Draft, MealDraft, WorkoutDraft } from "@/lib/brain";
@@ -186,18 +186,37 @@ function WorkoutCard({ draft, today, superseded, onSave, onDiscard }: { draft: W
   );
 }
 
-export function ChatSheet({ date, today }: { date: string; today: string }) {
+// Opens the chat sheet from anywhere, optionally with text ready to send.
+const OPEN_EVENT = "nutribot:open-chat";
+export function openChat(text = "") {
+  window.dispatchEvent(new CustomEvent(OPEN_EVENT, { detail: { text } }));
+}
+
+// The conversation: thread, draft cards and composer. Used by the floating
+// sheet and the Chat tab; both show the same current conversation.
+export function ChatThread({
+  date,
+  today,
+  toolbar,
+  prefill
+}: {
+  date: string;
+  today: string;
+  // Extra controls for the header row, e.g. the sheet's close button.
+  toolbar?: ReactNode;
+  // Text to put in the composer; a new object replaces what's there.
+  prefill?: { text: string };
+}) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const threadRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    if (!open || loaded) return;
     fetch("/api/brain")
       .then((response) => response.json())
       .then((data) => {
@@ -206,48 +225,17 @@ export function ChatSheet({ date, today }: { date: string; today: string }) {
         setLoaded(true);
       })
       .catch(() => setError("Couldn't load the chat."));
-  }, [open, loaded]);
+  }, []);
+
+  useEffect(() => {
+    if (!prefill) return;
+    setInput(prefill.text);
+    inputRef.current?.focus();
+  }, [prefill]);
 
   useEffect(() => {
     threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight });
-  }, [messages, sending, open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (event: KeyboardEvent) => event.key === "Escape" && setOpen(false);
-    document.addEventListener("keydown", onKey);
-
-    // iOS Safari ignores overflow: hidden on body, so pin the page in place
-    // while the sheet is open and restore the scroll position afterwards.
-    const scrollY = window.scrollY;
-    const { body } = document;
-    body.style.position = "fixed";
-    body.style.top = `-${scrollY}px`;
-    body.style.left = "0";
-    body.style.right = "0";
-
-    // Size the sheet to the visible area so the keyboard doesn't cover the composer.
-    const viewport = window.visualViewport;
-    const fit = () => {
-      if (!viewport) return;
-      document.documentElement.style.setProperty("--chat-height", `${viewport.height}px`);
-      document.documentElement.style.setProperty("--chat-top", `${viewport.offsetTop}px`);
-    };
-    fit();
-    viewport?.addEventListener("resize", fit);
-    viewport?.addEventListener("scroll", fit);
-
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      viewport?.removeEventListener("resize", fit);
-      viewport?.removeEventListener("scroll", fit);
-      body.style.position = "";
-      body.style.top = "";
-      body.style.left = "";
-      body.style.right = "";
-      window.scrollTo(0, scrollY);
-    };
-  }, [open]);
+  }, [messages, sending]);
 
   async function send() {
     const message = input.trim();
@@ -304,6 +292,131 @@ export function ChatSheet({ date, today }: { date: string; today: string }) {
   for (const message of messages) for (const draft of message.drafts) lastMessageFor.set(draft.id, message.id);
 
   return (
+    <div className="chat-thread-wrap">
+      <header className="chat-header">
+        <button type="button" className="text-button" onClick={startNewChat} disabled={sending || !messages.length}>
+          New chat
+        </button>
+        {toolbar}
+      </header>
+      <div className="chat-thread" ref={threadRef}>
+        {loaded && !messages.length ? (
+          <p className="chat-empty">
+            Tell me what you ate or trained, like "eggs and toast" or "chest and tris, hard". Ask anything else too.
+          </p>
+        ) : null}
+        {messages.map((message) => (
+          <div key={message.id} className={`chat-message ${message.role}`}>
+            {message.content ? <p className="chat-bubble">{message.content}</p> : null}
+            {message.drafts.map((draft) => {
+              const handlers: DraftHandlers = {
+                today,
+                superseded: lastMessageFor.get(draft.id) !== message.id,
+                onSave: async (fitbitWorkoutId) => {
+                  const result = await saveDraftAction(message.id, draft.id, fitbitWorkoutId);
+                  if (result.ok) {
+                    replaceDraft(message.id, result.draft);
+                    router.refresh();
+                  } else setError(result.error);
+                },
+                onDiscard: async () => {
+                  const result = await discardDraftAction(message.id, draft.id);
+                  if (result.ok) replaceDraft(message.id, result.draft);
+                  else setError(result.error);
+                }
+              };
+              return draft.type === "meal" ? (
+                <MealCard key={draft.id} draft={draft} {...handlers} />
+              ) : (
+                <WorkoutCard key={draft.id} draft={draft} {...handlers} />
+              );
+            })}
+          </div>
+        ))}
+        {sending ? <p className="chat-typing">Thinking…</p> : null}
+      </div>
+      {error ? <p className="chat-error">{error}</p> : null}
+      <form
+        className="chat-composer"
+        onSubmit={(event) => {
+          event.preventDefault();
+          send();
+        }}
+      >
+        <textarea
+          ref={inputRef}
+          value={input}
+          placeholder="What did you eat or train?"
+          rows={1}
+          onChange={(event) => setInput(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              send();
+            }
+          }}
+        />
+        <button type="submit" disabled={sending || !input.trim()}>
+          Send
+        </button>
+      </form>
+    </div>
+  );
+}
+
+// The floating Chat button and the full-screen sheet it opens.
+export function ChatSheet({ date, today }: { date: string; today: string }) {
+  const [open, setOpen] = useState(false);
+  const [prefill, setPrefill] = useState<{ text: string } | undefined>();
+
+  useEffect(() => {
+    const onOpen = (event: Event) => {
+      const text = (event as CustomEvent<{ text?: string }>).detail?.text ?? "";
+      setOpen(true);
+      if (text) setPrefill({ text });
+    };
+    window.addEventListener(OPEN_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_EVENT, onOpen);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => event.key === "Escape" && setOpen(false);
+    document.addEventListener("keydown", onKey);
+
+    // iOS Safari ignores overflow: hidden on body, so pin the page in place
+    // while the sheet is open and restore the scroll position afterwards.
+    const scrollY = window.scrollY;
+    const { body } = document;
+    body.style.position = "fixed";
+    body.style.top = `-${scrollY}px`;
+    body.style.left = "0";
+    body.style.right = "0";
+
+    // Size the sheet to the visible area so the keyboard doesn't cover the composer.
+    const viewport = window.visualViewport;
+    const fit = () => {
+      if (!viewport) return;
+      document.documentElement.style.setProperty("--chat-height", `${viewport.height}px`);
+      document.documentElement.style.setProperty("--chat-top", `${viewport.offsetTop}px`);
+    };
+    fit();
+    viewport?.addEventListener("resize", fit);
+    viewport?.addEventListener("scroll", fit);
+
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      viewport?.removeEventListener("resize", fit);
+      viewport?.removeEventListener("scroll", fit);
+      body.style.position = "";
+      body.style.top = "";
+      body.style.left = "";
+      body.style.right = "";
+      window.scrollTo(0, scrollY);
+    };
+  }, [open]);
+
+  return (
     <>
       {open ? null : (
         <button type="button" className="fab" onClick={() => setOpen(true)}>
@@ -322,81 +435,16 @@ export function ChatSheet({ date, today }: { date: string; today: string }) {
             aria-label="Chat"
             onClick={(event) => event.stopPropagation()}
           >
-            <header className="chat-header">
-              <button
-                type="button"
-                className="text-button"
-                onClick={startNewChat}
-                disabled={sending || !messages.length}
-              >
-                New chat
-              </button>
-              <strong>NutriBot</strong>
-              <button type="button" className="chat-close" aria-label="Close" onClick={() => setOpen(false)}>
-                ✕
-              </button>
-            </header>
-            <div className="chat-thread" ref={threadRef}>
-              {loaded && !messages.length ? (
-                <p className="chat-empty">
-                  Tell me what you ate or trained, like "eggs and toast" or "chest and tris, hard". Ask anything else
-                  too.
-                </p>
-              ) : null}
-              {messages.map((message) => (
-                <div key={message.id} className={`chat-message ${message.role}`}>
-                  {message.content ? <p className="chat-bubble">{message.content}</p> : null}
-                  {message.drafts.map((draft) => {
-                    const handlers: DraftHandlers = {
-                      today,
-                      superseded: lastMessageFor.get(draft.id) !== message.id,
-                      onSave: async (fitbitWorkoutId) => {
-                        const result = await saveDraftAction(message.id, draft.id, fitbitWorkoutId);
-                        if (result.ok) {
-                          replaceDraft(message.id, result.draft);
-                          router.refresh();
-                        } else setError(result.error);
-                      },
-                      onDiscard: async () => {
-                        const result = await discardDraftAction(message.id, draft.id);
-                        if (result.ok) replaceDraft(message.id, result.draft);
-                        else setError(result.error);
-                      }
-                    };
-                    return draft.type === "meal" ? (
-                      <MealCard key={draft.id} draft={draft} {...handlers} />
-                    ) : (
-                      <WorkoutCard key={draft.id} draft={draft} {...handlers} />
-                    );
-                  })}
-                </div>
-              ))}
-              {sending ? <p className="chat-typing">Thinking…</p> : null}
-            </div>
-            {error ? <p className="chat-error">{error}</p> : null}
-            <form
-              className="chat-composer"
-              onSubmit={(event) => {
-                event.preventDefault();
-                send();
-              }}
-            >
-              <textarea
-                value={input}
-                placeholder="What did you eat or train?"
-                rows={1}
-                onChange={(event) => setInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    send();
-                  }
-                }}
-              />
-              <button type="submit" disabled={sending || !input.trim()}>
-                Send
-              </button>
-            </form>
+            <ChatThread
+              date={date}
+              today={today}
+              prefill={prefill}
+              toolbar={
+                <button type="button" className="chat-close" aria-label="Close" onClick={() => setOpen(false)}>
+                  ✕
+                </button>
+              }
+            />
           </section>
         </div>
       ) : null}

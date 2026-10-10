@@ -2264,6 +2264,43 @@ button.fab {
   }
 }
 
+.chat-thread-wrap {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* The Chat tab: the shell is exactly one screen tall and the thread scrolls
+   inside it, between the title and the tab bar. */
+.app-chat {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  padding-bottom: calc(var(--tab-bar-height) + env(safe-area-inset-bottom));
+}
+
+.app-chat .app-content {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.app-chat .app-titlebar {
+  margin-bottom: 8px;
+}
+
+.chat-page {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  margin: 0 -16px;
+}
+
+.chat-page .chat-composer {
+  border-radius: 0;
+}
+
 .chat-header {
   display: flex;
   flex-shrink: 0;
@@ -2640,4 +2677,14 @@ button.fab {
   width: 8px;
   height: 8px;
   border-radius: 2px;
+}
+
+/* An action's error on Today, e.g. a failed meal edit */
+.page-error {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  background: #fbe9e7;
+  color: var(--bad);
+  font-size: 14px;
 }

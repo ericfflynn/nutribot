@@ -78,13 +78,29 @@ function TodayIcon() {
   );
 }
 
-function LogIcon() {
+function TrainingIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M11 4h2v7h7v2h-7v7h-2v-7H4v-2h7z" />
+      <path d="M2 10h2V8h2v8H4v-2H2zM18 8h2v2h2v4h-2v2h-2zM7 6h3v12H7zM14 6h3v12h-3zM10 11h4v2h-4z" />
     </svg>
   );
 }
+
+function ChatIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H10l-5 4v-4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />
+    </svg>
+  );
+}
+
+const TABS = [
+  { key: "home", href: "/", label: "Today", icon: <TodayIcon /> },
+  { key: "training", href: "/training", label: "Training", icon: <TrainingIcon /> },
+  { key: "chat", href: "/chat", label: "Chat", icon: <ChatIcon /> }
+] as const;
+
+export type TabKey = (typeof TABS)[number]["key"];
 
 // iOS-style shell: large title, content, and a bottom tab bar.
 export function AppShell({
@@ -96,13 +112,13 @@ export function AppShell({
 }: {
   user: SessionUser;
   date: string;
-  active: "home" | "profile";
+  active: TabKey;
   title: string;
   headerAction?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <div className="app">
+    <div className={active === "chat" ? "app app-chat" : "app"}>
       <header className="app-titlebar">
         <div>
           <span className="app-date">{titleDateFormat.format(new Date(`${date}T00:00:00Z`))}</span>
@@ -118,24 +134,20 @@ export function AppShell({
         </div>
       </header>
       <main className="app-content">{children}</main>
-      <ChatSheet date={date} today={todayLocalDate()} />
+      {/* The Chat tab is the thread itself; elsewhere the floating button opens it. */}
+      {active === "chat" ? null : <ChatSheet date={date} today={todayLocalDate()} />}
       <nav className="tab-bar" aria-label="Primary">
-        <Link
-          className={active === "home" ? "active" : ""}
-          href="/"
-          aria-current={active === "home" ? "page" : undefined}
-        >
-          <TodayIcon />
-          <span>Today</span>
-        </Link>
-        <Link
-          className={active === "profile" ? "active" : ""}
-          href="/profile"
-          aria-current={active === "profile" ? "page" : undefined}
-        >
-          <LogIcon />
-          <span>Log</span>
-        </Link>
+        {TABS.map((tab) => (
+          <Link
+            key={tab.key}
+            className={active === tab.key ? "active" : ""}
+            href={tab.href}
+            aria-current={active === tab.key ? "page" : undefined}
+          >
+            {tab.icon}
+            <span>{tab.label}</span>
+          </Link>
+        ))}
       </nav>
     </div>
   );
