@@ -8,7 +8,7 @@ import { z } from "zod";
 // authenticated by CLAUDE_CODE_OAUTH_TOKEN. No built-in tools, no settings,
 // no saved sessions: the model reads the prompt and returns JSON matching the schema.
 
-const DEFAULT_MODEL = "claude-opus-5-5";
+const DEFAULT_MODEL = "claude-sonnet-5-5";
 
 // Claude Code writes config and caches under CLAUDE_CONFIG_DIR. Keep it in /tmp:
 // it's the only writable path on Vercel, and locally it keeps the owner's own
