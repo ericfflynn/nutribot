@@ -70,6 +70,19 @@ npm run dev
 npm run build
 ```
 
+## Chat brain
+
+Chat runs Claude through the Agent SDK, signed in to the owner's Claude subscription, not an API key. The full contract (tools, drafts, Fitbit matching, production setup) is in [docs/brain.md](docs/brain.md).
+
+```bash
+claude setup-token                          # prints a token that lasts about a year
+# put it in .env.local as CLAUDE_CODE_OAUTH_TOKEN, and in Vercel:
+vercel env add CLAUDE_CODE_OAUTH_TOKEN production,preview --sensitive
+npm run brain -- "chest and tris, hard"     # one turn in the terminal; writes nothing
+```
+
+Each sync that includes workouts also links chat-logged workouts that were waiting for their Fitbit session.
+
 ## Fitbit health data
 
 Data comes from the Google Health API and is stored Fitbit-only: Apple Health and other sources are dropped at ingest, and minute-level data is never downloaded.

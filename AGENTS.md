@@ -26,6 +26,7 @@ There is no test suite. Verify changes with `npm run build`, then exercise the a
 - Local config lives in `.env.local` (gitignored). `.env.example` lists the variables.
 - Never print, log, or commit secret values. To check whether a variable is set, read its name, not its value.
 - `DATABASE_URL` points at the **production** Supabase database. Local development uses real data.
+- `CLAUDE_CODE_OAUTH_TOKEN` signs the chat brain in to the owner's Claude subscription, locally and in Vercel (Production and Preview). It lasts about a year; renewal steps are in [docs/brain.md](docs/brain.md#running-in-production). Never set `ANTHROPIC_API_KEY`.
 
 ## CLIs available
 
@@ -44,6 +45,7 @@ All of these are installed and authenticated on the owner's machine.
 - The project is Git-connected: pushing to `master` deploys production; other branches get preview deploys.
 - `vercel deploy --prod` deploys the local working tree, including uncommitted files. Prefer deploying through Git.
 - `vercel ls`, `vercel logs <url>`, `vercel inspect <url>` for status and debugging.
+- `VERCEL_SUPPORT_LARGE_FUNCTIONS=1` is set because `/api/brain` ships the ~260 MB Claude Code binary. `vercel inspect <url> --wait` waits for a build without polling.
 - `vercel env ls` lists variables. Secret values cannot be pulled back down; `vercel env pull` returns placeholders for them. Set values with `vercel env add NAME production`.
 - `vercel link` and `vercel env pull` write to `.env.local` and `.gitignore`. Check `git diff` afterwards.
 

@@ -11,14 +11,17 @@ This repo is the base. The existing meal logger, dashboard and goals stay workin
 ## MVP scope
 
 1. **Google Health data in Postgres.** Raw payloads loaded into JSONB tables on a schedule. No normalized health schema yet; views get added once we know which fields matter.
-2. **Chat with tool use.** Built as the chat brain ([brain.md](brain.md)): the Agent SDK on the owner's Claude subscription, with draft tools for meals and workouts. The OpenAI meal parser stays on the Log tab for now. Planned tools:
-   - `logMeal`: items and macro estimates, saved to `macro_entries`. It should also classify the meal (breakfast, lunch, dinner, snack) from the foods and the time eaten, stored in a new `meal_type` column. Until then, Today guesses the meal from the time it was logged.
-   - `logWorkout`: type, duration, intensity, notes.
+2. **Chat with tool use.** Live since October 10, 2026 as the chat brain ([brain.md](brain.md)): Claude through the Agent SDK on the owner's subscription. Built tools:
+   - `draft_meal`: items and macro estimates, plus a meal type (breakfast, lunch, dinner, snack), saved to `macro_entries`.
+   - `draft_workout`: muscle groups, RPE and the matching Fitbit workout, saved to `workout_sessions` ([training-plan.md](training-plan.md)).
+   - `list_fitbit_workouts`: read-only, for labeling past workouts.
+
+   Still to build:
    - `logHabitEvent`: a named habit and when it happened.
    - `writeJournalEntry`: free text for the day.
    - `queryHealthData`: read-only access to the Google Health records and logged data.
    - `getUserGoals`: macro targets and other goals.
-3. **Write rules.** Inputs are validated with Zod before any write. Missing required details are asked for, not guessed. The assistant says "logged" only when the tool result confirms the database write.
+3. **Write rules.** Tool inputs are validated with Zod. Tools build drafts; nothing is written until the owner taps Save, which saves the server's stored copy. Missing details are asked for, not guessed, and the assistant never says "logged".
 4. **Mobile dashboard.** Read-focused views of today and recent trends, built from the logged and ingested data.
 
 ## Out of scope for the MVP
@@ -33,7 +36,7 @@ This repo is the base. The existing meal logger, dashboard and goals stay workin
 
 - Next.js App Router on Vercel, TypeScript, server actions. Production: https://nutribot-dusky.vercel.app
 - Supabase Postgres, accessed from the server through `DATABASE_URL` (`pg`).
-- Claude API from server code only. API keys and Google tokens never reach the browser.
+- Claude from server code only, through the Agent SDK (`CLAUDE_CODE_OAUTH_TOKEN`). Tokens never reach the browser.
 - Health sync runs several times a day as Vercel Cron routes (`vercel.json`), and on demand with `npm run health:sync`.
 
 ## Data
@@ -81,14 +84,14 @@ Storage is about 1.4 MB for January through early October.
 1. **Plan** (this document).
 2. **Raw health load.** Done locally: health tables in Supabase, `npm run health:auth` and `npm run health:sync`.
 3. **Scheduled sync.** Done: six daily Vercel Cron jobs (a full run at 11:00 UTC, five light "last 3 days" runs through the day), Google credentials in Vercel env vars, every run logged in `health_sync_runs`.
-4. **Chat.** `/chat` page, Claude tool loop, the six tools, new write tables, persisted conversation history.
-5. **Dashboard.** In progress: Today page in an iPhone-style shell with Whoop-inspired Sleep / Recovery / Strain dials, nutrition, recovery details and intensity-ranked workouts, plus a manual Refresh.
+4. **Chat.** Done for meals and workouts: Chat tab and floating sheet, draft tools, Fitbit matching, conversations with New chat (`chat_conversations`, `chat_messages`). The old OpenAI meal logger is removed. Remaining: the habit, journal and read tools above.
+5. **Dashboard.** Today (scores, nutrition and goals, water, a timeline with editable meals, trends) and Training (missing muscle groups, unlabeled workouts, coverage, sessions, recent workouts) are live.
 
 ## Open questions
 
 - **Google re-authorization.** The OAuth app is published (unverified, which is fine for personal use), so refresh tokens no longer expire after 7 days. Re-auth is `npm run health:auth`; an in-app connect flow can come later if needed.
 - **Authentication.** The app uses its own login with env-var passwords and signed cookies. Move to Supabase Auth before adding health data and chat, or keep custom auth for the MVP?
-- **Model disclosure.** Which records may be sent to the Claude API in chat context (all logged data, health summaries, raw payloads)?
+- **Model disclosure.** Today Claude sees the current conversation, its open drafts and, through `list_fitbit_workouts`, workout summaries. Decide what the read tools may return (logged meals, goals, health summaries, raw payloads) before building them.
 - **Health fields.** Which payload fields become views or dashboard metrics, once the raw data is loaded and inspected.
 
 ## Ideas for later

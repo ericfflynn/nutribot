@@ -1,6 +1,6 @@
 # Chat brain
 
-Status: built October 10, 2026, on branch `claude-brain-spike`. This is the contract between the chat sheet, `/api/brain` and Claude.
+Status: in production since October 10, 2026. This is the contract between the chat (the Chat tab and the floating sheet), `/api/brain` and Claude.
 
 ## How a turn runs
 
@@ -12,6 +12,14 @@ Status: built October 10, 2026, on branch `claude-brain-spike`. This is the cont
 6. Nothing else is written until the owner taps **Save** on a draft (`saveDraftAction` in `app/actions.ts`), which saves the server's stored copy of the draft, never data from the browser.
 
 Model: `claude-sonnet-5-5` at low effort, overridable with `CLAUDE_MODEL`. A turn takes about 5–15 seconds.
+
+## Running in production
+
+- **Token.** `CLAUDE_CODE_OAUTH_TOKEN` is set in Vercel for Production and Preview (sensitive). `claude setup-token` issues one that lasts about a year. When it expires the chat answers with an error; issue a new one and run `vercel env add CLAUDE_CODE_OAUTH_TOKEN production,preview --sensitive --force`, then redeploy. Never set `ANTHROPIC_API_KEY` there: it outranks the token and bills per token.
+- **Usage.** Every turn counts against the owner's Claude plan limits, the same pool as Claude Code.
+- **Function size.** The SDK runs the Claude Code binary (about 260 MB), over Vercel's standard 250 MB function limit. `VERCEL_SUPPORT_LARGE_FUNCTIONS=1` (Production and Preview) turns on large functions, and `next.config.ts` keeps the SDK unbundled and ships the Linux binary with `/api/brain` (`outputFileTracingIncludes`). A new route that calls Claude needs its own entry there.
+- **Latency.** A turn is about 3–15 seconds, a few more on a cold start. The route allows 300 seconds, the Hobby maximum.
+- **Testing a preview.** Previews sit behind Vercel's deployment protection; `vercel curl /api/brain --deployment <url> -- ...` gets through it. The route still needs a session cookie.
 
 ## Request and response
 
