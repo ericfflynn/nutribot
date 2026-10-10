@@ -552,7 +552,15 @@ export default async function Home({ searchParams }: PageProps) {
       color: recovery ? BAND_COLORS[recovery.band] : "#8e8e93",
       textColor: recovery ? BAND_TEXT[recovery.band] : "var(--muted)",
       value: recovery ? `${recovery.score}%` : "–",
-      caption: recovery ? BAND_LABELS[recovery.band] : "No data"
+      // The ring color and the timeline carry the band; the legend shows what drives the score.
+      caption: recovery ? "" : "No data",
+      note:
+        [
+          health?.hrvMs != null ? `HRV ${Math.round(health.hrvMs)} ms` : null,
+          health?.restingHr != null ? `RHR ${health.restingHr} bpm` : null
+        ]
+          .filter(Boolean)
+          .join(" · ") || undefined
     },
     {
       label: "Strain",
