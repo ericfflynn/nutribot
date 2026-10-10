@@ -152,7 +152,16 @@ function DeltaText({ delta }: { delta: Delta | null }) {
   return delta ? <span className={`delta ${delta.tone}`}>{delta.text}</span> : null;
 }
 
-type Ring = { label: string; percent: number | null; color: string; textColor: string; value: string; caption: string };
+type Ring = {
+  label: string;
+  percent: number | null;
+  color: string;
+  textColor: string;
+  value: string;
+  caption: string;
+  // Smaller line under the value.
+  note?: string;
+};
 
 // Concentric rings, outermost first, with a legend beside them.
 function ScoreRings({ rings }: { rings: Ring[] }) {
@@ -191,6 +200,7 @@ function ScoreRings({ rings }: { rings: Ring[] }) {
             <dd>
               {ring.value} <span>{ring.caption}</span>
             </dd>
+            {ring.note ? <dd className="ring-note">{ring.note}</dd> : null}
           </div>
         ))}
       </dl>
@@ -327,24 +337,26 @@ function Timeline({ title, events }: { title: string; events: TimelineEvent[] })
           {events.map((event) => {
             const summary = (
               <>
-                <div>
-                  <strong>
-                    {event.title}
-                    {event.details ? (
-                      <svg className="timeline-chevron" viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M9 6l6 6-6 6" />
-                      </svg>
-                    ) : null}
-                  </strong>
-                  {event.detail ? <span>{event.detail}</span> : null}
-                  {event.extra}
-                </div>
-                {event.value ? (
-                  <div className="timeline-value">
-                    <strong style={event.valueColor ? { color: event.valueColor } : undefined}>{event.value}</strong>
-                    <span>{event.unit}</span>
+                <div className="timeline-main">
+                  <div>
+                    <strong>
+                      {event.title}
+                      {event.details ? (
+                        <svg className="timeline-chevron" viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M9 6l6 6-6 6" />
+                        </svg>
+                      ) : null}
+                    </strong>
+                    {event.detail ? <span>{event.detail}</span> : null}
                   </div>
-                ) : null}
+                  {event.value ? (
+                    <div className="timeline-value">
+                      <strong style={event.valueColor ? { color: event.valueColor } : undefined}>{event.value}</strong>
+                      <span>{event.unit}</span>
+                    </div>
+                  ) : null}
+                </div>
+                {event.extra}
               </>
             );
             return (
@@ -548,7 +560,8 @@ export default async function Home({ searchParams }: PageProps) {
       color: STRAIN_COLOR,
       textColor: "var(--strain-ink)",
       value: strain == null ? "–" : strain.toFixed(1),
-      caption: strain == null ? "No data" : strainBand(strain)
+      caption: strain == null ? "No data" : strainBand(strain),
+      note: health?.steps != null ? `${integer.format(health.steps)} steps` : undefined
     }
   ];
 
@@ -674,13 +687,13 @@ export default async function Home({ searchParams }: PageProps) {
     });
   }
   events.push(...timed.sort((a, b) => a.sort - b.sort));
+  // Steps live under Strain in the rings, so the closing row only needs the rest.
   const activity = [
-    health?.steps != null ? `${integer.format(health.steps)} steps` : null,
     health?.activeKcal != null ? `${integer.format(health.activeKcal)} active kcal` : null,
     health?.distanceMiles != null ? `${health.distanceMiles.toFixed(1)} mi` : null
   ].filter(Boolean);
   if (activity.length) {
-    events.push({ key: "activity", time: isToday ? "Now" : "Day", sort: 24 * 60 + 1, color: "#c7c7cc", title: activity.join(" · "), detail: "" });
+    events.push({ key: "activity", time: "",sort: 24 * 60 + 1, color: "#c7c7cc", title: activity.join(" · "), detail: "" });
   }
 
   // Trends. Today's strain and calories are partial, so they get no comparison.

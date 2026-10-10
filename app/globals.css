@@ -2037,14 +2037,21 @@ button {
   visibility: hidden;
 }
 
+/* The main row holds the title and the value; extras (vitals, macros) span the full width below it. */
 .timeline-body {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
   padding-bottom: 18px;
 }
 
-.timeline-body > div:first-child {
+.timeline-main {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.timeline-main > div:first-child {
   display: grid;
   gap: 2px;
   min-width: 0;
@@ -2055,7 +2062,7 @@ button {
   font-weight: 600;
 }
 
-.timeline-body > div:first-child > strong {
+.timeline-main > div:first-child > strong {
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
@@ -2235,7 +2242,7 @@ button {
 .macro-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 10px;
+  gap: 4px 8px;
   margin-top: 2px;
 }
 
@@ -2243,9 +2250,9 @@ button {
 .macro-chip {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   color: var(--ink);
-  font-size: 13px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -2267,4 +2274,11 @@ button {
 
 .macro-chip.fat::before {
   background: #b79ae8;
+}
+
+.score-rings .ring-note {
+  margin-top: 1px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
 }
