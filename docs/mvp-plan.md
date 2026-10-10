@@ -1,6 +1,6 @@
 # NutriBot MVP plan
 
-Status: agreed direction as of October 8, 2026. Replaces the October 1 wellbeing POC review.
+Status: agreed direction as of October 8, 2026; updated October 10, 2026 with what shipped. Replaces the October 1 wellbeing POC review.
 
 ## Goal
 
@@ -87,10 +87,19 @@ Storage is about 1.4 MB for January through early October.
 4. **Chat.** Done for meals and workouts: Chat tab and floating sheet, draft tools, Fitbit matching, conversations with New chat (`chat_conversations`, `chat_messages`). The old OpenAI meal logger is removed. Remaining: the habit, journal and read tools above.
 5. **Dashboard.** Today (scores, nutrition and goals, water, a timeline with editable meals, trends) and Training (missing muscle groups, unlabeled workouts, coverage, sessions, recent workouts) are live.
 
+## Next: public dashboards
+
+Goal: anyone with the link can see Today and Training; logging stays private. The owner agreed (October 10, 2026) that this exposes his real sleep, HRV, recovery, strain, meals and workouts.
+
+- **Public, read-only:** Today and Training render the owner's data without a session. The owner is set by an env var (e.g. `PUBLIC_DASHBOARD_USER`), since there is no session to read it from.
+- **Behind the login:** the Chat tab and floating Chat button, `/api/brain`, saving and discarding drafts, meal and workout edits, goals, water buttons, Refresh and Label. Every server action and `/api/brain` already check the session, so the work is mostly hiding those controls when logged out and adding a visible "Sign in" link.
+- **To decide:** whether meal descriptions and per-item macros are public or just the totals; whether the day strip reaches back the full 28 days; caching (Vercel ISR, or a short revalidate) so public traffic doesn't hit Postgres on every view.
+- **Docs:** the privacy note in AGENTS.md changes from "nothing public" to "dashboards public, raw rows and chat private".
+
 ## Open questions
 
 - **Google re-authorization.** The OAuth app is published (unverified, which is fine for personal use), so refresh tokens no longer expire after 7 days. Re-auth is `npm run health:auth`; an in-app connect flow can come later if needed.
-- **Authentication.** The app uses its own login with env-var passwords and signed cookies. Move to Supabase Auth before adding health data and chat, or keep custom auth for the MVP?
+- **Authentication.** The app uses its own login with env-var passwords and signed cookies, and kept it through chat. Revisit before public dashboards only if a second user is ever added.
 - **Model disclosure.** Today Claude sees the current conversation, its open drafts and, through `list_fitbit_workouts`, workout summaries. Decide what the read tools may return (logged meals, goals, health summaries, raw payloads) before building them.
 - **Health fields.** Which payload fields become views or dashboard metrics, once the raw data is loaded and inspected.
 

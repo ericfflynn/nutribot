@@ -76,7 +76,7 @@ psql "$DB" -c "select count(*) from macro_entries;"
 
 - **Database writes need the owner's approval.** Read-only queries are fine. Ask before any `insert`, `update`, `delete`, or DDL. This is the only copy of the data and there is no migration runner or backup process in the repo.
 - **Schema changes:** update `supabase/schema.sql` (idempotent `create ... if not exists`) and show the SQL before running it.
-- **Private data:** meal and health records belong to real people. Don't paste rows into commits, docs, PRs, or screenshots. Use counts or synthetic examples.
+- **Private data:** meal and health records belong to real people. Don't paste rows into commits, docs or PRs; use counts or synthetic examples. Exception: the owner approved (October 10, 2026) the iPhone screenshots of his real data in `docs/screenshots/`. Replace them only when he asks.
 - **Deploys and pushes are outward-facing.** Confirm before pushing to `master`, running `vercel deploy --prod`, or changing Vercel env vars.
 - **Database access** goes through `lib/supabase.ts`. It uses `pg` when `DATABASE_URL` is set, otherwise the Supabase service-role client. Keep both paths working, or remove one deliberately.
 - **Auth** is custom (`lib/auth.ts`): users and passwords come from env vars, sessions are HMAC-signed cookies. It is not Supabase Auth. Every server action and query must scope by the session user.
