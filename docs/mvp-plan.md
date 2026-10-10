@@ -14,7 +14,7 @@ This repo is the base. The existing meal logger, dashboard and goals stay workin
 2. **Chat with tool use.** Live since October 10, 2026 as the chat brain ([brain.md](brain.md)): Claude through the Agent SDK on the owner's subscription. Built tools:
    - `draft_meal`: items and macro estimates, plus a meal type (breakfast, lunch, dinner, snack), saved to `macro_entries`.
    - `draft_workout`: muscle groups, RPE and the matching Fitbit workout, saved to `workout_sessions` ([training-plan.md](training-plan.md)).
-   - `list_fitbit_workouts`: read-only, for labeling past workouts.
+   - `list_workouts`: read-only, watch workouts with their labels, for labeling past workouts and answering questions about recent training.
 
    Still to build:
    - `logHabitEvent`: a named habit and when it happened.
@@ -100,7 +100,7 @@ Goal: anyone with the link can see Today and Training; logging stays private. Th
 
 - **Google re-authorization.** The OAuth app is published (unverified, which is fine for personal use), so refresh tokens no longer expire after 7 days. Re-auth is `npm run health:auth`; an in-app connect flow can come later if needed.
 - **Authentication.** The app uses its own login with env-var passwords and signed cookies, and kept it through chat. Revisit before public dashboards only if a second user is ever added.
-- **Model disclosure.** Today Claude sees the current conversation, its open drafts and, through `list_fitbit_workouts`, workout summaries. Decide what the read tools may return (logged meals, goals, health summaries, raw payloads) before building them.
+- **Model disclosure.** Today Claude sees the current conversation, its open drafts and, through `list_workouts`, workout summaries and their labels. Decide what the read tools may return (logged meals, goals, health summaries, raw payloads) before building them.
 - **Health fields.** Which payload fields become views or dashboard metrics, once the raw data is loaded and inspected.
 
 ## Ideas for later

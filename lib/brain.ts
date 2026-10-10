@@ -16,10 +16,12 @@ import {
   WORKOUT_TYPES,
   chooseMatch,
   listFitbitWorkouts,
+  listWorkoutSessions,
   type FitbitWorkout,
   type MatchResult,
   type MuscleGroup,
   type TimeHint,
+  type WorkoutSession,
   type WorkoutType
 } from "./workouts";
 
@@ -79,7 +81,7 @@ export type BrainContext = {
 };
 
 const SERVER = "nutribot";
-const TOOLS = ["draft_meal", "draft_workout", "list_fitbit_workouts"];
+const TOOLS = ["draft_meal", "draft_workout", "list_workouts"];
 
 const localDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("Local date, YYYY-MM-DD.");
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
@@ -97,6 +99,12 @@ function describeWorkout(w: FitbitWorkout) {
   const minutes = w.activeMinutes != null ? `, ${w.activeMinutes} min` : "";
   const hr = w.avgHr != null ? `, avg HR ${w.avgHr}` : "";
   return `${w.name} ${w.startedAt.slice(11)}–${w.endedAt.slice(11)}${minutes}${hr} (id ${w.id})`;
+}
+
+function describeSession(s: WorkoutSession) {
+  const rpe = s.rpe != null ? `, RPE ${s.rpe}` : "";
+  const groups = s.muscleGroups.length ? ` [${s.muscleGroups.join(", ")}]` : "";
+  return `logged as "${s.name}"${groups}${rpe}`;
 }
 
 function text(value: unknown) {
@@ -131,7 +139,8 @@ Today is ${today}; local time is ${nowLocal.slice(11)}. The person is looking at
 - rpe converts intensity words: easy or light 3-4, moderate or solid 6, hard 8, brutal or all-out 9-10. Use a number they give as is. With no sense of intensity, rpe is null and you ask how hard it was. That is the only question to ask about a workout; never ask for exercises, sets or duration.
 - The watch records most workouts, and the app matches each draft to the right one. Help it with time_hint when they say when: morning 05:00-12:00, afternoon 12:00-17:00, evening or after work 17:00-22:00, or a specific time ±1 hour. Leave time_hint null for "just now" or no time.
 - untracked is true only when they say they didn't wear the watch. Only then is duration_min filled, and only if they state it.
-- For past days, or when they describe a workout by its time or type, call list_fitbit_workouts and pass fitbit_workout_id when their description clearly points to one workout.
+- For past days, or when they describe a workout by its time or type, call list_workouts and pass fitbit_workout_id when their description clearly points to one workout.
+- list_workouts also shows what each workout was logged as (name, muscle groups, RPE). Use it when they ask about recent training or what to train next.
 - The tool result says which watch workout was matched. Mention it briefly ("matched to your 6:12 PM weightlifting, 49 min"), or say it will link when the watch syncs.
 
 ## Everything else
@@ -260,7 +269,7 @@ export async function runBrain(message: string, context: BrainContext): Promise<
       duration_min: z.number().int().positive().nullable().describe("Only for untracked workouts with a stated duration."),
       time_hint: z.object({ start: hhmm, end: hhmm }).nullable().describe("Local window when it happened, if stated."),
       untracked: z.boolean().describe("True only if they didn't wear the watch."),
-      fitbit_workout_id: z.string().nullable().describe("A specific watch workout from list_fitbit_workouts."),
+      fitbit_workout_id: z.string().nullable().describe("A specific watch workout from list_workouts."),
       notes: z.string(),
       questions: z.array(z.string()).describe("Only how hard it was, when rpe is null."),
       replaces: z.string().optional().describe("Id of an open draft this revises.")
@@ -338,20 +347,37 @@ export async function runBrain(message: string, context: BrainContext): Promise<
   );
 
   const listWorkouts = tool(
-    "list_fitbit_workouts",
-    "List the watch's recorded workouts in a date range (at most 31 days), newest first.",
+    "list_workouts",
+    "List workouts in a date range (at most 31 days), newest first: each watch workout with what it was logged as, if anything, plus logged workouts with no watch workout.",
     {
       start_date: localDate,
       end_date: localDate,
-      unlabeled_only: z.boolean().describe("Only workouts nothing has been logged for.")
+      unlabeled_only: z.boolean().describe("Only watch workouts nothing has been logged for.")
     },
     async (args) => {
       if (args.start_date > args.end_date || addDays(args.start_date, 31) < args.end_date) {
         return errorText("Use a range of at most 31 days, start before end.");
       }
-      const workouts = await listFitbitWorkouts(db, userName, args.start_date, args.end_date);
-      const rows = workouts.filter((w) => !args.unlabeled_only || !w.sessionId).map((w) => `${w.day} ${describeWorkout(w)}`);
-      return text(rows.length ? rows.join("\n") : "No watch workouts in that range.");
+      const [workouts, sessions] = await Promise.all([
+        listFitbitWorkouts(db, userName, args.start_date, args.end_date),
+        args.unlabeled_only ? [] : listWorkoutSessions(db, userName, args.start_date, args.end_date)
+      ]);
+      const sessionById = new Map(sessions.map((s) => [s.id, s]));
+      const rows = workouts
+        .filter((w) => !args.unlabeled_only || !w.sessionId)
+        .map((w) => {
+          const session = w.sessionId ? sessionById.get(w.sessionId) : undefined;
+          return { day: w.day, line: `${w.day} ${describeWorkout(w)}${session ? `, ${describeSession(session)}` : ", not logged"}` };
+        });
+      // Logged sessions with no watch workout yet, or none at all.
+      for (const s of sessions) {
+        if (s.matchStatus === "linked") continue;
+        const minutes = s.durationMin != null ? `, ${s.durationMin} min` : "";
+        const watch = s.matchStatus === "untracked" ? "no watch" : "not linked to a watch workout yet";
+        rows.push({ day: s.date, line: `${s.date} ${describeSession(s)}${minutes} (${watch})` });
+      }
+      rows.sort((a, b) => b.day.localeCompare(a.day));
+      return text(rows.length ? rows.map((row) => row.line).join("\n") : "No workouts in that range.");
     },
     { annotations: { readOnlyHint: true } }
   );

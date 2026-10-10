@@ -50,7 +50,7 @@ Claude remembers nothing between requests. Each turn it sees only what the route
 | --- | --- |
 | `draft_meal` | Creates or revises (`replaces: id`) a meal draft. One call per meal. |
 | `draft_workout` | Creates or revises a workout draft and matches it to a Fitbit workout. One call per activity. |
-| `list_fitbit_workouts` | Read-only: the watch's workouts in a date range (31 days at most), optionally only unlabeled ones. Used for backfill. |
+| `list_workouts` | Read-only: workouts in a date range (31 days at most), newest first. Each watch workout comes with what it was logged as (name, muscle groups, RPE), plus logged sessions with no watch workout; optionally only unlabeled watch workouts. Used for backfill and for questions about recent training. |
 
 Tools only build drafts. Read tools for meals, goals and health metrics come next; they plug into the same in-process server.
 
@@ -97,7 +97,7 @@ Claude supplies the clues: type, date, an optional time window, and whether the 
 
 Tested against the Fitbit history (June–October 2026): with the type filter, 43 of 45 lifting days have a single candidate, and sport, class and run days always do.
 
-**Backfill.** Drafts carry their own date, so "label last week: Monday chest and tris hard, Wednesday legs" makes one draft per day, each matched on its own date. Claude can call `list_fitbit_workouts` and pass `fitbit_workout_id` when a description clearly points at one workout ("the 6 pm lift on Tuesday").
+**Backfill.** Drafts carry their own date, so "label last week: Monday chest and tris hard, Wednesday legs" makes one draft per day, each matched on its own date. Claude can call `list_workouts` and pass `fitbit_workout_id` when a description clearly points at one workout ("the 6 pm lift on Tuesday").
 
 ## Tables
 
