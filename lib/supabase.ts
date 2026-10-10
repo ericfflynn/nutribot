@@ -1,6 +1,6 @@
-import { createClient } from "@supabase/supabase-js";
+// Database access: Supabase Postgres through pg and DATABASE_URL.
 import { Pool, type PoolConfig } from "pg";
-import { getFallbackMacroGoals, parseMacroGoals, type MacroGoals } from "./goals";
+import { fallbackGoals, parseGoals, type Goals } from "./goals";
 import type { ParsedMacros } from "./macros";
 
 export type MacroFoodItem = {
@@ -30,6 +30,8 @@ export type MacroEntry = {
   created_at: string;
 };
 
+type Queryable = Pick<Pool, "query">;
+
 let pool: Pool | null = null;
 
 function getPoolConfig(connectionString: string): PoolConfig {
@@ -46,6 +48,7 @@ function getPoolConfig(connectionString: string): PoolConfig {
   };
 }
 
+// The shared pool, or null when DATABASE_URL isn't set.
 export function getPool() {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
@@ -59,24 +62,12 @@ export function getPool() {
   return pool;
 }
 
-function getSupabase() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) {
-    throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.");
+function requirePool() {
+  const db = getPool();
+  if (!db) {
+    throw new Error("DATABASE_URL is required.");
   }
-
-  return createClient(url, key, {
-    auth: {
-      persistSession: false
-    }
-  });
-}
-
-export function isDatabaseConfigured() {
-  return Boolean(
-    process.env.DATABASE_URL || (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY)
-  );
+  return db;
 }
 
 function normalizeItems(items: unknown): MacroFoodItem[] {
@@ -120,231 +111,48 @@ function normalizeEntry(row: Omit<MacroEntry, "items"> & { items: unknown }): Ma
   };
 }
 
-export async function listEntriesForDate(userName: string, entryDate: string) {
-  const db = getPool();
-  if (db) {
-    const { rows } = await db.query(
-      `
-      select
-        id::text,
-        user_name,
-        entry_date::text,
-        raw_text,
-        calories::float8,
-        protein_g::float8,
-        carbs_g::float8,
-        fat_g::float8,
-        items,
-        confidence::float8,
-        notes,
-        meal_type,
-        created_at::text
-      from public.macro_entries
-      where user_name = $1 and entry_date = $2::date
-      order by created_at desc
-      `,
-      [userName, entryDate]
-    );
-    return rows.map(normalizeEntry);
-  }
-
-  const { data, error } = await getSupabase()
-    .from("macro_entries")
-    .select("*")
-    .eq("user_name", userName)
-    .eq("entry_date", entryDate)
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    throw error;
-  }
-
-  return (data || []).map((row) => normalizeEntry(row as Omit<MacroEntry, "items"> & { items: unknown }));
-}
+const ENTRY_COLUMNS = `
+  id::text,
+  user_name,
+  entry_date::text,
+  raw_text,
+  calories::float8,
+  protein_g::float8,
+  carbs_g::float8,
+  fat_g::float8,
+  items,
+  confidence::float8,
+  notes,
+  meal_type,
+  created_at::text
+`;
 
 export async function listEntriesForDateRange(userName: string, startDate: string, endDate: string) {
-  const db = getPool();
-  if (db) {
-    const { rows } = await db.query(
-      `
-      select
-        id::text,
-        user_name,
-        entry_date::text,
-        raw_text,
-        calories::float8,
-        protein_g::float8,
-        carbs_g::float8,
-        fat_g::float8,
-        items,
-        confidence::float8,
-        notes,
-        meal_type,
-        created_at::text
-      from public.macro_entries
-      where user_name = $1
-        and entry_date >= $2::date
-        and entry_date <= $3::date
-      order by entry_date desc, created_at desc
-      `,
-      [userName, startDate, endDate]
-    );
-    return rows.map(normalizeEntry);
-  }
-
-  const { data, error } = await getSupabase()
-    .from("macro_entries")
-    .select("*")
-    .eq("user_name", userName)
-    .gte("entry_date", startDate)
-    .lte("entry_date", endDate)
-    .order("entry_date", { ascending: false })
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    throw error;
-  }
-
-  return (data || []).map((row) => normalizeEntry(row as Omit<MacroEntry, "items"> & { items: unknown }));
-}
-
-// Undefined-table errors from Postgres and from PostgREST.
-function isMissingTable(error: unknown) {
-  const code = (error as { code?: string } | null)?.code;
-  return code === "42P01" || code === "PGRST205";
-}
-
-// Ounces of water logged on a day, or null when the water_entries table
-// hasn't been created yet (Today hides the water row in that case).
-export async function getWaterOunces(userName: string, entryDate: string): Promise<number | null> {
-  const db = getPool();
-  if (db) {
-    try {
-      const { rows } = await db.query(
-        `
-        select coalesce(sum(amount_oz), 0)::float8 as ounces
-        from public.water_entries
-        where user_name = $1 and entry_date = $2::date
-        `,
-        [userName, entryDate]
-      );
-      return rows[0].ounces;
-    } catch (error) {
-      if (isMissingTable(error)) {
-        return null;
-      }
-      throw error;
-    }
-  }
-
-  const { data, error } = await getSupabase()
-    .from("water_entries")
-    .select("amount_oz")
-    .eq("user_name", userName)
-    .eq("entry_date", entryDate);
-
-  if (error) {
-    if (isMissingTable(error)) {
-      return null;
-    }
-    throw error;
-  }
-
-  return (data || []).reduce((sum, row) => sum + Number(row.amount_oz), 0);
-}
-
-export async function addWaterEntry(userName: string, entryDate: string, ounces: number) {
-  const db = getPool();
-  if (db) {
-    await db.query(
-      `
-      insert into public.water_entries (user_name, entry_date, amount_oz)
-      values ($1, $2::date, $3)
-      `,
-      [userName, entryDate, ounces]
-    );
-    return;
-  }
-
-  const { error } = await getSupabase().from("water_entries").insert({
-    user_name: userName,
-    entry_date: entryDate,
-    amount_oz: ounces
-  });
-
-  if (error) {
-    throw error;
-  }
-}
-
-export async function listRecentEntries(userName: string, limit = 5) {
-  const db = getPool();
-  if (db) {
-    const { rows } = await db.query(
-      `
-      select
-        id::text,
-        user_name,
-        entry_date::text,
-        raw_text,
-        calories::float8,
-        protein_g::float8,
-        carbs_g::float8,
-        fat_g::float8,
-        items,
-        confidence::float8,
-        notes,
-        meal_type,
-        created_at::text
-      from public.macro_entries
-      where user_name = $1
-      order by entry_date desc, created_at desc
-      limit $2
-      `,
-      [userName, limit]
-    );
-    return rows.map(normalizeEntry);
-  }
-
-  const { data, error } = await getSupabase()
-    .from("macro_entries")
-    .select("*")
-    .eq("user_name", userName)
-    .order("entry_date", { ascending: false })
-    .order("created_at", { ascending: false })
-    .limit(limit);
-
-  if (error) {
-    throw error;
-  }
-
-  return (data || []).map((row) => normalizeEntry(row as Omit<MacroEntry, "items"> & { items: unknown }));
+  const { rows } = await requirePool().query(
+    `
+    select ${ENTRY_COLUMNS}
+    from public.macro_entries
+    where user_name = $1
+      and entry_date >= $2::date
+      and entry_date <= $3::date
+    order by entry_date desc, created_at desc
+    `,
+    [userName, startDate, endDate]
+  );
+  return rows.map(normalizeEntry);
 }
 
 // The chat brain's meal history: entries in a date range, newest first,
 // optionally only those whose text or item names contain every search word.
 export async function searchMacroEntries(
-  db: Pick<Pool, "query">,
+  db: Queryable,
   userName: string,
   params: { startDate: string; endDate: string; words: string[]; limit: number }
 ) {
   const patterns = params.words.map((word) => `%${word.replace(/[\\%_]/g, "\\$&")}%`);
   const { rows } = await db.query(
     `
-    select
-      id::text,
-      user_name,
-      entry_date::text,
-      raw_text,
-      calories::float8,
-      protein_g::float8,
-      carbs_g::float8,
-      fat_g::float8,
-      items,
-      confidence::float8,
-      notes,
-      meal_type,
-      created_at::text
+    select ${ENTRY_COLUMNS}
     from public.macro_entries
     where user_name = $1
       and entry_date >= $2::date
@@ -367,23 +175,10 @@ export async function searchMacroEntries(
   return rows.map(normalizeEntry);
 }
 
-export async function getMacroEntry(db: Pick<Pool, "query">, userName: string, id: string) {
+export async function getMacroEntry(db: Queryable, userName: string, id: string) {
   const { rows } = await db.query(
     `
-    select
-      id::text,
-      user_name,
-      entry_date::text,
-      raw_text,
-      calories::float8,
-      protein_g::float8,
-      carbs_g::float8,
-      fat_g::float8,
-      items,
-      confidence::float8,
-      notes,
-      meal_type,
-      created_at::text
+    select ${ENTRY_COLUMNS}
     from public.macro_entries
     where user_name = $1 and id::text = $2
     `,
@@ -399,64 +194,42 @@ export async function saveMacroEntry(params: {
   parsed: ParsedMacros;
   mealType?: MealType;
   // A transaction's client, when the insert is part of a larger write.
-  client?: Pick<Pool, "query">;
+  client?: Queryable;
 }): Promise<string> {
   const { parsed } = params;
-  const db = params.client ?? getPool();
-  if (db) {
-    const { rows } = await db.query<{ id: string }>(
-      `
-      insert into public.macro_entries (
-        user_name,
-        entry_date,
-        raw_text,
-        calories,
-        protein_g,
-        carbs_g,
-        fat_g,
-        items,
-        confidence,
-        notes,
-        meal_type
-      )
-      values ($1, $2::date, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11)
-      returning id::text
-      `,
-      [
-        params.userName,
-        params.entryDate,
-        params.rawText,
-        Math.round(parsed.calories),
-        Math.round(parsed.protein_g),
-        Math.round(parsed.carbs_g),
-        Math.round(parsed.fat_g),
-        JSON.stringify(parsed.items),
-        parsed.confidence,
-        parsed.notes || null,
-        params.mealType ?? null
-      ]
-    );
-    return rows[0].id;
-  }
-
-  const { data, error } = await getSupabase().from("macro_entries").insert({
-    user_name: params.userName,
-    entry_date: params.entryDate,
-    raw_text: params.rawText,
-    calories: Math.round(parsed.calories),
-    protein_g: Math.round(parsed.protein_g),
-    carbs_g: Math.round(parsed.carbs_g),
-    fat_g: Math.round(parsed.fat_g),
-    items: parsed.items,
-    confidence: parsed.confidence,
-    notes: parsed.notes || null,
-    meal_type: params.mealType ?? null
-  }).select("id").single();
-
-  if (error) {
-    throw error;
-  }
-  return String(data.id);
+  const { rows } = await (params.client ?? requirePool()).query<{ id: string }>(
+    `
+    insert into public.macro_entries (
+      user_name,
+      entry_date,
+      raw_text,
+      calories,
+      protein_g,
+      carbs_g,
+      fat_g,
+      items,
+      confidence,
+      notes,
+      meal_type
+    )
+    values ($1, $2::date, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11)
+    returning id::text
+    `,
+    [
+      params.userName,
+      params.entryDate,
+      params.rawText,
+      Math.round(parsed.calories),
+      Math.round(parsed.protein_g),
+      Math.round(parsed.carbs_g),
+      Math.round(parsed.fat_g),
+      JSON.stringify(parsed.items),
+      parsed.confidence,
+      parsed.notes || null,
+      params.mealType ?? null
+    ]
+  );
+  return rows[0].id;
 }
 
 export async function updateMacroEntry(params: {
@@ -467,208 +240,137 @@ export async function updateMacroEntry(params: {
   // Left unchanged when omitted.
   mealType?: MealType;
   entryDate?: string;
-  client?: Pick<Pool, "query">;
+  client?: Queryable;
 }) {
   const { parsed } = params;
-  const db = params.client ?? getPool();
-  if (db) {
-    const { rowCount } = await db.query(
-      `
-      update public.macro_entries
-      set
-        raw_text = $3,
-        calories = $4,
-        protein_g = $5,
-        carbs_g = $6,
-        fat_g = $7,
-        items = $8::jsonb,
-        confidence = $9,
-        notes = $10,
-        meal_type = coalesce($11, meal_type),
-        entry_date = coalesce($12::date, entry_date)
-      where id = $1::uuid and user_name = $2
-      `,
-      [
-        params.id,
-        params.userName,
-        params.rawText,
-        Math.round(parsed.calories),
-        Math.round(parsed.protein_g),
-        Math.round(parsed.carbs_g),
-        Math.round(parsed.fat_g),
-        JSON.stringify(parsed.items),
-        parsed.confidence,
-        parsed.notes || null,
-        params.mealType ?? null,
-        params.entryDate ?? null
-      ]
-    );
+  const { rowCount } = await (params.client ?? requirePool()).query(
+    `
+    update public.macro_entries
+    set
+      raw_text = $3,
+      calories = $4,
+      protein_g = $5,
+      carbs_g = $6,
+      fat_g = $7,
+      items = $8::jsonb,
+      confidence = $9,
+      notes = $10,
+      meal_type = coalesce($11, meal_type),
+      entry_date = coalesce($12::date, entry_date)
+    where id = $1::uuid and user_name = $2
+    `,
+    [
+      params.id,
+      params.userName,
+      params.rawText,
+      Math.round(parsed.calories),
+      Math.round(parsed.protein_g),
+      Math.round(parsed.carbs_g),
+      Math.round(parsed.fat_g),
+      JSON.stringify(parsed.items),
+      parsed.confidence,
+      parsed.notes || null,
+      params.mealType ?? null,
+      params.entryDate ?? null
+    ]
+  );
 
-    if (!rowCount) {
-      throw new Error("Meal entry was not found.");
-    }
-    return;
-  }
-
-  const { data, error } = await getSupabase()
-    .from("macro_entries")
-    .update({
-      raw_text: params.rawText,
-      calories: Math.round(parsed.calories),
-      protein_g: Math.round(parsed.protein_g),
-      carbs_g: Math.round(parsed.carbs_g),
-      fat_g: Math.round(parsed.fat_g),
-      items: parsed.items,
-      confidence: parsed.confidence,
-      notes: parsed.notes || null,
-      ...(params.mealType ? { meal_type: params.mealType } : {}),
-      ...(params.entryDate ? { entry_date: params.entryDate } : {})
-    })
-    .eq("id", params.id)
-    .eq("user_name", params.userName)
-    .select("id");
-
-  if (error) {
-    throw error;
-  }
-  if (!data?.length) {
+  if (!rowCount) {
     throw new Error("Meal entry was not found.");
   }
 }
 
 export async function deleteMacroEntry(id: string, userName: string) {
-  const db = getPool();
-  if (db) {
-    const { rowCount } = await db.query(
-      `
-      delete from public.macro_entries
-      where id = $1::uuid and user_name = $2
-      `,
-      [id, userName]
-    );
+  const { rowCount } = await requirePool().query(
+    `
+    delete from public.macro_entries
+    where id = $1::uuid and user_name = $2
+    `,
+    [id, userName]
+  );
 
-    if (!rowCount) {
-      throw new Error("Meal entry was not found.");
-    }
-    return;
-  }
-
-  const { data, error } = await getSupabase()
-    .from("macro_entries")
-    .delete()
-    .eq("id", id)
-    .eq("user_name", userName)
-    .select("id");
-
-  if (error) {
-    throw error;
-  }
-  if (!data?.length) {
+  if (!rowCount) {
     throw new Error("Meal entry was not found.");
   }
 }
 
-export async function getUserMacroGoals(userName: string): Promise<MacroGoals> {
-  const db = getPool();
-  if (db) {
-    const { rows } = await db.query(
-      `
-      select
-        calories::float8,
-        protein_pct::float8,
-        carbs_pct::float8,
-        fat_pct::float8
-      from public.user_macro_goals
-      where user_name = $1
-      limit 1
-      `,
-      [userName]
-    );
+// Ounces of water logged on a day.
+export async function getWaterOunces(userName: string, entryDate: string, db: Queryable = requirePool()): Promise<number> {
+  const { rows } = await db.query(
+    `
+    select coalesce(sum(amount_oz), 0)::float8 as ounces
+    from public.water_entries
+    where user_name = $1 and entry_date = $2::date
+    `,
+    [userName, entryDate]
+  );
+  return rows[0].ounces;
+}
 
-    if (rows[0]) {
-      return parseMacroGoals({
-        calories: rows[0].calories,
-        proteinPct: rows[0].protein_pct,
-        carbsPct: rows[0].carbs_pct,
-        fatPct: rows[0].fat_pct
-      });
-    }
+export async function addWaterEntry(userName: string, entryDate: string, ounces: number) {
+  await requirePool().query(
+    `
+    insert into public.water_entries (user_name, entry_date, amount_oz)
+    values ($1, $2::date, $3)
+    `,
+    [userName, entryDate, ounces]
+  );
+}
 
-    return getFallbackMacroGoals(userName);
+// The user's daily targets, or the defaults until they save some.
+export async function getUserGoals(userName: string, db: Queryable = requirePool()): Promise<Goals> {
+  const { rows } = await db.query(
+    `
+    select
+      calories::float8,
+      protein_pct::float8,
+      carbs_pct::float8,
+      fat_pct::float8,
+      water_oz::float8
+    from public.user_macro_goals
+    where user_name = $1
+    limit 1
+    `,
+    [userName]
+  );
+
+  if (!rows[0]) {
+    return fallbackGoals;
   }
-
-  const { data, error } = await getSupabase()
-    .from("user_macro_goals")
-    .select("calories, protein_pct, carbs_pct, fat_pct")
-    .eq("user_name", userName)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  if (!data) {
-    return getFallbackMacroGoals(userName);
-  }
-
-  return parseMacroGoals({
-    calories: Number(data.calories),
-    proteinPct: Number(data.protein_pct),
-    carbsPct: Number(data.carbs_pct),
-    fatPct: Number(data.fat_pct)
+  return parseGoals({
+    calories: rows[0].calories,
+    proteinPct: rows[0].protein_pct,
+    carbsPct: rows[0].carbs_pct,
+    fatPct: rows[0].fat_pct,
+    waterOz: rows[0].water_oz
   });
 }
 
-export async function saveUserMacroGoals(userName: string, goals: MacroGoals) {
-  const normalized = parseMacroGoals(goals);
-  const db = getPool();
-  if (db) {
-    await db.query(
-      `
-      insert into public.user_macro_goals (
-        user_name,
-        calories,
-        protein_pct,
-        carbs_pct,
-        fat_pct,
-        updated_at
-      )
-      values ($1, $2, $3, $4, $5, now())
-      on conflict (user_name)
-      do update set
-        calories = excluded.calories,
-        protein_pct = excluded.protein_pct,
-        carbs_pct = excluded.carbs_pct,
-        fat_pct = excluded.fat_pct,
-        updated_at = now()
-      `,
-      [
-        userName,
-        normalized.calories,
-        normalized.proteinPct,
-        normalized.carbsPct,
-        normalized.fatPct
-      ]
-    );
-    return normalized;
-  }
-
-  const { error } = await getSupabase().from("user_macro_goals").upsert(
-    {
-      user_name: userName,
-      calories: normalized.calories,
-      protein_pct: normalized.proteinPct,
-      carbs_pct: normalized.carbsPct,
-      fat_pct: normalized.fatPct,
-      updated_at: new Date().toISOString()
-    },
-    { onConflict: "user_name" }
+export async function saveUserGoals(userName: string, goals: Goals) {
+  const normalized = parseGoals(goals);
+  await requirePool().query(
+    `
+    insert into public.user_macro_goals (
+      user_name,
+      calories,
+      protein_pct,
+      carbs_pct,
+      fat_pct,
+      water_oz,
+      updated_at
+    )
+    values ($1, $2, $3, $4, $5, $6, now())
+    on conflict (user_name)
+    do update set
+      calories = excluded.calories,
+      protein_pct = excluded.protein_pct,
+      carbs_pct = excluded.carbs_pct,
+      fat_pct = excluded.fat_pct,
+      water_oz = excluded.water_oz,
+      updated_at = now()
+    `,
+    [userName, normalized.calories, normalized.proteinPct, normalized.carbsPct, normalized.fatPct, normalized.waterOz]
   );
-
-  if (error) {
-    throw error;
-  }
-
   return normalized;
 }
 
@@ -682,22 +384,4 @@ export function summarizeEntries(entries: MacroEntry[]) {
     }),
     { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 }
   );
-}
-
-export function summarizeCompletedLoggedDayAverages(entries: MacroEntry[], currentDate: string) {
-  const completedEntries = entries.filter((entry) => entry.entry_date < currentDate);
-  const loggedDayCount = new Set(completedEntries.map((entry) => entry.entry_date)).size;
-  const totals = summarizeEntries(completedEntries);
-  const divisor = loggedDayCount || 1;
-
-  return {
-    averages: {
-      calories: totals.calories / divisor,
-      protein_g: totals.protein_g / divisor,
-      carbs_g: totals.carbs_g / divisor,
-      fat_g: totals.fat_g / divisor
-    },
-    dayCount: loggedDayCount,
-    totals
-  };
 }

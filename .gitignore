@@ -35,3 +35,7 @@ pnpm-debug.log*
 
 # Supabase CLI
 supabase/.temp/
+
+# Local database backup (npm run db:backup)
+backups/
+*.tsbuildinfo

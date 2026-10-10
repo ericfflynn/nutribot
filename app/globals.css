@@ -633,7 +633,7 @@ button {
 
 .goals-form {
   display: grid;
-  grid-template-columns: repeat(4, minmax(82px, 1fr)) auto;
+  grid-template-columns: repeat(5, minmax(72px, 1fr)) auto;
   gap: 12px;
   align-items: end;
   padding: 0 16px 16px;

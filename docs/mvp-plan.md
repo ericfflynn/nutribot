@@ -1,6 +1,6 @@
 # NutriBot MVP plan
 
-Status: agreed direction as of October 8, 2026; updated October 10, 2026 with what shipped. Replaces the October 1 wellbeing POC review.
+Status: agreed direction as of October 8, 2026. As of October 10, 2026 the MVP is mostly achieved: health sync, chat logging for meals and workouts, and the Today and Training dashboards are live. Remaining: habit and journal logging, and a health-metrics read tool. Replaces the October 1 wellbeing POC review.
 
 ## Goal
 
@@ -14,13 +14,15 @@ This repo is the base. The existing meal logger, dashboard and goals stay workin
 2. **Chat with tool use.** Live since October 10, 2026 as the chat brain ([brain.md](brain.md)): Claude through the Agent SDK on the owner's subscription. Built tools:
    - `draft_meal`: items and macro estimates, plus a meal type (breakfast, lunch, dinner, snack, dessert), saved to `macro_entries`.
    - `draft_workout`: muscle groups, RPE and the matching Fitbit workout, saved to `workout_sessions` ([training-plan.md](training-plan.md)).
+   - `draft_meal` with `edits`: corrects a saved meal; the owner applies it with Update.
+   - `list_meals`: read-only meal history by date range or search, so repeat meals reuse past items and macros.
    - `list_workouts`: read-only, watch workouts with their labels, for labeling past workouts and answering questions about recent training.
+   - `get_goals`: read-only daily targets (calories, macros, water) and a day's progress against them.
 
    Still to build:
-   - `logHabitEvent`: a named habit and when it happened.
-   - `writeJournalEntry`: free text for the day.
-   - `queryHealthData`: read-only access to the Google Health records and logged data.
-   - `getUserGoals`: macro targets and other goals.
+   - Habit logging: a named habit and when it happened.
+   - Journal: free text for the day.
+   - Health metrics read tool: sleep, recovery, strain and the daily health views.
 3. **Write rules.** Tool inputs are validated with Zod. Tools build drafts; nothing is written until the owner taps Save, which saves the server's stored copy. Missing details are asked for, not guessed, and the assistant never says "logged".
 4. **Mobile dashboard.** Read-focused views of today and recent trends, built from the logged and ingested data.
 
@@ -38,10 +40,11 @@ This repo is the base. The existing meal logger, dashboard and goals stay workin
 - Supabase Postgres, accessed from the server through `DATABASE_URL` (`pg`).
 - Claude from server code only, through the Agent SDK (`CLAUDE_CODE_OAUTH_TOKEN`). Tokens never reach the browser.
 - Health sync runs several times a day as Vercel Cron routes (`vercel.json`), and on demand with `npm run health:sync`.
+- Backups: `npm run db:backup` keeps one local `pg_dump` in `backups/` (gitignored). Supabase's free tier has no automatic backups; AGENTS.md says when to refresh it.
 
 ## Data
 
-Existing tables stay as they are: `macro_entries`, `user_macro_goals`.
+Logged data: `macro_entries` (meals), `user_macro_goals` (daily targets: calories, macro split, water), `water_entries` (one row per drink), `workout_sessions`, `chat_conversations` and `chat_messages`.
 
 Google Health raw store (schema in `supabase/schema.sql`):
 
@@ -50,9 +53,7 @@ Google Health raw store (schema in `supabase/schema.sql`):
 | `health_records` | One row per daily total, daily metric, sleep session or workout: user, data type, monthly partition, record key, raw `payload` JSONB, fetch time. |
 | `health_sync_state` | Per user and data type: covered-through date and last successful sync. |
 
-New tables for chat writes (workouts, habit events, journal entries, chat messages) get designed with the tools in milestone 3. The proposed workout tables (sessions, exercises, sets) are in [training-plan.md](training-plan.md).
-
-Water intake is stored in `water_entries`: one row per drink, summed per day on Today.
+Tables for habit events and journal entries get designed with those tools. Workouts are session-level ([training-plan.md](training-plan.md)).
 
 ## Google Health ingestion
 
@@ -84,8 +85,9 @@ Storage is about 1.4 MB for January through early October.
 1. **Plan** (this document).
 2. **Raw health load.** Done locally: health tables in Supabase, `npm run health:auth` and `npm run health:sync`.
 3. **Scheduled sync.** Done: six daily Vercel Cron jobs (a full run at 11:00 UTC, five light "last 3 days" runs through the day), Google credentials in Vercel env vars, every run logged in `health_sync_runs`.
-4. **Chat.** Done for meals and workouts: Chat tab and floating sheet, draft tools, Fitbit matching, conversations with New chat (`chat_conversations`, `chat_messages`). The old OpenAI meal logger is removed. Remaining: the habit, journal and read tools above.
-5. **Dashboard.** Today (scores, nutrition and goals, water, a timeline with editable meals, trends) and Training (missing muscle groups, unlabeled workouts, coverage, sessions, recent workouts) are live.
+4. **Chat.** Done for meals and workouts: Chat tab and floating sheet, draft tools, Fitbit matching, conversations with New chat (`chat_conversations`, `chat_messages`), meal history and edits, goals. The old OpenAI meal logger is removed. Remaining: habits, journal and the health metrics tool.
+5. **Dashboard.** Today (scores, nutrition and goals, water, a timeline with one row per meal, 7-day trends with tooltips) and Training (missing muscle groups, unlabeled workouts, coverage, sessions, recent workouts) are live, with a home-screen icon.
+6. **Next:** habit and journal logging, then public dashboards (below).
 
 ## Next: public dashboards
 
@@ -100,7 +102,8 @@ Goal: anyone with the link can see Today and Training; logging stays private. Th
 
 - **Google re-authorization.** The OAuth app is published (unverified, which is fine for personal use), so refresh tokens no longer expire after 7 days. Re-auth is `npm run health:auth`; an in-app connect flow can come later if needed.
 - **Authentication.** The app uses its own login with env-var passwords and signed cookies, and kept it through chat. Revisit before public dashboards only if a second user is ever added.
-- **Model disclosure.** Today Claude sees the current conversation, its open drafts and, through `list_workouts`, workout summaries and their labels. Decide what the read tools may return (logged meals, goals, health summaries, raw payloads) before building them.
+- **Model disclosure.** Claude sees the current conversation, its open drafts, and through its read tools: saved meals, workout summaries with labels, and goals with daily progress. Decide what a health tool may return (daily summaries vs raw payloads) before building it.
+- **Richer goals.** Goals are calories, a macro split and water today. They are expected to grow (e.g. weekly training targets, sleep), which may outgrow the one-row `user_macro_goals` table.
 - **Health fields.** Which payload fields become views or dashboard metrics, once the raw data is loaded and inspected.
 
 ## Ideas for later

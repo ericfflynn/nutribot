@@ -8,7 +8,7 @@ import { EntryCard } from "./entry-card";
 import { AppShell, GoalsForm, Login } from "./shared-ui";
 import { getSessionUser } from "@/lib/auth";
 import { addDays, isValidLocalDate, rollingDateWindow, todayLocalDate } from "@/lib/dates";
-import { gramsFromPercentGoals, WATER_GOAL_OZ } from "@/lib/goals";
+import { gramsFromPercentGoals } from "@/lib/goals";
 import {
   getLatestHealthSyncRun,
   listHealthDays,
@@ -25,9 +25,9 @@ import {
   type RecoveryScore
 } from "@/lib/health/scores";
 import {
-  getUserMacroGoals,
+  getUserGoals,
   getWaterOunces,
-  isDatabaseConfigured,
+  getPool,
   listEntriesForDateRange,
   summarizeEntries,
   type MacroEntry
@@ -198,13 +198,13 @@ function wavePath(y: number, amplitude: number) {
   return `${path} V140 H0 Z`;
 }
 
-function WaterRow({ ounces, date }: { ounces: number; date: string }) {
-  const level = Math.min(1, ounces / WATER_GOAL_OZ);
+function WaterRow({ ounces, goalOz, date }: { ounces: number; goalOz: number; date: string }) {
+  const level = Math.min(1, ounces / goalOz);
   const surface = 134 - 104 * level;
-  const left = WATER_GOAL_OZ - ounces;
+  const left = goalOz - ounces;
   return (
     <div className="water-row">
-      <svg className="water-bottle" viewBox="0 0 80 140" role="img" aria-label={`Water: ${integer.format(ounces)} of ${WATER_GOAL_OZ} oz`}>
+      <svg className="water-bottle" viewBox="0 0 80 140" role="img" aria-label={`Water: ${integer.format(ounces)} of ${goalOz} oz`}>
         <defs>
           <clipPath id="bottle-inside">
             <path d={BOTTLE_PATH} />
@@ -221,7 +221,7 @@ function WaterRow({ ounces, date }: { ounces: number; date: string }) {
       </svg>
       <div className="water-figure">
         <span>
-          <strong>{integer.format(ounces)}</strong> / {WATER_GOAL_OZ} oz
+          <strong>{integer.format(ounces)}</strong> / {goalOz} oz
         </span>
         <small>{left > 0 ? `${integer.format(left)} oz to go` : "Goal reached"}</small>
       </div>
@@ -456,7 +456,7 @@ export default async function Home({ searchParams }: PageProps) {
     </Link>
   );
 
-  if (!isDatabaseConfigured()) {
+  if (!getPool()) {
     return (
       <AppShell user={user} date={date} active="home" title={dayTitle(date, today)}>
         <p className="footnote">Add DATABASE_URL to see your data.</p>
@@ -474,7 +474,7 @@ export default async function Home({ searchParams }: PageProps) {
 
   const [entries, goals, healthDays, workouts, waterOunces, lastRun] = await Promise.all([
     listEntriesForDateRange(user.name, priorDates[0], date),
-    getUserMacroGoals(user.name),
+    getUserGoals(user.name),
     listHealthDays(user.name, healthStart, stripEnd),
     listHealthWorkouts(user.name, date, date),
     getWaterOunces(user.name, date),
@@ -770,10 +770,10 @@ export default async function Home({ searchParams }: PageProps) {
           ))}
         </div>
         <p className={`nutrition-callout ${callout.tone}`}>{callout.text}</p>
-        {waterOunces != null ? <WaterRow ounces={waterOunces} date={date} /> : null}
+        <WaterRow ounces={waterOunces} goalOz={goals.waterOz} date={date} />
       </section>
 
-      <GoalsForm goals={goals} disabled={false} redirectDate={date} />
+      <GoalsForm goals={goals} redirectDate={date} />
 
       <Timeline title={isToday ? "Today so far" : "The day"} events={events} />
 

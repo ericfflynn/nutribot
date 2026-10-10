@@ -42,7 +42,7 @@ Model: `claude-sonnet-5-5` at low effort, overridable with `CLAUDE_MODEL`. A tur
 
 ## Memory
 
-Claude remembers nothing between requests. Each turn it sees only what the route sends: the current conversation's last 10 messages, its unsaved drafts, and today's date and time. **New chat** (`newChatAction`) starts a fresh conversation; the old one stays in the database but isn't shown or sent. Long-term memory is the logged data itself, which Claude reads through `list_meals` and `list_workouts`.
+Claude remembers nothing between requests. Each turn it sees only what the route sends: the current conversation's last 10 messages, its unsaved drafts, and today's date and time. **New chat** (`newChatAction`) starts a fresh conversation; the old one stays in the database but isn't shown or sent. Long-term memory is the logged data itself, which Claude reads through `list_meals`, `list_workouts` and `get_goals`.
 
 ## Tools
 
@@ -51,9 +51,10 @@ Claude remembers nothing between requests. Each turn it sees only what the route
 | `draft_meal` | Creates or revises (`replaces: id`) a meal draft. One call per meal. With `edits: <macro_entries.id>` the draft corrects that saved meal instead: saving it overwrites the meal's text, items, macros, type and day. |
 | `draft_workout` | Creates or revises a workout draft and matches it to a Fitbit workout. One call per activity. |
 | `list_meals` | Read-only: saved meals in a date range, newest first, at most 40, with ids, totals and each item's macros and portion. `search` keeps meals whose text or item names contain every word, and allows ranges up to 365 days (31 without). The prompt has Claude search past meals before estimating one, and reuse a matching meal's items and macros, since the owner repeats meals often. Also how Claude finds a saved meal to edit. |
+| `get_goals` | Read-only: daily targets (calories, macros in grams and percent, water oz) and one day's saved totals against them (`target`, `done`, `left`). Open drafts aren't counted. Goals are changed in the Goals panel on Today, not through chat. |
 | `list_workouts` | Read-only: workouts in a date range (31 days at most), newest first. Each watch workout comes with what it was logged as (name, muscle groups, RPE), plus logged sessions with no watch workout; optionally only unlabeled watch workouts. Used for backfill and for questions about recent training. |
 
-Tools only build drafts. Read tools for goals and health metrics come next; they plug into the same in-process server.
+Tools only build drafts. A read tool for health metrics (sleep, recovery, strain) comes next; it plugs into the same in-process server.
 
 ## Drafts
 

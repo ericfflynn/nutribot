@@ -10,7 +10,16 @@ import { addDays, isValidLocalDate, localDateTime } from "./dates";
 import { HEALTH_DATA_TYPES } from "./health/google";
 import { runHealthSync } from "./health/sync";
 import { normalizeGeneratedMacroEstimate, type ParsedMacros } from "./macros";
-import { getMacroEntry, searchMacroEntries, type MacroEntry, type MealType } from "./supabase";
+import { gramsFromPercentGoals } from "./goals";
+import {
+  getMacroEntry,
+  getUserGoals,
+  getWaterOunces,
+  searchMacroEntries,
+  summarizeEntries,
+  type MacroEntry,
+  type MealType
+} from "./supabase";
 import {
   MUSCLE_GROUPS,
   WORKOUT_TYPES,
@@ -91,7 +100,7 @@ export type BrainContext = {
 };
 
 const SERVER = "nutribot";
-const TOOLS = ["draft_meal", "draft_workout", "list_workouts", "list_meals"];
+const TOOLS = ["draft_meal", "draft_workout", "list_workouts", "list_meals", "get_goals"];
 
 const localDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("Local date, YYYY-MM-DD.");
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
@@ -162,6 +171,7 @@ Today is ${today}; local time is ${nowLocal.slice(11)}. The person is looking at
 - meal_type comes from the foods and when they were eaten: breakfast, lunch, dinner, snack or dessert. Dessert is a sweet treat, usually after a meal (brownie, ice cream, cake); use it whenever they call something dessert.
 - They eat many of the same meals. Before drafting a meal, call list_meals with search set to its main food or place in a word or two ("smoothie", "buttermilks", "overnight oats"), over the last 90 days, unless it's plainly a one-off. When a past entry is the same meal, reuse its items, portions and macros, adjusted for anything they say is different, and mention which day you matched ("same as your Oct 3 smoothie"). Prefer their most recent version.
 - list_meals also answers questions about what they ate on a day or over a week.
+- get_goals gives their daily targets and a day's progress. Use it for "how much do I have left", whether a meal fits, or what to eat to hit protein. Goals are changed in the Goals panel on Today, not here.
 
 ## Fixing saved meals
 - To correct a meal that's already saved (wrong type, portion, day, macros, or a missing item), find it with list_meals, then call draft_meal with edits set to its id and the whole corrected meal: keep its items as they are unless the fix changes them. Leave date out to keep its day.
@@ -179,7 +189,7 @@ Today is ${today}; local time is ${nowLocal.slice(11)}. The person is looking at
 - The tool result says which watch workout was matched. Mention it briefly ("matched to your 6:12 PM weightlifting, 49 min"), or say it will link when the watch syncs.
 
 ## Everything else
-- Answer general questions directly and briefly. You can see their saved meals and workouts, but not yet their goals or health metrics; say so if asked.
+- Answer general questions directly and briefly. You can see their saved meals, workouts, goals and water, but not yet their health metrics (sleep, recovery, heart rate); say so if asked.
 - Write plain text in short sentences: no markdown, bullets, bold or headings. A blank line between topics is fine.`;
 }
 
@@ -478,12 +488,40 @@ export async function runBrain(message: string, context: BrainContext): Promise<
     { annotations: { readOnlyHint: true } }
   );
 
+  const getGoals = tool(
+    "get_goals",
+    "Daily targets (calories, macros in grams and percent, water) and one day's saved totals against them. Open drafts aren't counted.",
+    { date: localDate.optional() },
+    async (args) => {
+      const day = checkDate(args.date);
+      if ("error" in day) return errorText(day.error!);
+      const [goals, entries, waterOz] = await Promise.all([
+        getUserGoals(userName, db),
+        searchMacroEntries(db, userName, { startDate: day.date!, endDate: day.date!, words: [], limit: 100 }),
+        getWaterOunces(userName, day.date!, db)
+      ]);
+      const grams = gramsFromPercentGoals(goals);
+      const eaten = summarizeEntries(entries);
+      const row = (target: number, done: number) => ({ target, done: Math.round(done), left: Math.round(target - done) });
+      return text({
+        date: day.date,
+        meals_saved: entries.length,
+        calories: row(goals.calories, eaten.calories),
+        protein_g: { ...row(grams.protein_g, eaten.protein_g), pct_of_calories: goals.proteinPct },
+        carbs_g: { ...row(grams.carbs_g, eaten.carbs_g), pct_of_calories: goals.carbsPct },
+        fat_g: { ...row(grams.fat_g, eaten.fat_g), pct_of_calories: goals.fatPct },
+        water_oz: row(goals.waterOz, waterOz)
+      });
+    },
+    { annotations: { readOnlyHint: true } }
+  );
+
   const run = await runClaude({
     system: systemPrompt(today, nowLocal, context.viewDate),
     prompt: promptFor(message, context.history, context.openDrafts),
     server: {
       name: SERVER,
-      config: createSdkMcpServer({ name: SERVER, version: "1.0.0", tools: [draftMeal, draftWorkout, listWorkouts, listMeals] }),
+      config: createSdkMcpServer({ name: SERVER, version: "1.0.0", tools: [draftMeal, draftWorkout, listWorkouts, listMeals, getGoals] }),
       tools: TOOLS
     }
   });

@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { clearSession, createSession, getSessionUser } from "@/lib/auth";
 import { isValidLocalDate, todayLocalDate } from "@/lib/dates";
-import { parseMacroGoals } from "@/lib/goals";
+import { parseGoals } from "@/lib/goals";
 import { parseMacroObject, type ParsedMacros } from "@/lib/macros";
 import { HEALTH_DATA_TYPES } from "@/lib/health/google";
 import { runHealthSync } from "@/lib/health/sync";
@@ -23,7 +23,7 @@ import {
   deleteMacroEntry,
   getPool,
   saveMacroEntry,
-  saveUserMacroGoals,
+  saveUserGoals,
   updateMacroEntry
 } from "@/lib/supabase";
 
@@ -127,21 +127,22 @@ export async function deleteMacroEntryAction(formData: FormData) {
   redirect(todayPath(redirectDate));
 }
 
-export async function saveMacroGoalsAction(formData: FormData) {
+export async function saveGoalsAction(formData: FormData) {
   const user = await getSessionUser();
   if (!user) {
     redirect("/");
   }
   const redirectDate = getFormDate(formData);
 
-  const goals = parseMacroGoals({
+  const goals = parseGoals({
     calories: Number(formData.get("calories")),
     proteinPct: Number(formData.get("proteinPct")),
     carbsPct: Number(formData.get("carbsPct")),
-    fatPct: Number(formData.get("fatPct"))
+    fatPct: Number(formData.get("fatPct")),
+    waterOz: Number(formData.get("waterOz"))
   });
 
-  await saveUserMacroGoals(user.name, goals);
+  await saveUserGoals(user.name, goals);
   revalidatePath("/");
   redirect(todayPath(redirectDate));
 }

@@ -17,6 +17,7 @@ npm install
 npm run dev      # local dev server, reads .env.local
 npm run build    # production build; also runs the TypeScript check
 npm run brain -- "chest and tris, hard"   # one chat turn in the terminal; writes nothing
+npm run db:backup   # replace the local database backup in backups/
 ```
 
 There is no test suite. Verify changes with `npm run build`, then exercise the affected page against the dev server.
@@ -65,6 +66,15 @@ psql "$DB" -c "select count(*) from macro_entries;"
 
 `DATABASE_URL` uses the transaction pooler (port 6543), which works for ordinary queries but not for session features such as `LISTEN` or prepared statements across calls.
 
+## Backups
+
+`npm run db:backup` dumps the database's `public` schema to `backups/nutribot.dump` (gitignored). There is one backup at a time; each run replaces it, but only after the new dump is complete and readable.
+
+- **At the start of a session** that touches the database, check the backup's age (`ls -l backups/nutribot.dump`). If it is missing or more than 7 days old, run `npm run db:backup` and say so.
+- **Before any database write or DDL** you've been approved to run, run `npm run db:backup` first, whatever its age.
+- **Restore** only with the owner's approval; it overwrites production. Restore one table with `pg_restore --data-only --table=<name>`, or everything with `pg_restore --clean --if-exists --no-owner -d "$DB" backups/nutribot.dump`. Use the session pooler (port 5432) for `pg_restore`, as the backup script does for `pg_dump`.
+- The dump holds real meal and health data. Never copy it into the repo, a doc or any external service.
+
 ## Health sync
 
 - Google Health data lands in `health_records` (raw JSONB) and is read through the `health_daily` and `health_workouts` views. Code is in `lib/health/`.
@@ -74,11 +84,11 @@ psql "$DB" -c "select count(*) from macro_entries;"
 
 ## Guidelines
 
-- **Database writes need the owner's approval.** Read-only queries are fine. Ask before any `insert`, `update`, `delete`, or DDL. This is the only copy of the data and there is no migration runner or backup process in the repo.
+- **Database writes need the owner's approval.** Read-only queries are fine. Ask before any `insert`, `update`, `delete`, or DDL. Production is the only live copy of the data, and the only backup is the local dump (see Backups). There is no migration runner.
 - **Schema changes:** update `supabase/schema.sql` (idempotent `create ... if not exists`) and show the SQL before running it.
 - **Private data:** meal and health records belong to real people. Don't paste rows into commits, docs or PRs; use counts or synthetic examples. Exception: the owner approved (October 10, 2026) the iPhone screenshots of his real data in `docs/screenshots/`. Replace them only when he asks.
 - **Deploys and pushes are outward-facing.** Confirm before pushing to `master`, running `vercel deploy --prod`, or changing Vercel env vars.
-- **Database access** goes through `lib/supabase.ts`. It uses `pg` when `DATABASE_URL` is set, otherwise the Supabase service-role client. Keep both paths working, or remove one deliberately.
+- **Database access** goes through `pg` with `DATABASE_URL` (`getPool()` in `lib/supabase.ts`). There is no Supabase client.
 - **Auth** is custom (`lib/auth.ts`): users and passwords come from env vars, sessions are HMAC-signed cookies. It is not Supabase Auth. Every server action and query must scope by the session user.
 - **Dates** are local calendar dates in `APP_TIME_ZONE`; use the helpers in `lib/dates.ts` rather than `new Date()` math.
 - Match the existing style: server actions in `app/actions.ts`, Zod for validating model output, plain CSS in `app/globals.css` using its tokens (`--bg`, `--surface`, `--ink`, `--muted`, `--line`, `--accent`).

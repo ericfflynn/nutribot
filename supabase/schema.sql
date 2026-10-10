@@ -26,6 +26,10 @@ create table if not exists public.user_macro_goals (
   updated_at timestamptz not null default now()
 );
 
+-- Daily water target, set with the other goals.
+alter table public.user_macro_goals
+  add column if not exists water_oz numeric not null default 100 check (water_oz > 0);
+
 -- Water intake: one row per drink, summed per local day.
 create table if not exists public.water_entries (
   id uuid primary key default gen_random_uuid(),

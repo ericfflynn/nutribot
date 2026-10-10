@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { loginAction, logoutAction, saveMacroGoalsAction } from "./actions";
+import { loginAction, logoutAction, saveGoalsAction } from "./actions";
+import type { Goals } from "@/lib/goals";
 import { ChatSheet } from "./chat-sheet";
 import { getAllowedUsers, type SessionUser } from "@/lib/auth";
 import { todayLocalDate } from "@/lib/dates";
@@ -153,20 +154,7 @@ export function AppShell({
   );
 }
 
-export function GoalsForm({
-  goals,
-  disabled,
-  redirectDate
-}: {
-  goals: {
-    calories: number;
-    proteinPct: number;
-    carbsPct: number;
-    fatPct: number;
-  };
-  disabled: boolean;
-  redirectDate?: string;
-}) {
+export function GoalsForm({ goals, redirectDate }: { goals: Goals; redirectDate?: string }) {
   return (
     <details className="panel goals-disclosure">
       <summary>
@@ -175,28 +163,33 @@ export function GoalsForm({
           <strong>Daily targets</strong>
         </div>
         <span className="goal-summary">
-          {goals.calories} cal · Protein {goals.proteinPct}% · Carbs {goals.carbsPct}% · Fat {goals.fatPct}%
+          {goals.calories} cal · Protein {goals.proteinPct}% · Carbs {goals.carbsPct}% · Fat {goals.fatPct}% · Water{" "}
+          {goals.waterOz} oz
         </span>
       </summary>
-      <form className="goals-form" action={saveMacroGoalsAction}>
+      <form className="goals-form" action={saveGoalsAction}>
         {redirectDate ? <input type="hidden" name="redirectDate" value={redirectDate} /> : null}
         <label>
           <span>Calories</span>
-          <input name="calories" type="number" min="1" step="1" defaultValue={goals.calories} disabled={disabled} />
+          <input name="calories" type="number" min="1" step="1" defaultValue={goals.calories} />
         </label>
         <label>
           <span>Protein %</span>
-          <input name="proteinPct" type="number" min="0" step="1" defaultValue={goals.proteinPct} disabled={disabled} />
+          <input name="proteinPct" type="number" min="0" step="1" defaultValue={goals.proteinPct} />
         </label>
         <label>
           <span>Carbs %</span>
-          <input name="carbsPct" type="number" min="0" step="1" defaultValue={goals.carbsPct} disabled={disabled} />
+          <input name="carbsPct" type="number" min="0" step="1" defaultValue={goals.carbsPct} />
         </label>
         <label>
           <span>Fat %</span>
-          <input name="fatPct" type="number" min="0" step="1" defaultValue={goals.fatPct} disabled={disabled} />
+          <input name="fatPct" type="number" min="0" step="1" defaultValue={goals.fatPct} />
         </label>
-        <button className="button secondary" type="submit" disabled={disabled}>
+        <label>
+          <span>Water oz</span>
+          <input name="waterOz" type="number" min="1" step="1" defaultValue={goals.waterOz} />
+        </label>
+        <button className="button secondary" type="submit">
           Save goals
         </button>
       </form>
