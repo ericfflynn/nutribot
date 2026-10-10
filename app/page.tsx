@@ -19,7 +19,6 @@ import {
   dayStrain,
   recoveryScore,
   sleepPerformance,
-  strainBand,
   workoutStrain,
   type RecoveryBand,
   type RecoveryScore
@@ -544,7 +543,8 @@ export default async function Home({ searchParams }: PageProps) {
       color: SLEEP_COLOR,
       textColor: "var(--sleep-ink)",
       value: sleepMinutes != null ? formatDuration(sleepMinutes) : "–",
-      caption: sleepPercent != null ? `${sleepPercent}%` : "No data"
+      caption: sleepMinutes != null ? "" : "No data",
+      note: sleepPercent != null ? `${sleepPercent}% of need` : undefined
     },
     {
       label: "Recovery",
@@ -568,7 +568,7 @@ export default async function Home({ searchParams }: PageProps) {
       color: STRAIN_COLOR,
       textColor: "var(--strain-ink)",
       value: strain == null ? "–" : strain.toFixed(1),
-      caption: strain == null ? "No data" : strainBand(strain),
+      caption: strain == null ? "No data" : "",
       note: health?.steps != null ? `${integer.format(health.steps)} steps` : undefined
     }
   ];
