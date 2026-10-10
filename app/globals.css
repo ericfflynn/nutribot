@@ -2108,7 +2108,8 @@ button {
   font-weight: 600;
 }
 
-.timeline-main > div:first-child > strong {
+.timeline-main > div:first-child > strong,
+.timeline-main > div:first-child > span {
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
@@ -2164,9 +2165,50 @@ button {
 }
 
 .sparkline {
+  display: block;
   width: 100%;
   height: auto;
   margin: 4px 0;
+}
+
+/* Sideways drags scrub the days; vertical drags still scroll the page. */
+.sparkline-frame {
+  position: relative;
+  touch-action: pan-y;
+  cursor: crosshair;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.sparkline-guide {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.sparkline-tooltip {
+  position: absolute;
+  bottom: calc(100% + 2px);
+  transform: translateX(-50%);
+  display: grid;
+  gap: 1px;
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+  padding: 5px 8px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.sparkline-tooltip span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.trend-tile .sparkline-tooltip strong {
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .app-content > .sync-bar {
@@ -2521,6 +2563,12 @@ button.fab {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.draft-edit-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .draft-question {

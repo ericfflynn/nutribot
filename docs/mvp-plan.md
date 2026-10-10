@@ -12,7 +12,7 @@ This repo is the base. The existing meal logger, dashboard and goals stay workin
 
 1. **Google Health data in Postgres.** Raw payloads loaded into JSONB tables on a schedule. No normalized health schema yet; views get added once we know which fields matter.
 2. **Chat with tool use.** Live since October 10, 2026 as the chat brain ([brain.md](brain.md)): Claude through the Agent SDK on the owner's subscription. Built tools:
-   - `draft_meal`: items and macro estimates, plus a meal type (breakfast, lunch, dinner, snack), saved to `macro_entries`.
+   - `draft_meal`: items and macro estimates, plus a meal type (breakfast, lunch, dinner, snack, dessert), saved to `macro_entries`.
    - `draft_workout`: muscle groups, RPE and the matching Fitbit workout, saved to `workout_sessions` ([training-plan.md](training-plan.md)).
    - `list_workouts`: read-only, watch workouts with their labels, for labeling past workouts and answering questions about recent training.
 

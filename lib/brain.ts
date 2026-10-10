@@ -10,7 +10,7 @@ import { addDays, isValidLocalDate, localDateTime } from "./dates";
 import { HEALTH_DATA_TYPES } from "./health/google";
 import { runHealthSync } from "./health/sync";
 import { normalizeGeneratedMacroEstimate, type ParsedMacros } from "./macros";
-import type { MealType } from "./supabase";
+import { getMacroEntry, searchMacroEntries, type MacroEntry, type MealType } from "./supabase";
 import {
   MUSCLE_GROUPS,
   WORKOUT_TYPES,
@@ -25,6 +25,14 @@ import {
   type WorkoutType
 } from "./workouts";
 
+// The saved meal an edit draft corrects, as it was when the draft was made.
+export type MealEditTarget = {
+  id: string;
+  date: string;
+  meal_type: MealType | null;
+  calories: number;
+};
+
 export type MealDraft = {
   type: "meal";
   id: string;
@@ -32,6 +40,8 @@ export type MealDraft = {
   raw_text: string;
   meal_type: MealType;
   estimate: ParsedMacros;
+  // Set when saving overwrites an existing meal instead of adding one.
+  edits?: MealEditTarget | null;
   saved_id: string | null;
   discarded?: boolean;
 };
@@ -81,7 +91,7 @@ export type BrainContext = {
 };
 
 const SERVER = "nutribot";
-const TOOLS = ["draft_meal", "draft_workout", "list_workouts"];
+const TOOLS = ["draft_meal", "draft_workout", "list_workouts", "list_meals"];
 
 const localDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("Local date, YYYY-MM-DD.");
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
@@ -107,6 +117,24 @@ function describeSession(s: WorkoutSession) {
   return `logged as "${s.name}"${groups}${rpe}`;
 }
 
+const clockFormat = new Intl.DateTimeFormat("en-US", {
+  hour: "numeric",
+  minute: "2-digit",
+  timeZone: process.env.APP_TIME_ZONE || "America/New_York"
+});
+
+// One saved meal for list_meals: when, type, totals, then each item with its portion.
+function describeMeal(entry: MacroEntry) {
+  const logged = new Date(entry.created_at.replace(" ", "T").replace(/([+-]\d{2})$/, "$1:00"));
+  const at = Number.isNaN(logged.getTime()) ? "" : ` logged ${localDateTime(logged).slice(0, 10)} ${clockFormat.format(logged)}`;
+  const macros = (m: { calories: number; protein_g: number; carbs_g: number; fat_g: number }) =>
+    `${m.calories} cal, ${m.protein_g}P/${m.carbs_g}C/${m.fat_g}F`;
+  const items = entry.items
+    .map((item) => `  - ${item.name}: ${macros(item)}${item.assumption ? ` (${item.assumption})` : ""}`)
+    .join("\n");
+  return `${entry.entry_date} ${entry.meal_type ?? "untyped"} (id ${entry.id}${at}): "${entry.raw_text}" = ${macros(entry)}${items ? `\n${items}` : ""}`;
+}
+
 function text(value: unknown) {
   return { content: [{ type: "text" as const, text: typeof value === "string" ? value : JSON.stringify(value) }] };
 }
@@ -123,7 +151,7 @@ Today is ${today}; local time is ${nowLocal.slice(11)}. The person is looking at
 ## Logging
 - Call draft_meal once per meal and draft_workout once per separate activity. "Back and bis, then a 20 min run" is two workouts, because the watch records two.
 - A draft is a review card, not a saved record. Never say "logged" or "saved". Say the draft is ready to review, and mention anything worth checking.
-- To change an open draft, call the same tool again with replaces set to its id. Saved drafts can't be changed here.
+- To change an open draft, call the same tool again with replaces set to its id.
 - A message can hold several meals and workouts, or none. Plain questions get a plain answer and no drafts.
 
 ## Meals
@@ -131,7 +159,14 @@ Today is ${today}; local time is ${nowLocal.slice(11)}. The person is looking at
 - Use reasonable portions when quantities are missing, and state the portion in the item's assumption.
 - notes holds a concrete assumption only when it matters ("Assumed 4 oz chicken"). Never write generic caveats like "values may vary".
 - If confidence is below 0.75, accuracy_suggestion asks for the single most useful missing detail (portion, brand, cooking fat, weight, count). Otherwise it's empty.
-- meal_type comes from the foods and when they were eaten: breakfast, lunch, dinner or snack.
+- meal_type comes from the foods and when they were eaten: breakfast, lunch, dinner, snack or dessert. Dessert is a sweet treat, usually after a meal (brownie, ice cream, cake); use it whenever they call something dessert.
+- They eat many of the same meals. Before drafting a meal, call list_meals with search set to its main food or place in a word or two ("smoothie", "buttermilks", "overnight oats"), over the last 90 days, unless it's plainly a one-off. When a past entry is the same meal, reuse its items, portions and macros, adjusted for anything they say is different, and mention which day you matched ("same as your Oct 3 smoothie"). Prefer their most recent version.
+- list_meals also answers questions about what they ate on a day or over a week.
+
+## Fixing saved meals
+- To correct a meal that's already saved (wrong type, portion, day, macros, or a missing item), find it with list_meals, then call draft_meal with edits set to its id and the whole corrected meal: keep its items as they are unless the fix changes them. Leave date out to keep its day.
+- An edit draft replaces the saved meal only when they tap Update. Say what changes ("snack to dessert, calories stay 390").
+- If they ask to fix something without saying which meal and more than one fits, ask which.
 
 ## Workouts
 - Muscle groups are only: ${MUSCLE_GROUPS.join(", ")}. "tris" is Triceps, "bis" Biceps; quads, hamstrings, glutes and calves are Legs; lats and traps are Back; delts are Shoulders; core is Abs. A named exercise counts for the groups it mainly trains (bench press: Chest, Triceps). Push, pull and legs days are Chest/Shoulders/Triceps, Back/Biceps and Legs. Runs, rides and walks are Cardio.
@@ -144,7 +179,7 @@ Today is ${today}; local time is ${nowLocal.slice(11)}. The person is looking at
 - The tool result says which watch workout was matched. Mention it briefly ("matched to your 6:12 PM weightlifting, 49 min"), or say it will link when the watch syncs.
 
 ## Everything else
-- Answer general questions directly and briefly. You can't see their meal history, goals or health metrics yet; say so if asked.
+- Answer general questions directly and briefly. You can see their saved meals and workouts, but not yet their goals or health metrics; say so if asked.
 - Write plain text in short sentences: no markdown, bullets, bold or headings. A blank line between topics is fine.`;
 }
 
@@ -158,7 +193,15 @@ function promptFor(message: string, history: Turn[], openDrafts: Draft[]) {
   if (openDrafts.length) {
     const summary = openDrafts.map((draft) =>
       draft.type === "meal"
-        ? { id: draft.id, type: "meal", date: draft.date, raw_text: draft.raw_text, meal_type: draft.meal_type, items: draft.estimate.items }
+        ? {
+            id: draft.id,
+            type: "meal",
+            date: draft.date,
+            raw_text: draft.raw_text,
+            meal_type: draft.meal_type,
+            items: draft.estimate.items,
+            edits: draft.edits?.id ?? null
+          }
         : {
             id: draft.id,
             type: "workout",
@@ -187,12 +230,19 @@ export async function runBrain(message: string, context: BrainContext): Promise<
   const openById = new Map(context.openDrafts.map((draft) => [draft.id, draft]));
   let synced = false;
 
-  function resolveDraftId(replaces: string | undefined) {
+  function resolveDraftId(replaces: string | undefined): { id: string; previous?: Draft } | { error: string } {
     if (!replaces) return { id: randomUUID() };
     const previous = drafts.get(replaces) ?? openById.get(replaces);
     if (!previous) return { error: `No open draft with id ${replaces}.` };
-    if (previous.saved_id) return { error: "That draft is already saved; it can be edited on the Log page." };
-    return { id: replaces };
+    if (previous.saved_id) {
+      return {
+        error:
+          previous.type === "meal"
+            ? `That draft is already saved as meal ${previous.saved_id}. Call draft_meal with edits set to that id instead.`
+            : "That workout is already saved; it can be edited on the Training page."
+      };
+    }
+    return { id: replaces, previous };
   }
 
   function checkDate(date: string | undefined) {
@@ -216,17 +266,33 @@ export async function runBrain(message: string, context: BrainContext): Promise<
     {
       date: localDate.optional(),
       raw_text: z.string().describe("The person's words for this meal."),
-      meal_type: z.enum(["breakfast", "lunch", "dinner", "snack"]),
+      meal_type: z.enum(["breakfast", "lunch", "dinner", "snack", "dessert"]),
       items: z.array(mealItem).min(1),
       confidence: z.number().min(0).max(1),
       notes: z.string(),
       accuracy_suggestion: z.string(),
-      replaces: z.string().optional().describe("Id of an open draft this revises.")
+      replaces: z.string().optional().describe("Id of an open draft this revises."),
+      edits: z.string().optional().describe("Id of a saved meal (from list_meals) this draft corrects.")
     },
     async (args) => {
       const target = resolveDraftId(args.replaces);
       if ("error" in target) return errorText(target.error!);
-      const day = checkDate(args.date);
+
+      // A revision of an edit draft keeps correcting the same saved meal.
+      const previousEdit = target.previous?.type === "meal" ? target.previous.edits : null;
+      const editId = args.edits ?? previousEdit?.id;
+      let edits: MealEditTarget | null = null;
+      if (editId) {
+        if (previousEdit?.id === editId) {
+          edits = previousEdit;
+        } else {
+          const entry = await getMacroEntry(db, userName, editId);
+          if (!entry) return errorText(`No saved meal with id ${editId}. Find it with list_meals.`);
+          edits = { id: entry.id, date: entry.entry_date, meal_type: entry.meal_type, calories: entry.calories };
+        }
+      }
+      // An edit stays on the saved meal's day unless it says otherwise.
+      const day = checkDate(args.date ?? (edits ? (target.previous?.date ?? edits.date) : undefined));
       if ("error" in day) return errorText(day.error!);
 
       const estimate = normalizeGeneratedMacroEstimate({
@@ -246,11 +312,13 @@ export async function runBrain(message: string, context: BrainContext): Promise<
         raw_text: args.raw_text,
         meal_type: args.meal_type,
         estimate,
+        edits,
         saved_id: null
       });
       return text({
         draft_id: target.id,
         date: day.date,
+        ...(edits ? { corrects: `saved meal ${edits.id} (${edits.date} ${edits.meal_type ?? "untyped"}, ${edits.calories} cal)` } : {}),
         totals: { calories: estimate.calories, protein_g: estimate.protein_g, carbs_g: estimate.carbs_g, fat_g: estimate.fat_g }
       });
     }
@@ -382,12 +450,40 @@ export async function runBrain(message: string, context: BrainContext): Promise<
     { annotations: { readOnlyHint: true } }
   );
 
+  const listMeals = tool(
+    "list_meals",
+    "List saved meals in a date range, newest first, with ids, totals and each item's macros and portion. search keeps only meals whose text or item names contain every word.",
+    {
+      start_date: localDate,
+      end_date: localDate,
+      search: z.string().optional().describe('A word or two, e.g. "smoothie" or "chicken bowl".')
+    },
+    async (args) => {
+      const words = (args.search ?? "").split(/\s+/).filter(Boolean);
+      const maxDays = words.length ? 365 : 31;
+      if (args.start_date > args.end_date || addDays(args.start_date, maxDays) < args.end_date) {
+        return errorText(`Use a range of at most ${maxDays} days${words.length ? "" : " without a search"}, start before end.`);
+      }
+      const limit = 40;
+      const entries = await searchMacroEntries(db, userName, {
+        startDate: args.start_date,
+        endDate: args.end_date,
+        words,
+        limit
+      });
+      if (!entries.length) return text(words.length ? "No matching meals in that range." : "No meals in that range.");
+      const more = entries.length === limit ? `\n(Showing the newest ${limit}; narrow the range or search for more.)` : "";
+      return text(entries.map(describeMeal).join("\n") + more);
+    },
+    { annotations: { readOnlyHint: true } }
+  );
+
   const run = await runClaude({
     system: systemPrompt(today, nowLocal, context.viewDate),
     prompt: promptFor(message, context.history, context.openDrafts),
     server: {
       name: SERVER,
-      config: createSdkMcpServer({ name: SERVER, version: "1.0.0", tools: [draftMeal, draftWorkout, listWorkouts] }),
+      config: createSdkMcpServer({ name: SERVER, version: "1.0.0", tools: [draftMeal, draftWorkout, listWorkouts, listMeals] }),
       tools: TOOLS
     }
   });

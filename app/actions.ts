@@ -212,7 +212,19 @@ export async function saveDraftAction(
     const draft = await withDraft(db, user.name, messageId, draftId, async (stored, client) => {
       let savedId: string;
       let saved: Draft;
-      if (stored.type === "meal") {
+      if (stored.type === "meal" && stored.edits) {
+        await updateMacroEntry({
+          id: stored.edits.id,
+          userName: user.name,
+          rawText: stored.raw_text,
+          parsed: stored.estimate,
+          mealType: stored.meal_type,
+          entryDate: stored.date,
+          client
+        });
+        savedId = stored.edits.id;
+        saved = { ...stored, saved_id: savedId };
+      } else if (stored.type === "meal") {
         savedId = await saveMacroEntry({
           userName: user.name,
           entryDate: stored.date,

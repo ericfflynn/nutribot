@@ -47,7 +47,8 @@ function DraftActions({
   onSave: () => void;
   onDiscard: () => void;
 }) {
-  if (draft.saved_id) return <p className="draft-status saved">Saved</p>;
+  const isEdit = draft.type === "meal" && Boolean(draft.edits);
+  if (draft.saved_id) return <p className="draft-status saved">{isEdit ? "Updated" : "Saved"}</p>;
   if (draft.discarded) return <p className="draft-status">Discarded</p>;
   if (superseded) return <p className="draft-status">Revised below</p>;
   return (
@@ -56,7 +57,7 @@ function DraftActions({
         Discard
       </button>
       <button type="button" className="draft-save" onClick={onSave} disabled={busy}>
-        {busy ? "Saving…" : "Save"}
+        {busy ? "Saving…" : isEdit ? "Update" : "Save"}
       </button>
     </div>
   );
@@ -75,11 +76,19 @@ function MealCard({ draft, today, superseded, onSave, onDiscard }: { draft: Meal
     <div className="draft-card">
       <div className="draft-head">
         <span className="draft-kind">
+          {draft.edits ? "Edit · " : ""}
           {draft.meal_type}
           {day ? ` · ${day}` : ""}
         </span>
         <strong>{estimate.calories} cal</strong>
       </div>
+      {draft.edits ? (
+        <p className="draft-edit-note">
+          Replaces your saved {draft.edits.meal_type ?? "meal"}
+          {draft.edits.date !== draft.date ? ` on ${dayLabel(draft.edits.date, "") ?? draft.edits.date}` : ""} ·{" "}
+          {draft.edits.calories} cal
+        </p>
+      ) : null}
       <div className="draft-macros">
         <span className="macro-protein">{estimate.protein_g}g protein</span>
         <span className="macro-carbs">{estimate.carbs_g}g carbs</span>

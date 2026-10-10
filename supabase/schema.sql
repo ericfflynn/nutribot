@@ -240,7 +240,12 @@ where data_type = 'exercise';
 
 -- Chat brain (docs/brain.md). Meals the chat logs can carry a meal type.
 alter table public.macro_entries
-  add column if not exists meal_type text check (meal_type in ('breakfast', 'lunch', 'dinner', 'snack'));
+  add column if not exists meal_type text;
+alter table public.macro_entries
+  drop constraint if exists macro_entries_meal_type_check;
+alter table public.macro_entries
+  add constraint macro_entries_meal_type_check
+  check (meal_type in ('breakfast', 'lunch', 'dinner', 'snack', 'dessert'));
 
 -- One row per logged workout: what was trained and how hard. Linked to the
 -- matching Fitbit workout (health_workouts.id) when there is one; 'pending'

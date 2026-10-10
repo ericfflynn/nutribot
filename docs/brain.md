@@ -9,7 +9,7 @@ Status: in production since October 10, 2026. This is the contract between the c
 3. `runBrain` calls `runClaude` (`lib/claude-brain.ts`), which uses the Claude Agent SDK. The SDK starts the Claude Code binary, which signs in with `CLAUDE_CODE_OAUTH_TOKEN` (the owner's subscription; issue one with `claude setup-token`). It runs with our system prompt and our tools only: no built-in tools, no settings from disk, no saved sessions.
 4. Claude answers in text and calls our tools. The tools run inside the same Vercel function, validate their input with Zod, and build drafts.
 5. The route stores the user message and the reply (with its drafts) in `chat_messages` and returns them.
-6. Nothing else is written until the owner taps **Save** on a draft (`saveDraftAction` in `app/actions.ts`), which saves the server's stored copy of the draft, never data from the browser.
+6. Nothing else is written until the owner taps **Save** (or **Update**, for an edit) on a draft (`saveDraftAction` in `app/actions.ts`), which saves the server's stored copy of the draft, never data from the browser.
 
 Model: `claude-sonnet-5-5` at low effort, overridable with `CLAUDE_MODEL`. A turn takes about 5–15 seconds.
 
@@ -42,26 +42,28 @@ Model: `claude-sonnet-5-5` at low effort, overridable with `CLAUDE_MODEL`. A tur
 
 ## Memory
 
-Claude remembers nothing between requests. Each turn it sees only what the route sends: the current conversation's last 10 messages, its unsaved drafts, and today's date and time. **New chat** (`newChatAction`) starts a fresh conversation; the old one stays in the database but isn't shown or sent. Long-term memory is the logged data itself, which Claude will read through tools.
+Claude remembers nothing between requests. Each turn it sees only what the route sends: the current conversation's last 10 messages, its unsaved drafts, and today's date and time. **New chat** (`newChatAction`) starts a fresh conversation; the old one stays in the database but isn't shown or sent. Long-term memory is the logged data itself, which Claude reads through `list_meals` and `list_workouts`.
 
 ## Tools
 
 | Tool | Does |
 | --- | --- |
-| `draft_meal` | Creates or revises (`replaces: id`) a meal draft. One call per meal. |
+| `draft_meal` | Creates or revises (`replaces: id`) a meal draft. One call per meal. With `edits: <macro_entries.id>` the draft corrects that saved meal instead: saving it overwrites the meal's text, items, macros, type and day. |
 | `draft_workout` | Creates or revises a workout draft and matches it to a Fitbit workout. One call per activity. |
+| `list_meals` | Read-only: saved meals in a date range, newest first, at most 40, with ids, totals and each item's macros and portion. `search` keeps meals whose text or item names contain every word, and allows ranges up to 365 days (31 without). The prompt has Claude search past meals before estimating one, and reuse a matching meal's items and macros, since the owner repeats meals often. Also how Claude finds a saved meal to edit. |
 | `list_workouts` | Read-only: workouts in a date range (31 days at most), newest first. Each watch workout comes with what it was logged as (name, muscle groups, RPE), plus logged sessions with no watch workout; optionally only unlabeled watch workouts. Used for backfill and for questions about recent training. |
 
-Tools only build drafts. Read tools for meals, goals and health metrics come next; they plug into the same in-process server.
+Tools only build drafts. Read tools for goals and health metrics come next; they plug into the same in-process server.
 
 ## Drafts
 
 ```ts
 MealDraft = {
   type: "meal", id, date, raw_text,
-  meal_type: "breakfast" | "lunch" | "dinner" | "snack",
+  meal_type: "breakfast" | "lunch" | "dinner" | "snack" | "dessert",
   estimate: ParsedMacros,      // same shape as the meal logger; totals summed from items in code
-  saved_id: string | null,     // macro_entries.id once saved
+  edits?: { id, date, meal_type, calories } | null,  // the saved meal this corrects, as it was
+  saved_id: string | null,     // macro_entries.id once saved (the edited meal's id for an edit)
   discarded?: boolean
 }
 

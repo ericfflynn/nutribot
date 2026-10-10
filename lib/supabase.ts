@@ -12,7 +12,7 @@ export type MacroFoodItem = {
   assumption?: string;
 };
 
-export type MealType = "breakfast" | "lunch" | "dinner" | "snack";
+export type MealType = "breakfast" | "lunch" | "dinner" | "snack" | "dessert";
 
 export type MacroEntry = {
   id: string;
@@ -321,6 +321,77 @@ export async function listRecentEntries(userName: string, limit = 5) {
   return (data || []).map((row) => normalizeEntry(row as Omit<MacroEntry, "items"> & { items: unknown }));
 }
 
+// The chat brain's meal history: entries in a date range, newest first,
+// optionally only those whose text or item names contain every search word.
+export async function searchMacroEntries(
+  db: Pick<Pool, "query">,
+  userName: string,
+  params: { startDate: string; endDate: string; words: string[]; limit: number }
+) {
+  const patterns = params.words.map((word) => `%${word.replace(/[\\%_]/g, "\\$&")}%`);
+  const { rows } = await db.query(
+    `
+    select
+      id::text,
+      user_name,
+      entry_date::text,
+      raw_text,
+      calories::float8,
+      protein_g::float8,
+      carbs_g::float8,
+      fat_g::float8,
+      items,
+      confidence::float8,
+      notes,
+      meal_type,
+      created_at::text
+    from public.macro_entries
+    where user_name = $1
+      and entry_date >= $2::date
+      and entry_date <= $3::date
+      and (
+        select bool_and(
+          raw_text ilike pattern
+          or exists (
+            select 1 from jsonb_array_elements(case when jsonb_typeof(items) = 'array' then items else '[]'::jsonb end) item
+            where item->>'name' ilike pattern
+          )
+        )
+        from unnest($4::text[]) pattern
+      ) is not false
+    order by entry_date desc, created_at desc
+    limit $5
+    `,
+    [userName, params.startDate, params.endDate, patterns, params.limit]
+  );
+  return rows.map(normalizeEntry);
+}
+
+export async function getMacroEntry(db: Pick<Pool, "query">, userName: string, id: string) {
+  const { rows } = await db.query(
+    `
+    select
+      id::text,
+      user_name,
+      entry_date::text,
+      raw_text,
+      calories::float8,
+      protein_g::float8,
+      carbs_g::float8,
+      fat_g::float8,
+      items,
+      confidence::float8,
+      notes,
+      meal_type,
+      created_at::text
+    from public.macro_entries
+    where user_name = $1 and id::text = $2
+    `,
+    [userName, id]
+  );
+  return rows[0] ? normalizeEntry(rows[0]) : null;
+}
+
 export async function saveMacroEntry(params: {
   userName: string;
   entryDate: string;
@@ -393,9 +464,13 @@ export async function updateMacroEntry(params: {
   userName: string;
   rawText: string;
   parsed: ParsedMacros;
+  // Left unchanged when omitted.
+  mealType?: MealType;
+  entryDate?: string;
+  client?: Pick<Pool, "query">;
 }) {
   const { parsed } = params;
-  const db = getPool();
+  const db = params.client ?? getPool();
   if (db) {
     const { rowCount } = await db.query(
       `
@@ -408,7 +483,9 @@ export async function updateMacroEntry(params: {
         fat_g = $7,
         items = $8::jsonb,
         confidence = $9,
-        notes = $10
+        notes = $10,
+        meal_type = coalesce($11, meal_type),
+        entry_date = coalesce($12::date, entry_date)
       where id = $1::uuid and user_name = $2
       `,
       [
@@ -421,7 +498,9 @@ export async function updateMacroEntry(params: {
         Math.round(parsed.fat_g),
         JSON.stringify(parsed.items),
         parsed.confidence,
-        parsed.notes || null
+        parsed.notes || null,
+        params.mealType ?? null,
+        params.entryDate ?? null
       ]
     );
 
@@ -441,7 +520,9 @@ export async function updateMacroEntry(params: {
       fat_g: Math.round(parsed.fat_g),
       items: parsed.items,
       confidence: parsed.confidence,
-      notes: parsed.notes || null
+      notes: parsed.notes || null,
+      ...(params.mealType ? { meal_type: params.mealType } : {}),
+      ...(params.entryDate ? { entry_date: params.entryDate } : {})
     })
     .eq("id", params.id)
     .eq("user_name", params.userName)

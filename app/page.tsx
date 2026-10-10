@@ -280,31 +280,28 @@ function MacroChips({ totals }: { totals: { protein_g: number; carbs_g: number; 
   );
 }
 
-function MealDetails({ entries, date }: { entries: MacroEntry[]; date: string }) {
+function MealDetails({ entry, date }: { entry: MacroEntry; date: string }) {
   return (
     <ul className="meal-details">
-      {entries.map((entry) => (
-        <li key={entry.id}>
-          <div className="meal-details-entry">
-            <span>{entry.raw_text}</span>
-            <span>{integer.format(entry.calories)} kcal</span>
-          </div>
-          {entries.length > 1 ? <MacroChips totals={entry} /> : null}
-          {entry.items.length > 1 ? (
-            <ul>
-              {entry.items.map((item, index) => (
-                <li key={`${item.name}-${index}`}>
-                  <span>{item.name}</span>
-                  <span>
-                    {integer.format(item.calories)} kcal · {integer.format(item.protein_g)}g protein
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          <EntryCard entry={entry} selectedDate={date} compact />
-        </li>
-      ))}
+      <li>
+        <div className="meal-details-entry">
+          <span>{entry.raw_text}</span>
+          <span>{integer.format(entry.calories)} kcal</span>
+        </div>
+        {entry.items.length > 1 ? (
+          <ul>
+            {entry.items.map((item, index) => (
+              <li key={`${item.name}-${index}`}>
+                <span>{item.name}</span>
+                <span>
+                  {integer.format(item.calories)} kcal · {integer.format(item.protein_g)}g protein
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <EntryCard entry={entry} selectedDate={date} compact />
+      </li>
     </ul>
   );
 }
@@ -365,9 +362,18 @@ function Timeline({ title, events }: { title: string; events: TimelineEvent[] })
   );
 }
 
-type Tile = { label: string; textColor: string; color: string; value: string; values: (number | null)[]; delta: Delta | null };
+type Tile = {
+  label: string;
+  textColor: string;
+  color: string;
+  value: string;
+  values: (number | null)[];
+  // How one day's value reads in the sparkline tooltip.
+  format: (value: number) => string;
+  delta: Delta | null;
+};
 
-function TrendTiles({ tiles }: { tiles: Tile[] }) {
+function TrendTiles({ tiles, days }: { tiles: Tile[]; days: string[] }) {
   return (
     <section className="group" aria-label="Last 7 days">
       <div className="group-heading">
@@ -381,7 +387,13 @@ function TrendTiles({ tiles }: { tiles: Tile[] }) {
               {tile.label}
             </span>
             <strong>{tile.value}</strong>
-            <Sparkline values={tile.values} color={tile.color} label={`${tile.label}, last 7 days`} />
+            <Sparkline
+              values={tile.values}
+              days={days}
+              valueLabels={tile.values.map((value) => (value == null ? "No data" : tile.format(value)))}
+              color={tile.color}
+              label={`${tile.label}, last 7 days`}
+            />
             {tile.delta ? <DeltaText delta={tile.delta} /> : <span className="delta neutral">&nbsp;</span>}
           </div>
         ))}
@@ -617,8 +629,7 @@ export default async function Home({ searchParams }: PageProps) {
     });
   }
   const timed: TimelineEvent[] = [];
-  // Meals collapse into one row per meal slot; tapping it shows each entry and its items.
-  const mealGroups = new Map<string, { label: string; time: string; sort: number; entries: MacroEntry[] }>();
+  // One row per meal entry; tapping it shows its items and the edit card.
   for (const entry of [...dayEntries].reverse()) {
     // created_at is when the meal was logged; only treat it as a time when it was logged that same day.
     const loggedAt = localWallClock(entry.created_at);
@@ -626,31 +637,17 @@ export default async function Home({ searchParams }: PageProps) {
     const minute = sameDay ? minuteOfDay(loggedAt) : null;
     // Chat-logged meals carry their type; older ones are guessed from the time.
     const label = entry.meal_type ? entry.meal_type[0].toUpperCase() + entry.meal_type.slice(1) : mealSlot(minute);
-    const group = mealGroups.get(label);
-    if (group) {
-      group.entries.push(entry);
-    } else {
-      mealGroups.set(label, {
-        label,
-        time: sameDay ? formatClock(loggedAt) : "",
-        sort: minute ?? 24 * 60,
-        entries: [entry]
-      });
-    }
-  }
-  for (const group of mealGroups.values()) {
-    const total = summarizeEntries(group.entries);
     timed.push({
-      key: `meal-${group.label}`,
-      time: group.time,
-      sort: group.sort,
+      key: `meal-${entry.id}`,
+      time: sameDay ? formatClock(loggedAt) : "",
+      sort: minute ?? 24 * 60,
       color: FUEL_COLOR,
-      title: group.label,
-      detail: "",
-      extra: <MacroChips totals={total} />,
-      value: integer.format(total.calories),
+      title: label,
+      detail: entry.items.map((item) => item.name).join(", "),
+      extra: <MacroChips totals={entry} />,
+      value: integer.format(entry.calories),
       unit: "kcal",
-      details: <MealDetails entries={group.entries} date={date} />
+      details: <MealDetails entry={entry} date={date} />
     });
   }
   for (const workout of workouts) {
@@ -691,6 +688,7 @@ export default async function Home({ searchParams }: PageProps) {
       color: SLEEP_COLOR,
       value: sleepMinutes != null ? formatDuration(sleepMinutes) : "–",
       values: trendDates.map(sleepMinutesOn),
+      format: formatDuration,
       delta: deltaFrom(sleepMinutes, priorDates.map(sleepMinutesOn), true, 15, (value) => `${integer.format(value)}m`)
     },
     {
@@ -699,6 +697,7 @@ export default async function Home({ searchParams }: PageProps) {
       color: recovery ? BAND_COLORS[recovery.band] : "#8e8e93",
       value: recovery ? `${recovery.score}%` : "–",
       values: trendDates.map((day) => recoveryByDay.get(day)?.score ?? null),
+      format: (value) => `${integer.format(value)}%`,
       delta: deltaFrom(
         recovery?.score ?? null,
         priorDates.map((day) => recoveryByDay.get(day)?.score ?? null),
@@ -713,6 +712,7 @@ export default async function Home({ searchParams }: PageProps) {
       color: STRAIN_COLOR,
       value: strain == null ? "–" : strain.toFixed(1),
       values: trendDates.map(strainOn),
+      format: (value) => value.toFixed(1),
       delta: isToday ? null : deltaFrom(strain, priorDates.map(strainOn), null, 1, (value) => value.toFixed(1))
     },
     {
@@ -721,6 +721,7 @@ export default async function Home({ searchParams }: PageProps) {
       color: FUEL_COLOR,
       value: caloriesOn(date) != null ? integer.format(caloriesOn(date) as number) : "–",
       values: trendDates.map(caloriesOn),
+      format: (value) => `${integer.format(value)} kcal`,
       delta: isToday
         ? null
         : deltaFrom(caloriesOn(date), priorDates.map(caloriesOn), null, 100, (value) => `${integer.format(value)} kcal`)
@@ -776,7 +777,7 @@ export default async function Home({ searchParams }: PageProps) {
 
       <Timeline title={isToday ? "Today so far" : "The day"} events={events} />
 
-      <TrendTiles tiles={tiles} />
+      <TrendTiles tiles={tiles} days={trendDates} />
 
       <div className="sync-bar">
         <SyncNote run={lastRun} />

@@ -432,19 +432,132 @@ export function LineChart({
 }
 
 // Small trend line for a tile: no axes, missing days break the line, and the
-// latest value gets a dot.
-export function Sparkline({ values, color, label }: { values: (number | null)[]; color: string; label: string }) {
+// latest value gets a dot. Hovering, or touching and dragging sideways, shows
+// the day under the pointer; a tap keeps it shown until the next tap elsewhere.
+export function Sparkline({
+  values,
+  days,
+  valueLabels,
+  color,
+  label
+}: {
+  values: (number | null)[];
+  days: string[];
+  // Each day's value as shown in the tooltip, formatted by the server.
+  valueLabels: string[];
+  color: string;
+  label: string;
+}) {
   const width = 140;
   const height = 40;
   const pad = 5;
+  const ref = useRef<HTMLDivElement>(null);
+  const [active, setActive] = useState<number | null>(null);
+  const [pinned, setPinned] = useState(false);
+
+  useEffect(() => {
+    if (!pinned) {
+      return;
+    }
+    const clear = (event: PointerEvent) => {
+      if (!ref.current?.contains(event.target as Node)) {
+        setPinned(false);
+        setActive(null);
+      }
+    };
+    document.addEventListener("pointerdown", clear);
+    return () => document.removeEventListener("pointerdown", clear);
+  }, [pinned]);
+
   const present = values.filter((value): value is number => value != null);
-  if (!present.length) {
-    return <svg className="sparkline" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${label}: no data`} />;
-  }
-  const lo = Math.min(...present);
-  const hi = Math.max(...present);
+  const lo = present.length ? Math.min(...present) : 0;
+  const hi = present.length ? Math.max(...present) : 0;
   const x = (index: number) => pad + (index / Math.max(1, values.length - 1)) * (width - 2 * pad);
   const y = (value: number) => (hi === lo ? height / 2 : height - pad - ((value - lo) / (hi - lo)) * (height - 2 * pad));
+
+  // The day whose column is under the pointer; the svg scales uniformly to its box.
+  function indexAt(clientX: number) {
+    const box = ref.current?.getBoundingClientRect();
+    if (!box || !box.width) {
+      return null;
+    }
+    const viewX = ((clientX - box.left) / box.width) * width;
+    const step = (width - 2 * pad) / Math.max(1, values.length - 1);
+    return Math.min(values.length - 1, Math.max(0, Math.round((viewX - pad) / step)));
+  }
+
+  const activeValue = active == null ? null : values[active];
+  const tooltipLeft = active == null ? 0 : Math.min(Math.max((x(active) / width) * 100, 22), 78);
+
+  return (
+    <div
+      ref={ref}
+      className="sparkline-frame"
+      onPointerDown={(event) => {
+        setActive(indexAt(event.clientX));
+        setPinned(false);
+      }}
+      onPointerMove={(event) => {
+        // Touch moves only arrive while the finger is down; mouse moves are hovers.
+        setActive(indexAt(event.clientX));
+      }}
+      onPointerUp={(event) => {
+        if (event.pointerType !== "mouse") {
+          setPinned(true);
+        }
+      }}
+      onPointerLeave={(event) => {
+        if (event.pointerType === "mouse") {
+          setActive(null);
+        }
+      }}
+      onPointerCancel={() => setActive(null)}
+    >
+      <SparklineSvg
+        values={values}
+        color={color}
+        label={label}
+        x={x}
+        y={y}
+        width={width}
+        height={height}
+        active={active}
+        hasData={present.length > 0}
+      />
+      {active != null ? (
+        <div className="sparkline-tooltip" style={{ left: `${tooltipLeft}%` }} role="status">
+          <span>{formatDay(days[active], true)}</span>
+          <strong style={activeValue == null ? undefined : { color }}>{valueLabels[active]}</strong>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function SparklineSvg({
+  values,
+  color,
+  label,
+  x,
+  y,
+  width,
+  height,
+  active,
+  hasData
+}: {
+  values: (number | null)[];
+  color: string;
+  label: string;
+  x: (index: number) => number;
+  y: (value: number) => number;
+  width: number;
+  height: number;
+  active: number | null;
+  hasData: boolean;
+}) {
+  if (!hasData) {
+    return <svg className="sparkline" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${label}: no data`} />;
+  }
 
   const segments: { x: number; y: number }[][] = [];
   let current: { x: number; y: number }[] = [];
@@ -463,9 +576,13 @@ export function Sparkline({ values, color, label }: { values: (number | null)[];
   }
   const lastIndex = values.length - 1;
   const last = values[lastIndex];
+  const activeValue = active == null ? null : values[active];
 
   return (
     <svg className="sparkline" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={label}>
+      {active != null ? (
+        <line x1={x(active)} x2={x(active)} y1={0} y2={height} className="sparkline-guide" />
+      ) : null}
       {segments.map((points) =>
         points.length > 1 ? (
           <polyline
@@ -482,6 +599,9 @@ export function Sparkline({ values, color, label }: { values: (number | null)[];
         )
       )}
       {last != null ? <circle cx={x(lastIndex)} cy={y(last)} r="4" fill={color} stroke={SURFACE} strokeWidth="2" /> : null}
+      {active != null && activeValue != null && active !== lastIndex ? (
+        <circle cx={x(active)} cy={y(activeValue)} r="4" fill={color} stroke={SURFACE} strokeWidth="2" />
+      ) : null}
     </svg>
   );
 }
