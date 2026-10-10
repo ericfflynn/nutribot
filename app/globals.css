@@ -24,6 +24,13 @@
   --water: #1aa6c8;
   --water-ink: #0b7590;
   --water-soft: #e6f5f9;
+  /* Macros: one distinct hue each, with a light track */
+  --protein: #7a4fd1;
+  --protein-soft: #ece6f8;
+  --carbs: #0f9f8f;
+  --carbs-soft: #dcf2ef;
+  --fat: #d64c8a;
+  --fat-soft: #fae3ee;
 }
 
 * {
@@ -1779,42 +1786,66 @@ button {
   stroke-linejoin: round;
 }
 
-/* Score rings */
-.score-rings {
-  grid-template-columns: 140px minmax(0, 1fr);
-  align-items: center;
-  gap: 20px;
-  padding: 20px;
+/* Day scores: three equal columns */
+.score-summary {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  padding: 18px 18px 16px;
 }
 
-.score-rings svg {
-  width: 100%;
-  height: auto;
-}
-
-.score-rings dl {
+.score-summary > div {
   display: grid;
-  gap: 12px;
-  margin: 0;
+  align-content: start;
+  gap: 3px;
+  min-width: 0;
 }
 
-.score-rings dt {
-  font-size: 12px;
+.score-label {
+  font-size: 13px;
   font-weight: 600;
 }
 
-.score-rings dd {
-  margin: 0;
-  font-size: 22px;
+.score-summary strong {
+  font-size: 24px;
   font-weight: 700;
+  letter-spacing: -0.01em;
   line-height: 1.15;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
-.score-rings dd span {
+.score-bar {
+  height: 5px;
+  margin: 4px 0 3px;
+  overflow: hidden;
+  border-radius: 999px;
+}
+
+.score-bar div {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.score-note {
   color: var(--muted);
   font-size: 13px;
-  font-weight: 500;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+@media (max-width: 370px) {
+  .score-summary {
+    gap: 10px;
+    padding: 16px 14px 14px;
+  }
+
+  .score-summary strong {
+    font-size: 21px;
+  }
+
+  .score-note {
+    font-size: 12px;
+  }
 }
 
 /* Nutrition */
@@ -1880,16 +1911,31 @@ button {
   border-radius: 999px;
 }
 
-.macro-fill.protein {
-  background: #5b34b0;
+.macro-bar.protein {
+  background: var(--protein-soft);
 }
 
-.macro-fill.carbs {
-  background: #8f6ad9;
+.macro-bar.carbs {
+  background: var(--carbs-soft);
 }
 
-.macro-fill.fat {
-  background: #b79ae8;
+.macro-bar.fat {
+  background: var(--fat-soft);
+}
+
+.macro-fill.protein,
+.macro-chip.protein::before {
+  background: var(--protein);
+}
+
+.macro-fill.carbs,
+.macro-chip.carbs::before {
+  background: var(--carbs);
+}
+
+.macro-fill.fat,
+.macro-chip.fat::before {
+  background: var(--fat);
 }
 
 .nutrition-callout {
@@ -2262,23 +2308,4 @@ button {
   width: 8px;
   height: 8px;
   border-radius: 2px;
-}
-
-.macro-chip.protein::before {
-  background: #5b34b0;
-}
-
-.macro-chip.carbs::before {
-  background: #8f6ad9;
-}
-
-.macro-chip.fat::before {
-  background: #b79ae8;
-}
-
-.score-rings .ring-note {
-  margin-top: 1px;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 500;
 }

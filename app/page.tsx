@@ -151,58 +151,38 @@ function DeltaText({ delta }: { delta: Delta | null }) {
   return delta ? <span className={`delta ${delta.tone}`}>{delta.text}</span> : null;
 }
 
-type Ring = {
+type Score = {
   label: string;
   percent: number | null;
   color: string;
   textColor: string;
   value: string;
-  caption: string;
-  // Smaller line under the value.
-  note?: string;
+  // Smaller lines under the bar.
+  notes: string[];
 };
 
-// Concentric rings, outermost first, with a legend beside them.
-function ScoreRings({ rings }: { rings: Ring[] }) {
-  const radii = [64, 48, 32];
+// Sleep, recovery and strain side by side: value, a thin bar toward its maximum, then details.
+function ScoreSummary({ scores }: { scores: Score[] }) {
   return (
-    <section className="card score-rings" aria-label="Day scores">
-      <svg viewBox="0 0 150 150" aria-hidden="true">
-        {rings.map((ring, index) => {
-          const radius = radii[index];
-          const circumference = 2 * Math.PI * radius;
-          const filled = ring.percent == null ? 0 : Math.max(0, Math.min(100, ring.percent)) / 100;
-          return (
-            <g key={ring.label}>
-              <circle cx="75" cy="75" r={radius} fill="none" stroke={ring.color} strokeOpacity={0.15} strokeWidth="13" />
-              {filled > 0 ? (
-                <circle
-                  cx="75"
-                  cy="75"
-                  r={radius}
-                  fill="none"
-                  stroke={ring.color}
-                  strokeWidth="13"
-                  strokeLinecap="round"
-                  strokeDasharray={`${circumference * filled} ${circumference}`}
-                  transform="rotate(-90 75 75)"
-                />
-              ) : null}
-            </g>
-          );
-        })}
-      </svg>
-      <dl>
-        {rings.map((ring) => (
-          <div key={ring.label}>
-            <dt style={{ color: ring.textColor }}>{ring.label}</dt>
-            <dd>
-              {ring.value} <span>{ring.caption}</span>
-            </dd>
-            {ring.note ? <dd className="ring-note">{ring.note}</dd> : null}
+    <section className="card score-summary" aria-label="Day scores">
+      {scores.map((score) => (
+        <div key={score.label}>
+          <span className="score-label" style={{ color: score.textColor }}>
+            {score.label}
+          </span>
+          <strong>{score.value}</strong>
+          <div className="score-bar" role="presentation" style={{ background: `color-mix(in srgb, ${score.color} 16%, transparent)` }}>
+            {score.percent != null && score.percent > 0 ? (
+              <div style={{ width: `${Math.min(100, score.percent)}%`, background: score.color }} />
+            ) : null}
           </div>
-        ))}
-      </dl>
+          {score.notes.map((note) => (
+            <span className="score-note" key={note}>
+              {note}
+            </span>
+          ))}
+        </div>
+      ))}
     </section>
   );
 }
@@ -288,7 +268,7 @@ function mealSlot(minute: number | null) {
   return "Snack";
 }
 
-// Grams per macro, each with the dot color of its bar in the Nutrition card.
+// Grams per macro, each with the color of its bar in the Nutrition card.
 function MacroChips({ totals }: { totals: { protein_g: number; carbs_g: number; fat_g: number } }) {
   return (
     <span className="macro-chips">
@@ -530,21 +510,20 @@ export default async function Home({ searchParams }: PageProps) {
     };
   });
 
-  // Rings
+  // Day scores
   const health = healthByDay.get(date);
   const sleepMinutes = health?.sleepMinutes ?? null;
   const sleepPercent = sleepPerformance(sleepMinutes);
   const recovery = recoveryByDay.get(date) ?? null;
   const strain = strainOn(date);
-  const rings: Ring[] = [
+  const scores: Score[] = [
     {
       label: "Sleep",
       percent: sleepPercent,
       color: SLEEP_COLOR,
       textColor: "var(--sleep-ink)",
       value: sleepMinutes != null ? formatDuration(sleepMinutes) : "–",
-      caption: sleepMinutes != null ? "" : "No data",
-      note: sleepPercent != null ? `${sleepPercent}% of need` : undefined
+      notes: [sleepPercent != null ? `${sleepPercent}%` : "No data"]
     },
     {
       label: "Recovery",
@@ -552,15 +531,13 @@ export default async function Home({ searchParams }: PageProps) {
       color: recovery ? BAND_COLORS[recovery.band] : "#8e8e93",
       textColor: recovery ? BAND_TEXT[recovery.band] : "var(--muted)",
       value: recovery ? `${recovery.score}%` : "–",
-      // The ring color and the timeline carry the band; the legend shows what drives the score.
-      caption: recovery ? "" : "No data",
-      note:
-        [
-          health?.hrvMs != null ? `HRV ${Math.round(health.hrvMs)} ms` : null,
-          health?.restingHr != null ? `RHR ${health.restingHr} bpm` : null
-        ]
-          .filter(Boolean)
-          .join(" · ") || undefined
+      // The bar color and the timeline carry the band; the notes show what drives the score.
+      notes: recovery
+        ? [
+            health?.hrvMs != null ? `HRV ${Math.round(health.hrvMs)} ms` : null,
+            health?.restingHr != null ? `RHR ${health.restingHr} bpm` : null
+          ].filter((note): note is string => note != null)
+        : ["No data"]
     },
     {
       label: "Strain",
@@ -568,8 +545,7 @@ export default async function Home({ searchParams }: PageProps) {
       color: STRAIN_COLOR,
       textColor: "var(--strain-ink)",
       value: strain == null ? "–" : strain.toFixed(1),
-      caption: strain == null ? "No data" : "",
-      note: health?.steps != null ? `${integer.format(health.steps)} steps` : undefined
+      notes: strain == null ? ["No data"] : health?.steps != null ? [`${integer.format(health.steps)} steps`] : []
     }
   ];
 
@@ -752,7 +728,7 @@ export default async function Home({ searchParams }: PageProps) {
     <AppShell user={user} date={date} active="home" title={dayTitle(date, today)} headerAction={headerAction}>
       <DayStrip days={stripDays} earlierHref={`/?date=${addDays(stripDates[0], -1)}`} />
 
-      <ScoreRings rings={rings} />
+      <ScoreSummary scores={scores} />
 
       <section className="card nutrition-card" aria-label="Nutrition">
         <div className="card-heading">
@@ -774,7 +750,7 @@ export default async function Home({ searchParams }: PageProps) {
                   <strong>{integer.format(macro.value)}</strong> / {macro.goal}g
                 </span>
               </div>
-              <div className="macro-bar" role="presentation">
+              <div className={`macro-bar ${macro.key}`} role="presentation">
                 <div
                   className={`macro-fill ${macro.key}`}
                   style={{ width: `${macro.goal > 0 ? Math.min(100, (macro.value / macro.goal) * 100) : 0}%` }}
