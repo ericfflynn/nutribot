@@ -10,7 +10,7 @@ import { HEALTH_DATA_TYPES } from "@/lib/health/google";
 import { runHealthSync } from "@/lib/health/sync";
 import type { Draft } from "@/lib/brain";
 import { newConversation, withDraft } from "@/lib/chat";
-import { deleteHabitLog, saveHabit, saveHabitLogs } from "@/lib/habits";
+import { deleteHabitLog, listHabits, saveHabit, saveHabitLogs } from "@/lib/habits";
 import { deleteJournalEntry, saveJournalEntry } from "@/lib/journal";
 import { deletePushSubscription, savePushSubscription, type PushSubscriptionInput } from "@/lib/reminders";
 import { z } from "zod";
@@ -364,6 +364,45 @@ export async function deletePushSubscriptionAction(endpoint: string): Promise<{ 
   if (!user || !db) return { ok: false };
   await deletePushSubscription(db, user.name, endpoint);
   return { ok: true };
+}
+
+const habitLogSchema = z.object({
+  habitId: z.string().uuid(),
+  date: z.string().refine(isValidLocalDate),
+  amount: z.number().min(0).max(24 * 60),
+  details: z.string().trim().max(300).nullable(),
+  startedAt: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable(),
+  endedAt: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable()
+});
+
+// Habits tab: log one use, or an explicit "none", without the chat.
+export async function logHabitAction(input: z.input<typeof habitLogSchema>): Promise<{ ok: boolean; error?: string }> {
+  const user = await getSessionUser();
+  const db = getPool();
+  if (!user || !db) return { ok: false, error: "Log in again." };
+
+  const parsed = habitLogSchema.safeParse(input);
+  if (!parsed.success || parsed.data.date > todayLocalDate()) return { ok: false, error: "That entry isn't valid." };
+  const log = parsed.data;
+  const habit = (await listHabits(db, user.name)).find((item) => item.id === log.habitId);
+  if (!habit) return { ok: false, error: "That habit no longer exists." };
+  if (habit.measure === "intensity" && (!Number.isInteger(log.amount) || log.amount > 3)) {
+    return { ok: false, error: "Pick none, light, moderate or heavy." };
+  }
+  await saveHabitLogs(db, user.name, log.date, [{ ...log, details: log.details || null }]);
+  revalidatePath("/");
+  revalidatePath("/habits");
+  return { ok: true };
+}
+
+export async function deleteHabitLogAction(id: string): Promise<{ ok: boolean; error?: string }> {
+  const user = await getSessionUser();
+  const db = getPool();
+  if (!user || !db) return { ok: false, error: "Log in again." };
+  const deleted = await deleteHabitLog(db, user.name, id);
+  revalidatePath("/");
+  revalidatePath("/habits");
+  return deleted ? { ok: true } : { ok: false, error: "That entry no longer exists." };
 }
 
 // Today: remove a journal entry or one habit log.

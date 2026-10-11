@@ -1,9 +1,10 @@
 import { ChatPromptButton } from "../chat-sheet";
 import { CheckinSummary } from "../checkin-card";
+import { HabitLogger } from "../habit-logger";
 import { RemindersToggle } from "../reminders-toggle";
 import { AppShell, Login } from "../shared-ui";
 import { getSessionUser } from "@/lib/auth";
-import { rollingDateWindow, todayLocalDate } from "@/lib/dates";
+import { addDays, rollingDateWindow, todayLocalDate } from "@/lib/dates";
 import {
   listHabitLogs,
   listHabits,
@@ -82,7 +83,16 @@ export default async function HabitsPage() {
 
   return (
     <AppShell user={user} date={today} active="habits" title="Habits">
-      <CheckinSummary entries={todayEntries} habitDays={byDay.get(today)!} isToday />
+      <CheckinSummary entries={todayEntries} isToday />
+
+      {habits.length ? (
+        <HabitLogger
+          habits={habits}
+          logs={logs.filter((log) => log.date >= addDays(today, -1))}
+          today={today}
+          yesterday={addDays(today, -1)}
+        />
+      ) : null}
 
       {habits.length ? (
         <section className="card" aria-label="Last 14 days">

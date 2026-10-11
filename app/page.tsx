@@ -843,7 +843,7 @@ export default async function Home({ searchParams }: PageProps) {
         <WaterRow ounces={waterOunces} goalOz={goals.waterOz} date={date} />
       </section>
 
-      <CheckinSummary entries={journal} habitDays={summarizeHabitDay(habits, habitLogs)} isToday={isToday} />
+      <CheckinSummary entries={journal} habitDays={summarizeHabitDay(habits, habitLogs)} isToday={isToday} logLink />
 
       <GoalsForm goals={goals} redirectDate={date} />
 

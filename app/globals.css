@@ -1477,8 +1477,11 @@ button {
   padding: 2px;
 }
 
-.segmented a {
+.segmented a,
+.segmented button {
   min-width: 48px;
+  padding: 0 10px;
+  background: transparent;
   border-radius: 7px;
   color: var(--ink);
   font-size: 13px;
@@ -1488,7 +1491,8 @@ button {
   text-decoration: none;
 }
 
-.segmented a.active {
+.segmented a.active,
+.segmented button.active {
   background: var(--surface);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
@@ -3279,4 +3283,154 @@ details[open] .journal-preview {
   padding: 0;
   list-style: none;
   font-size: 14px;
+}
+
+/* Habits tab: manual logger */
+.habit-logger-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.habit-logger-list > li {
+  border-top: 1px solid var(--line);
+}
+
+.habit-logger-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 0;
+  background: none;
+  color: var(--ink);
+  font-size: 15px;
+  text-align: left;
+}
+
+.habit-logger-row span:last-child {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.habit-logger-list li.unknown .habit-logger-row span:last-child {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.habit-panel {
+  display: grid;
+  gap: 10px;
+  padding: 0 0 14px;
+}
+
+.habit-panel-logs {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+}
+
+.habit-panel-logs li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.habit-panel-logs small {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.habit-note,
+.habit-minutes input,
+.habit-times input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfa;
+  color: var(--ink);
+  padding: 9px 11px;
+  font-size: 16px;
+}
+
+.habit-choices {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.pill-button.primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.pill-button:disabled {
+  opacity: 0.5;
+}
+
+.habit-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.habit-stepper button {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: #e4e4ea;
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.habit-stepper strong {
+  min-width: 72px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.habit-minutes {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.habit-minutes input {
+  width: 84px;
+}
+
+.habit-times {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.habit-times label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.checkin-habits-head {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.checkin-habits-head a {
+  color: var(--accent);
+  text-decoration: none;
 }

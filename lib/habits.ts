@@ -205,6 +205,24 @@ export function formatMinutes(minutes: number) {
   return hours ? `${hours}h${minutes % 60 ? ` ${minutes % 60}m` : ""}` : `${minutes}m`;
 }
 
+// "20:30" as "8:30 PM".
+export function formatClockTime(time: string) {
+  return new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" }).format(
+    new Date(`2000-01-01T${time}:00Z`)
+  );
+}
+
+// A day's status: "Light ×2", "2h · until 11:40 PM · 1h 40m late", "None", "Not logged".
+export function describeHabitDay(day: HabitDay) {
+  if (day.status === "unknown") return "Not logged";
+  if (day.status === "none") return "None";
+  const amount = formatHabitAmount(day.habit, day.level);
+  const parts = [day.habit.measure === "intensity" && day.uses > 1 ? `${amount} ×${day.uses}` : amount];
+  if (day.habit.cutoff && day.latestEnd) parts.push(`until ${formatClockTime(day.latestEnd)}`);
+  if (day.lateMinutes) parts.push(`${formatMinutes(day.lateMinutes)} late`);
+  return parts.join(" · ");
+}
+
 // A scale guide ("1: one pouch. 2: ...") as one line per level: "Light: one pouch."
 export function scaleGuideLines(guide: string) {
   return guide
