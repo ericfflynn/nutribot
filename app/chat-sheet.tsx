@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { discardDraftAction, newChatAction, saveDraftAction } from "./actions";
 import type { Draft, MealDraft, WorkoutDraft } from "@/lib/brain";
 import type { HabitDraft, HabitsDraft, JournalDraft } from "@/lib/brain-checkin";
-import { formatHabitAmount, scaleGuideLines } from "@/lib/habits";
+import { describeGoal, formatHabitAmount, scaleGuideLines } from "@/lib/habits";
 import { RATINGS } from "@/lib/journal";
 import type { ChatMessage } from "@/lib/chat";
 import type { FitbitWorkout } from "@/lib/workouts";
@@ -288,7 +288,8 @@ function HabitCard({ draft, ...handlers }: { draft: HabitDraft } & DraftHandlers
   const { habit } = draft;
   const measure = habit.measure === "intensity" ? "Intensity 1–3" : habit.measure === "count" ? `Count of ${habit.unit}` : "Minutes";
   const details = [measure, habit.direction === "limit" ? "less is better" : "more is better"];
-  if (habit.cutoff) details.push(`late after ${clock(`2000-01-01T${habit.cutoff}`)}`);
+  const goal = describeGoal(habit);
+  if (goal) details.push(`goal: ${goal.toLowerCase()}`);
   if (!habit.active) details.push("archived");
   return (
     <CheckinCard draft={draft} kind={draft.habit_id ? "change habit" : "new habit"} {...handlers}>

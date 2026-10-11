@@ -27,6 +27,11 @@ export function isValidLocalDate(value: string) {
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
+// Sunday through Thursday: the nights before a workday.
+export function isWeeknight(date: string) {
+  return new Date(`${date}T12:00:00Z`).getUTCDay() <= 4;
+}
+
 export function addDays(entryDate: string, days: number) {
   const date = new Date(`${entryDate}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() + days);

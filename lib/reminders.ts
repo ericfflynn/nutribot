@@ -3,6 +3,7 @@
 // journal entry asks for one. Plan: docs/journal-habits-plan.md#reminders.
 import type { Pool } from "pg";
 import webpush from "web-push";
+import { isWeeknight } from "./dates";
 
 export const REMINDER_HOUR = 20;
 
@@ -11,11 +12,6 @@ export type PushSubscriptionInput = { endpoint: string; keys: { p256dh: string; 
 export type Reminder = { title: string; body: string; url: string };
 
 const CHECKIN_URL = `/chat?prompt=${encodeURIComponent("Evening check-in")}`;
-
-// Sunday through Thursday: the nights before a workday.
-export function isWeeknight(date: string) {
-  return new Date(`${date}T12:00:00Z`).getUTCDay() <= 4;
-}
 
 export function reminderFor(date: string, journaled: boolean): Reminder | null {
   if (isWeeknight(date)) {

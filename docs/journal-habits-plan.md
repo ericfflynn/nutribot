@@ -1,6 +1,6 @@
 # Journal, habits and reminders plan
 
-Status: proposed October 10, 2026; not built yet.
+Status: built October 10, 2026 (journal, habits, Habits tab, reminders); reminders go live once VAPID keys are in Vercel.
 
 ## Goal
 
@@ -37,18 +37,20 @@ Habits are rows, not code, so new ones are added by telling the chat "start trac
 | `measure` | `intensity` (1–3), `count` (with a `unit`, e.g. drinks) or `minutes`. |
 | `direction` | `limit` (less is better) or `build` (more is better). |
 | `scale_guide` | For `intensity` habits: what light, moderate and heavy mean, so every log is rated the same way. Claude drafts it when the habit is added; the owner can change it. |
-| `cutoff` | Optional local time after which use counts as late (Gaming: 20:00). |
+| `goal` | The day's target. Limit habits: the most that's OK (0 = none). Build habits: the least. |
+| `cutoff` | Optional local time after which any use is a miss (Gaming: 20:00). |
+| `cutoff_weeknights` | The cutoff applies Sunday–Thursday only. |
 | `active` | Archived habits keep their history. |
 
 Starting set:
 
 | Habit | Measure | Direction | Scale guide |
 | --- | --- | --- | --- |
-| Nicotine | intensity | limit | 1: one or two pouches. 2: several pouches, or a few vape hits. 3: vaping on and off all day, or cigarettes. |
-| Weed | intensity | limit | 1: a small gummy (≤5 mg). 2: a standard edible (~10 mg) or a shared joint. 3: bong rips, several sessions, or a strong edible. |
-| Alcohol | count (drinks) | limit | |
-| Reading | minutes | build | |
-| Gaming (Xbox) | minutes | limit | Cutoff 20:00. No playing after 8 pm on weeknights. |
+| Nicotine | intensity | limit | Goal: none. 1: one or two pouches. 2: several pouches, or a few vape hits. 3: vaping on and off all day, or cigarettes. |
+| Weed | intensity | limit | Goal: none. 1: a small gummy (≤5 mg). 2: a standard edible (~10 mg) or a shared joint. 3: bong rips, several sessions, or a strong edible. |
+| Alcohol | count (drinks) | limit | Goal: none. |
+| Reading | minutes | build | Goal: 15 minutes. |
+| Gaming (Xbox) | minutes | limit | No playing after 8 pm on weeknights (cutoff 20:00, weeknights only). |
 
 `habit_logs`, one row per use (or per "none" for a day):
 
@@ -60,6 +62,15 @@ Starting set:
 | `started_at`, `ended_at` | Optional local times. Late use affects sleep more, and for Gaming they give how late he played. An `ended_at` earlier than `started_at` means after midnight; the log still belongs to the evening's date. |
 
 A day's level per habit: the highest intensity (or the total drinks or minutes) that day, plus the number of uses. Habits with a cutoff also get the latest end time and the minutes past the cutoff ("played 2h, until 11:40 pm, 1h 40m after 8"). A day with no rows is unknown, not zero, so it never skews comparisons. The evening check-in asks about any active habit he hasn't mentioned that day, which is how the zeros get recorded.
+
+## Goal met or missed
+
+Each logged day is judged against the habit's goal (`habitOutcome` in `lib/habits.ts`) and colored in the Habits tab's grid: green when met, yellow, orange or red for a small, medium or big miss, gray when not logged.
+
+- **Limit habits:** over the goal by 1, 2 or 3+ intensity steps or drinks; for minutes, up to 25%, 75% or more over.
+- **Cutoff:** minutes past the cutoff, under 30, up to 90, or more. Needs start and end times; a weeknight use without them shows as "can't tell".
+- **Build habits:** at least half the goal is a small miss, less is medium, an explicit zero is big.
+- An explicit zero on a limit habit is a met goal.
 
 ## Chat tools
 
@@ -75,6 +86,12 @@ Same draft-then-Save flow as meals ([brain.md](brain.md)).
 | `list_habit_logs` | Read-only: logs and daily levels in a date range. |
 
 An evening check-in usually ends with two cards: the journal entry and the day's habits.
+
+## Habits tab
+
+- Check-in card: today's journal ratings and a Check in button.
+- The 14-day grid, colored by outcome. Tapping a square opens that habit and day below the grid, to log a use, a "none", or remove an entry; tapping a name opens today. Intensity habits log with one tap (None, Light, Moderate, Heavy); drinks with a counter; minutes with optional start and end times.
+- Journal history, tracked habits with their goals and scale guides, and the Reminders switch.
 
 ## On Today
 

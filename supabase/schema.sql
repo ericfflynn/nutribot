@@ -353,6 +353,13 @@ create table if not exists public.habits (
   unique (user_name, name)
 );
 
+-- A habit's daily target: the most that's OK for limit habits (0 = none), the
+-- least for build habits. A cutoff can apply on weeknights (Sun-Thu) only.
+alter table public.habits
+  add column if not exists goal numeric check (goal >= 0);
+alter table public.habits
+  add column if not exists cutoff_weeknights boolean not null default false;
+
 -- One row per use; amount 0 records "didn't today".
 create table if not exists public.habit_logs (
   id uuid primary key default gen_random_uuid(),

@@ -1477,11 +1477,8 @@ button {
   padding: 2px;
 }
 
-.segmented a,
-.segmented button {
+.segmented a {
   min-width: 48px;
-  padding: 0 10px;
-  background: transparent;
   border-radius: 7px;
   color: var(--ink);
   font-size: 13px;
@@ -1491,8 +1488,7 @@ button {
   text-decoration: none;
 }
 
-.segmented a.active,
-.segmented button.active {
+.segmented a.active {
   background: var(--surface);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
@@ -3181,27 +3177,87 @@ button.fab {
   color: var(--bad);
 }
 
-/* Habits tab: 14-day grid (limit habits in strain orange, build habits in green) */
-.coverage-cell.habit-build.level-1 {
-  background: #bfe3cf;
+/* Habits tab: 14-day grid colored by outcome against each habit's goal */
+.coverage-cell.met {
+  background: #34c759;
 }
 
-.coverage-cell.habit-build.level-2 {
-  background: #7cc59d;
+.coverage-cell.miss-1 {
+  background: #ffcc00;
 }
 
-.coverage-cell.habit-build.level-3 {
-  background: var(--accent);
+.coverage-cell.miss-2 {
+  background: #ff9500;
 }
 
-/* An explicit "didn't today": an empty box, unlike the solid "not logged". */
-.coverage-cell.none {
-  background: var(--surface);
-  box-shadow: inset 0 0 0 1.5px var(--line);
+.coverage-cell.miss-3 {
+  background: #ff3b30;
+}
+
+/* Logged, but the habit has no goal to judge it by. */
+.coverage-cell.used {
+  background: #a7a7b0;
+}
+
+.habit-cell {
+  height: 24px;
+  padding: 0;
+}
+
+.habit-cell.selected {
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--ink);
+}
+
+.habit-name {
+  overflow: hidden;
+  padding: 0;
+  background: none;
+  color: var(--ink);
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.habit-grid-card {
+  display: grid;
+  gap: 12px;
+}
+
+.habit-grid-card .coverage-legend i + i {
+  margin-left: -3px;
+}
+
+.habit-selected {
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.habit-selected-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.habit-selected-head div {
+  display: grid;
+  gap: 2px;
+}
+
+.habit-selected-head span {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.habit-selected-head small {
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .habit-grid {
-  grid-template-columns: 96px minmax(0, 1fr) 24px;
+  grid-template-columns: 92px minmax(0, 1fr) 32px;
 }
 
 .journal-list,
@@ -3286,40 +3342,6 @@ details[open] .journal-preview {
 }
 
 /* Habits tab: manual logger */
-.habit-logger-list {
-  display: grid;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.habit-logger-list > li {
-  border-top: 1px solid var(--line);
-}
-
-.habit-logger-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  width: 100%;
-  padding: 11px 0;
-  background: none;
-  color: var(--ink);
-  font-size: 15px;
-  text-align: left;
-}
-
-.habit-logger-row span:last-child {
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-.habit-logger-list li.unknown .habit-logger-row span:last-child {
-  color: var(--muted);
-  font-weight: 400;
-}
-
 .habit-panel {
   display: grid;
   gap: 10px;

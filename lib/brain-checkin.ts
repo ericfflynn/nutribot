@@ -8,8 +8,10 @@ import { addDays } from "./dates";
 import {
   HABIT_DIRECTIONS,
   HABIT_MEASURES,
+  describeGoal,
   formatHabitAmount,
   formatMinutes,
+  habitOutcome,
   listHabitLogs,
   listHabits,
   summarizeHabitDay,
@@ -61,12 +63,13 @@ export const CHECKIN_PROMPT = `## Journal
 
 ## Habits
 - Call list_habits before logging a habit, and rate each use with that habit's scale_guide so ratings stay consistent. Intensity is 1 light, 2 moderate, 3 heavy; counts and minutes are numbers.
-- details keeps their words ("1 Zyn on the golf course"). Add started_at and ended_at when they give times or say how late; for habits with a cutoff, if they used it past the cutoff and didn't say until when, ask.
+- details keeps their words ("1 Zyn on the golf course"). Add started_at and ended_at when they give times or say how late. For a habit whose cutoff applies that day (list_habits says when), ask until when if they didn't say; without times the day can't be judged.
 - Times are 24-hour local. Read a time without am or pm the way it was most likely meant: gaming, drinks and anything after dinner are evening ("8:30 to 11:15" is 20:30-23:15). Don't ask which.
 - amount 0 means they said they didn't do it today. Only record 0 when they say so. A habit never mentioned stays unlogged.
 - One draft_habits call per day holds all of that day's habit logs, uses and zeros together.
 - In an evening check-in, call list_habit_logs for today and ask in one short sentence about active habits with no log yet, so missing days get their zeros ("Any weed, nicotine or drinks today? Read or play Xbox?").
-- To start tracking something new, or change a habit's scale or cutoff, call draft_habit. Intensity habits need a scale_guide that says what 1, 2 and 3 mean.
+- To start tracking something new, or change a habit's scale, goal or cutoff, call draft_habit. Intensity habits need a scale_guide that says what 1, 2 and 3 mean.
+- Each habit can have a goal: for limit habits the most that's OK in a day (0 means none), for build habits the least. A cutoff makes any use after that time a miss, optionally on weeknights (Sun-Thu) only. list_habit_logs says whether each day met the goal; use it for "how am I doing".
 - An evening check-in usually ends with two drafts: the journal entry and the day's habits. Mention them in a sentence or two, not a list; the cards show the details.`;
 
 const localDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("Local date, YYYY-MM-DD.");
@@ -85,7 +88,8 @@ function errorText(message: string) {
 function describeHabit(habit: Habit) {
   const measure = habit.measure === "count" ? `count of ${habit.unit ?? "uses"}` : habit.measure;
   const parts = [`${habit.name} (id ${habit.id}): ${measure}, ${habit.direction}`];
-  if (habit.cutoff) parts.push(`late after ${habit.cutoff}`);
+  const goal = describeGoal(habit);
+  if (goal) parts.push(`goal: ${goal}`);
   if (habit.scaleGuide) parts.push(`scale: ${habit.scaleGuide}`);
   if (!habit.active) parts.push("archived");
   return parts.join("; ");
@@ -215,7 +219,13 @@ export function checkinTools(context: {
       unit: z.string().nullable().describe('For counts, e.g. "drinks".'),
       direction: z.enum(HABIT_DIRECTIONS).describe("limit: less is better. build: more is better."),
       scale_guide: z.string().nullable().describe("For intensity habits: what 1 light, 2 moderate and 3 heavy mean."),
-      cutoff: hhmm.nullable().describe("Local time after which use counts as late."),
+      goal: z
+        .number()
+        .min(0)
+        .nullable()
+        .describe("Daily target in the habit's measure: the most that's OK for limit habits (0 = none), the least for build habits."),
+      cutoff: hhmm.nullable().describe("Local time after which any use is a miss."),
+      cutoff_weeknights: z.boolean().describe("The cutoff applies Sunday-Thursday nights only."),
       active: z.boolean(),
       replaces: z.string().optional().describe("Id of an open draft this revises.")
     },
@@ -240,7 +250,9 @@ export function checkinTools(context: {
           unit: args.measure === "count" ? args.unit : null,
           direction: args.direction,
           scaleGuide: args.measure === "intensity" ? args.scale_guide : null,
+          goal: args.goal,
           cutoff: args.cutoff,
+          cutoffWeeknights: Boolean(args.cutoff) && args.cutoff_weeknights,
           active: args.active
         },
         saved_id: null
@@ -300,9 +312,11 @@ export function checkinTools(context: {
       const lines: string[] = [];
       for (let date = args.end_date; date >= args.start_date; date = addDays(date, -1)) {
         const dayLogs = logs.filter((log) => log.date === date);
-        const days = summarizeHabitDay(habits, dayLogs).map((day) => {
+        const days = summarizeHabitDay(habits, date, dayLogs).map((day) => {
+          const outcome = habitOutcome(day);
+          const verdict = outcome === "met" ? ", goal met" : outcome.startsWith("miss") ? `, goal missed (${outcome.slice(5)} of 3)` : "";
           if (day.status === "unknown") return `${day.habit.name}: not logged`;
-          if (day.status === "none") return `${day.habit.name}: none`;
+          if (day.status === "none") return `${day.habit.name}: none${verdict}`;
           const uses = dayLogs
             .filter((log) => log.habitId === day.habit.id && log.amount > 0)
             .map((log) => {
@@ -310,7 +324,7 @@ export function checkinTools(context: {
               return `${formatHabitAmount(day.habit, log.amount)}${times}${log.details ? ` "${log.details}"` : ""}`;
             });
           const late = day.lateMinutes ? `, ${formatMinutes(day.lateMinutes)} past ${day.habit.cutoff}` : "";
-          return `${day.habit.name}: ${formatHabitAmount(day.habit, day.level)}${late} (${uses.join("; ")})`;
+          return `${day.habit.name}: ${formatHabitAmount(day.habit, day.level)}${late}${verdict} (${uses.join("; ")})`;
         });
         lines.push(`${date}: ${days.join(" | ")}`);
       }
