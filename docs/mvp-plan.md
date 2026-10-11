@@ -87,21 +87,16 @@ Storage is about 1.4 MB for January through early October.
 3. **Scheduled sync.** Done: six daily Vercel Cron jobs (a full run at 11:00 UTC, five light "last 3 days" runs through the day), Google credentials in Vercel env vars, every run logged in `health_sync_runs`.
 4. **Chat.** Done for meals and workouts: Chat tab and floating sheet, draft tools, Fitbit matching, conversations with New chat (`chat_conversations`, `chat_messages`), meal history and edits, goals. The old OpenAI meal logger is removed. Remaining: habits, journal and the health metrics tool.
 5. **Dashboard.** Today (scores, nutrition and goals, water, a timeline with one row per meal, 7-day trends with tooltips) and Training (missing muscle groups, unlabeled workouts, coverage, sessions, recent workouts) are live, with a home-screen icon.
-6. **Next:** habit and journal logging, then public dashboards (below).
+6. **Next:** journal and habit logging, then reminders.
 
-## Next: public dashboards
+## Privacy stance
 
-Goal: anyone with the link can see Today and Training; logging stays private. The owner agreed (October 10, 2026) that this exposes his real sleep, HRV, recovery, strain, meals and workouts.
-
-- **Public, read-only:** Today and Training render the owner's data without a session. The owner is set by an env var (e.g. `PUBLIC_DASHBOARD_USER`), since there is no session to read it from.
-- **Behind the login:** the Chat tab and floating Chat button, `/api/brain`, saving and discarding drafts, meal and workout edits, goals, water buttons, Refresh and Label. Every server action and `/api/brain` already check the session, so the work is mostly hiding those controls when logged out and adding a visible "Sign in" link.
-- **To decide:** whether meal descriptions and per-item macros are public or just the totals; whether the day strip reaches back the full 28 days; caching (Vercel ISR, or a short revalidate) so public traffic doesn't hit Postgres on every view.
-- **Docs:** the privacy note in AGENTS.md changes from "nothing public" to "dashboards public, raw rows and chat private".
+Decided October 10, 2026: everything stays private behind the login. There are no public dashboards; an earlier plan for public Today and Training pages is dropped. The chat brain may read all logged data, including habits and journal entries.
 
 ## Open questions
 
 - **Google re-authorization.** The OAuth app is published (unverified, which is fine for personal use), so refresh tokens no longer expire after 7 days. Re-auth is `npm run health:auth`; an in-app connect flow can come later if needed.
-- **Authentication.** The app uses its own login with env-var passwords and signed cookies, and kept it through chat. Revisit before public dashboards only if a second user is ever added.
+- **Authentication.** The app uses its own login with env-var passwords and signed cookies, and kept it through chat. Revisit only if a second user is ever added.
 - **Model disclosure.** Claude sees the current conversation, its open drafts, and through its read tools: saved meals, workout summaries with labels, and goals with daily progress. Decide what a health tool may return (daily summaries vs raw payloads) before building it.
 - **Richer goals.** Goals are calories, a macro split and water today. They are expected to grow (e.g. weekly training targets, sleep), which may outgrow the one-row `user_macro_goals` table.
 - **Health fields.** Which payload fields become views or dashboard metrics, once the raw data is loaded and inspected.

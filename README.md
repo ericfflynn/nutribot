@@ -117,9 +117,9 @@ Everything is in [`supabase/schema.sql`](supabase/schema.sql), written to be saf
 
 ## Roadmap
 
-- **Public dashboards.** Make Today and Training readable by anyone with the link. Chat, saving and every edit stay behind the login.
-- **Read tools for the brain**, so it can answer from your data: "how's my protein this week?", "when did I last train legs?".
-- **Habits and journal** entries through chat.
+- **Journal and habits** through chat: morning and evening check-ins with mood, energy, stress and soreness ratings, and habits (weed, nicotine, alcohol, reading) with intensity, compared against sleep and recovery over time.
+- **Gentle reminders** as iPhone web push: only when a check-in is missing, at most once or twice a day.
+- **A health read tool for the brain**, so it can answer "how did I sleep this week?".
 
 Details and open questions: [docs/mvp-plan.md](docs/mvp-plan.md).
 
