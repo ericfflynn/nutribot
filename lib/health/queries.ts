@@ -17,6 +17,11 @@ export type HealthDay = {
   deepMinutes: number | null;
   remMinutes: number | null;
   lightMinutes: number | null;
+  awakeMinutes: number | null;
+  spo2Pct: number | null;
+  breathsPerMin: number | null;
+  vo2Max: number | null;
+  sleepTempVsBaselineC: number | null;
   bedtime: string | null;
   wakeTime: string | null;
 };
@@ -68,6 +73,11 @@ export async function listHealthDays(userName: string, startDate: string, endDat
       deep_minutes::int as "deepMinutes",
       rem_minutes::int as "remMinutes",
       light_minutes::int as "lightMinutes",
+      awake_minutes::int as "awakeMinutes",
+      spo2_pct::float8 as "spo2Pct",
+      breaths_per_min::float8 as "breathsPerMin",
+      vo2_max::float8 as "vo2Max",
+      sleep_temp_vs_baseline_c::float8 as "sleepTempVsBaselineC",
       to_char(bedtime, 'YYYY-MM-DD"T"HH24:MI') as "bedtime",
       to_char(wake_time, 'YYYY-MM-DD"T"HH24:MI') as "wakeTime"
     from public.health_daily

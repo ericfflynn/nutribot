@@ -27,6 +27,8 @@ export type MacroEntry = {
   confidence: number;
   notes: string | null;
   meal_type: MealType | null;
+  // Local "HH:MM" the meal was eaten; null means when it was logged.
+  eaten_at: string | null;
   created_at: string;
 };
 
@@ -124,6 +126,7 @@ const ENTRY_COLUMNS = `
   confidence::float8,
   notes,
   meal_type,
+  to_char(eaten_at, 'HH24:MI') as eaten_at,
   created_at::text
 `;
 
@@ -193,6 +196,7 @@ export async function saveMacroEntry(params: {
   rawText: string;
   parsed: ParsedMacros;
   mealType?: MealType;
+  eatenAt?: string | null;
   // A transaction's client, when the insert is part of a larger write.
   client?: Queryable;
 }): Promise<string> {
@@ -210,9 +214,10 @@ export async function saveMacroEntry(params: {
       items,
       confidence,
       notes,
-      meal_type
+      meal_type,
+      eaten_at
     )
-    values ($1, $2::date, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11)
+    values ($1, $2::date, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12::time)
     returning id::text
     `,
     [
@@ -226,7 +231,8 @@ export async function saveMacroEntry(params: {
       JSON.stringify(parsed.items),
       parsed.confidence,
       parsed.notes || null,
-      params.mealType ?? null
+      params.mealType ?? null,
+      params.eatenAt ?? null
     ]
   );
   return rows[0].id;
@@ -240,6 +246,8 @@ export async function updateMacroEntry(params: {
   // Left unchanged when omitted.
   mealType?: MealType;
   entryDate?: string;
+  // null clears it back to the logged time.
+  eatenAt?: string | null;
   client?: Queryable;
 }) {
   const { parsed } = params;
@@ -256,7 +264,8 @@ export async function updateMacroEntry(params: {
       confidence = $9,
       notes = $10,
       meal_type = coalesce($11, meal_type),
-      entry_date = coalesce($12::date, entry_date)
+      entry_date = coalesce($12::date, entry_date),
+      eaten_at = case when $13 then $14::time else eaten_at end
     where id = $1::uuid and user_name = $2
     `,
     [
@@ -271,7 +280,9 @@ export async function updateMacroEntry(params: {
       parsed.confidence,
       parsed.notes || null,
       params.mealType ?? null,
-      params.entryDate ?? null
+      params.entryDate ?? null,
+      params.eatenAt !== undefined,
+      params.eatenAt ?? null
     ]
   );
 

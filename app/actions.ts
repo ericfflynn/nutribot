@@ -24,6 +24,7 @@ import {
 import {
   addWaterEntry,
   deleteMacroEntry,
+  getMacroEntry,
   getPool,
   saveMacroEntry,
   saveUserGoals,
@@ -77,6 +78,12 @@ export async function updateMacroEntryAction(formData: FormData) {
     redirect(todayPath(redirectDate, "Meal description is required."));
   }
 
+  // Some browsers send seconds too ("08:30:00").
+  const eatenAt = String(formData.get("eatenAt") || "").trim().slice(0, 5);
+  if (eatenAt && !/^([01]\d|2[0-3]):[0-5]\d$/.test(eatenAt)) {
+    redirect(todayPath(redirectDate, "Time eaten must be a valid time."));
+  }
+
   let parsed: ParsedMacros;
   try {
     parsed = parseMacroObject({
@@ -94,11 +101,21 @@ export async function updateMacroEntryAction(formData: FormData) {
   }
 
   try {
+    // The form edits totals only; keep the items when the totals didn't change.
+    const db = getPool();
+    const current = db ? await getMacroEntry(db, user.name, id) : null;
+    if (
+      current &&
+      (["calories", "protein_g", "carbs_g", "fat_g"] as const).every((key) => Math.round(current[key]) === Math.round(parsed[key]))
+    ) {
+      parsed = { ...parsed, items: current.items.map((item) => ({ ...item, assumption: item.assumption ?? "" })) };
+    }
     await updateMacroEntry({
       id,
       userName: user.name,
       rawText,
-      parsed
+      parsed,
+      eatenAt: eatenAt || null
     });
   } catch (error) {
     redirect(todayPath(redirectDate, error instanceof Error ? error.message : "Meal update failed."));
@@ -224,6 +241,7 @@ export async function saveDraftAction(
           parsed: stored.estimate,
           mealType: stored.meal_type,
           entryDate: stored.date,
+          eatenAt: stored.eaten_at,
           client
         });
         savedId = stored.edits.id;
@@ -235,6 +253,7 @@ export async function saveDraftAction(
           rawText: stored.raw_text,
           parsed: stored.estimate,
           mealType: stored.meal_type,
+          eatenAt: stored.eaten_at ?? null,
           client
         });
         saved = { ...stored, saved_id: savedId };

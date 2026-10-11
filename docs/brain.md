@@ -48,7 +48,7 @@ Claude remembers nothing between requests. Each turn it sees only what the route
 
 | Tool | Does |
 | --- | --- |
-| `draft_meal` | Creates or revises (`replaces: id`) a meal draft. One call per meal. With `edits: <macro_entries.id>` the draft corrects that saved meal instead: saving it overwrites the meal's text, items, macros, type and day. |
+| `draft_meal` | Creates or revises (`replaces: id`) a meal draft. One call per meal. With `edits: <macro_entries.id>` the draft corrects that saved meal instead: saving it overwrites the meal's text, items, macros, type, day and time. `eaten_at` (local `HH:MM`) is when it was eaten, for meals logged late or to move one on Today's timeline; left out, it carries over from the draft or saved meal. |
 | `draft_workout` | Creates or revises a workout draft and matches it to a Fitbit workout. One call per activity. |
 | `list_meals` | Read-only: saved meals in a date range, newest first, at most 40, with ids, totals and each item's macros and portion. `search` keeps meals whose text or item names contain every word, and allows ranges up to 365 days (31 without). The prompt has Claude search past meals before estimating one, and reuse a matching meal's items and macros, since the owner repeats meals often. Also how Claude finds a saved meal to edit. |
 | `get_goals` | Read-only: daily targets (calories, macros in grams and percent, water oz) and one day's saved totals against them (`target`, `done`, `left`). Open drafts aren't counted. Goals are changed in the Goals panel on Today, not through chat. |
@@ -56,9 +56,10 @@ Claude remembers nothing between requests. Each turn it sees only what the route
 | `draft_habits` | One card with a day's habit logs: each use (intensity 1–3, count or minutes, details, optional start and end times) and each explicit zero. The result lists active habits not logged yet that day, so Claude can ask. |
 | `draft_habit` | Adds a tracked habit or changes one: measure, direction, scale guide (required for intensity), cutoff, archived. |
 | `list_habits`, `list_journal`, `list_habit_logs` | Read-only: tracked habits with scale guides; journal entries with ratings; each day's habit status (level, uses, minutes past cutoff, unlogged). Ranges up to 92 days. |
+| `get_health` | Read-only (`lib/brain-health.ts`): watch data for up to 366 days, one line per day with sleep (duration, stages, bed and wake), HRV, resting HR, SpO2, breathing rate, VO2 max, skin temperature vs baseline, steps, active kcal, zone minutes, the app's Sleep / Recovery / Strain scores and that day's watch workouts, then averages over the full days in the range. |
 | `list_workouts` | Read-only: workouts in a date range (31 days at most), newest first. Each watch workout comes with what it was logged as (name, muscle groups, RPE), plus logged sessions with no watch workout; optionally only unlabeled watch workouts. Used for backfill and for questions about recent training. |
 
-Tools only build drafts. A read tool for health metrics (sleep, recovery, strain) comes next; it plugs into the same in-process server.
+Tools only build drafts; the rest only read.
 
 ## Drafts
 
@@ -66,8 +67,9 @@ Tools only build drafts. A read tool for health metrics (sleep, recovery, strain
 MealDraft = {
   type: "meal", id, date, raw_text,
   meal_type: "breakfast" | "lunch" | "dinner" | "snack" | "dessert",
+  eaten_at?: string | null,    // local "HH:MM" eaten; null places it at the save time
   estimate: ParsedMacros,      // same shape as the meal logger; totals summed from items in code
-  edits?: { id, date, meal_type, calories } | null,  // the saved meal this corrects, as it was
+  edits?: { id, date, meal_type, calories, eaten_at } | null,  // the saved meal this corrects, as it was
   saved_id: string | null,     // macro_entries.id once saved (the edited meal's id for an edit)
   discarded?: boolean
 }

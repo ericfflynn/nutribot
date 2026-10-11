@@ -30,6 +30,13 @@ function dayLabel(date: string, today: string) {
   );
 }
 
+// "08:30" as "8:30 AM".
+function clockLabel(time: string) {
+  return new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" }).format(
+    new Date(`1970-01-01T${time}:00Z`)
+  );
+}
+
 type DraftHandlers = {
   today: string;
   superseded: boolean;
@@ -82,6 +89,7 @@ function MealCard({ draft, today, superseded, onSave, onDiscard }: { draft: Meal
           {draft.edits ? "Edit · " : ""}
           {draft.meal_type}
           {day ? ` · ${day}` : ""}
+          {draft.eaten_at ? ` · ${clockLabel(draft.eaten_at)}` : ""}
         </span>
         <strong>{estimate.calories} cal</strong>
       </div>

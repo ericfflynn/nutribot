@@ -7,6 +7,7 @@ import type { Pool } from "pg";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { CHECKIN_PROMPT, CHECKIN_TOOLS, checkinTools, type CheckinDraft } from "./brain-checkin";
+import { HEALTH_PROMPT, HEALTH_TOOLS, healthTools } from "./brain-health";
 import { runClaude } from "./claude-brain";
 import { addDays, isValidLocalDate, localDateTime } from "./dates";
 import { HEALTH_DATA_TYPES } from "./health/google";
@@ -42,6 +43,7 @@ export type MealEditTarget = {
   date: string;
   meal_type: MealType | null;
   calories: number;
+  eaten_at?: string | null;
 };
 
 export type MealDraft = {
@@ -50,6 +52,8 @@ export type MealDraft = {
   date: string;
   raw_text: string;
   meal_type: MealType;
+  // Local "HH:MM" it was eaten; null means when it's saved.
+  eaten_at?: string | null;
   estimate: ParsedMacros;
   // Set when saving overwrites an existing meal instead of adding one.
   edits?: MealEditTarget | null;
@@ -102,7 +106,7 @@ export type BrainContext = {
 };
 
 const SERVER = "nutribot";
-const TOOLS = ["draft_meal", "draft_workout", "list_workouts", "list_meals", "get_goals", ...CHECKIN_TOOLS];
+const TOOLS = ["draft_meal", "draft_workout", "list_workouts", "list_meals", "get_goals", ...CHECKIN_TOOLS, ...HEALTH_TOOLS];
 
 const localDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("Local date, YYYY-MM-DD.");
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
@@ -138,12 +142,13 @@ const clockFormat = new Intl.DateTimeFormat("en-US", {
 function describeMeal(entry: MacroEntry) {
   const logged = new Date(entry.created_at.replace(" ", "T").replace(/([+-]\d{2})$/, "$1:00"));
   const at = Number.isNaN(logged.getTime()) ? "" : ` logged ${localDateTime(logged).slice(0, 10)} ${clockFormat.format(logged)}`;
+  const eaten = entry.eaten_at ? `, eaten ${entry.eaten_at}` : "";
   const macros = (m: { calories: number; protein_g: number; carbs_g: number; fat_g: number }) =>
     `${m.calories} cal, ${m.protein_g}P/${m.carbs_g}C/${m.fat_g}F`;
   const items = entry.items
     .map((item) => `  - ${item.name}: ${macros(item)}${item.assumption ? ` (${item.assumption})` : ""}`)
     .join("\n");
-  return `${entry.entry_date} ${entry.meal_type ?? "untyped"} (id ${entry.id}${at}): "${entry.raw_text}" = ${macros(entry)}${items ? `\n${items}` : ""}`;
+  return `${entry.entry_date} ${entry.meal_type ?? "untyped"} (id ${entry.id}${at}${eaten}): "${entry.raw_text}" = ${macros(entry)}${items ? `\n${items}` : ""}`;
 }
 
 function text(value: unknown) {
@@ -171,12 +176,14 @@ Today is ${today}; local time is ${nowLocal.slice(11)}. The person is looking at
 - notes holds a concrete assumption only when it matters ("Assumed 4 oz chicken"). Never write generic caveats like "values may vary".
 - If confidence is below 0.75, accuracy_suggestion asks for the single most useful missing detail (portion, brand, cooking fat, weight, count). Otherwise it's empty.
 - meal_type comes from the foods and when they were eaten: breakfast, lunch, dinner, snack or dessert. Dessert is a sweet treat, usually after a meal (brownie, ice cream, cake); use it whenever they call something dessert.
+- eaten_at is the local time (HH:MM, 24-hour) they ate, which places the meal on Today's timeline. Set it when they say or imply when they ate ("had eggs at 7:30", "breakfast this morning around 8", "lunch earlier at noon"), using a typical time for a vague one ("this morning" 08:00). Leave it out when they're logging as they eat, or for a past day with no time given.
 - They eat many of the same meals. Before drafting a meal, call list_meals with search set to its main food or place in a word or two ("smoothie", "buttermilks", "overnight oats"), over the last 90 days, unless it's plainly a one-off. When a past entry is the same meal, reuse its items, portions and macros, adjusted for anything they say is different, and mention which day you matched ("same as your Oct 3 smoothie"). Prefer their most recent version.
 - list_meals also answers questions about what they ate on a day or over a week.
 - get_goals gives their daily targets and a day's progress. Use it for "how much do I have left", whether a meal fits, or what to eat to hit protein. Goals are changed in the Goals panel on Today, not here.
 
 ## Fixing saved meals
 - To correct a meal that's already saved (wrong type, portion, day, macros, or a missing item), find it with list_meals, then call draft_meal with edits set to its id and the whole corrected meal: keep its items as they are unless the fix changes them. Leave date out to keep its day.
+- To change only when a meal was eaten ("I actually had breakfast at 7"), make an edit draft with the same items and the new eaten_at.
 - An edit draft replaces the saved meal only when they tap Update. Say what changes ("snack to dessert, calories stay 390").
 - If they ask to fix something without saying which meal and more than one fits, ask which.
 
@@ -192,8 +199,10 @@ Today is ${today}; local time is ${nowLocal.slice(11)}. The person is looking at
 
 ${CHECKIN_PROMPT}
 
+${HEALTH_PROMPT}
+
 ## Everything else
-- Answer general questions directly and briefly. You can see their saved meals, workouts, goals, water, journal and habits, but not yet their health metrics (sleep, recovery, heart rate); say so if asked.
+- Answer general questions directly and briefly. You can see their saved meals, workouts, goals, water, journal, habits and watch data.
 - Write plain text in short sentences: no markdown, bullets, bold or headings. A blank line between topics is fine.`;
 }
 
@@ -215,6 +224,7 @@ function promptFor(message: string, history: Turn[], openDrafts: Draft[]) {
             date: draft.date,
             raw_text: draft.raw_text,
             meal_type: draft.meal_type,
+            eaten_at: draft.eaten_at ?? null,
             items: draft.estimate.items,
             edits: draft.edits?.id ?? null
           }
@@ -285,6 +295,10 @@ export async function runBrain(message: string, context: BrainContext): Promise<
       date: localDate.optional(),
       raw_text: z.string().describe("The person's words for this meal."),
       meal_type: z.enum(["breakfast", "lunch", "dinner", "snack", "dessert"]),
+      eaten_at: hhmm
+        .nullable()
+        .optional()
+        .describe("Local time eaten, HH:MM 24-hour, when stated or implied. Omit to keep an edited meal's time; null clears it."),
       items: z.array(mealItem).min(1),
       confidence: z.number().min(0).max(1),
       notes: z.string(),
@@ -306,12 +320,25 @@ export async function runBrain(message: string, context: BrainContext): Promise<
         } else {
           const entry = await getMacroEntry(db, userName, editId);
           if (!entry) return errorText(`No saved meal with id ${editId}. Find it with list_meals.`);
-          edits = { id: entry.id, date: entry.entry_date, meal_type: entry.meal_type, calories: entry.calories };
+          edits = {
+            id: entry.id,
+            date: entry.entry_date,
+            meal_type: entry.meal_type,
+            calories: entry.calories,
+            eaten_at: entry.eaten_at
+          };
         }
       }
       // An edit stays on the saved meal's day unless it says otherwise.
       const day = checkDate(args.date ?? (edits ? (target.previous?.type === "meal" ? target.previous.date : edits.date) : undefined));
       if ("error" in day) return errorText(day.error!);
+      // Left out, the time carries over from the draft this revises or the saved meal.
+      const eatenAt =
+        args.eaten_at !== undefined
+          ? args.eaten_at
+          : target.previous?.type === "meal"
+            ? (target.previous.eaten_at ?? null)
+            : (edits?.eaten_at ?? null);
 
       const estimate = normalizeGeneratedMacroEstimate({
         calories: 0,
@@ -329,6 +356,7 @@ export async function runBrain(message: string, context: BrainContext): Promise<
         date: day.date!,
         raw_text: args.raw_text,
         meal_type: args.meal_type,
+        eaten_at: eatenAt,
         estimate,
         edits,
         saved_id: null
@@ -336,6 +364,7 @@ export async function runBrain(message: string, context: BrainContext): Promise<
       return text({
         draft_id: target.id,
         date: day.date,
+        eaten_at: eatenAt,
         ...(edits ? { corrects: `saved meal ${edits.id} (${edits.date} ${edits.meal_type ?? "untyped"}, ${edits.calories} cal)` } : {}),
         totals: { calories: estimate.calories, protein_g: estimate.protein_g, carbs_g: estimate.carbs_g, fat_g: estimate.fat_g }
       });
@@ -538,7 +567,8 @@ export async function runBrain(message: string, context: BrainContext): Promise<
           listWorkouts,
           listMeals,
           getGoals,
-          ...checkinTools({ db, userName, today, resolveDraftId, checkDate, putDraft: (draft) => drafts.set(draft.id, draft) })
+          ...checkinTools({ db, userName, today, resolveDraftId, checkDate, putDraft: (draft) => drafts.set(draft.id, draft) }),
+          ...healthTools({ userName, today })
         ]
       }),
       tools: TOOLS

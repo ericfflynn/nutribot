@@ -10,7 +10,6 @@ import { AppShell, GoalsForm, Login } from "./shared-ui";
 import { getSessionUser } from "@/lib/auth";
 import { addDays, isValidLocalDate, rollingDateWindow, todayLocalDate } from "@/lib/dates";
 import { gramsFromPercentGoals } from "@/lib/goals";
-import { formatHabitAmount, listHabitLogs, listHabits, summarizeHabitDay, type Habit, type HabitLog } from "@/lib/habits";
 import { RATINGS, listJournalEntries, type JournalEntry } from "@/lib/journal";
 import {
   getLatestHealthSyncRun,
@@ -256,7 +255,7 @@ type TimelineEvent = {
   details?: ReactNode;
 };
 
-// Meal slot from the local minute the meal was logged; untimed meals were logged on a later day.
+// Meal slot from the local minute the meal was eaten; untimed meals were logged on a later day.
 function mealSlot(minute: number | null) {
   if (minute == null) {
     return "Logged later";
@@ -284,7 +283,7 @@ function MacroChips({ totals }: { totals: { protein_g: number; carbs_g: number; 
   );
 }
 
-function MealDetails({ entry, date }: { entry: MacroEntry; date: string }) {
+function MealDetails({ entry, date, time }: { entry: MacroEntry; date: string; time: string }) {
   return (
     <ul className="meal-details">
       <li>
@@ -304,19 +303,19 @@ function MealDetails({ entry, date }: { entry: MacroEntry; date: string }) {
             ))}
           </ul>
         ) : null}
-        <EntryCard entry={entry} selectedDate={date} compact />
+        <EntryCard entry={entry} selectedDate={date} time={time} compact />
       </li>
     </ul>
   );
 }
 
-// Tapping a journal or habit row: the full text and a Delete button.
-function CheckinDetails({ kind, id, date, text }: { kind: "journal" | "habit_log"; id: string; date: string; text: string | null }) {
+// Tapping a journal row: the full text and a Delete button.
+function CheckinDetails({ id, date, text }: { id: string; date: string; text: string | null }) {
   return (
     <div className="checkin-details">
       {text ? <p>{text}</p> : null}
       <form action={deleteCheckinAction}>
-        <input type="hidden" name="kind" value={kind} />
+        <input type="hidden" name="kind" value="journal" />
         <input type="hidden" name="id" value={id} />
         <input type="hidden" name="entryDate" value={date} />
         <button type="submit" className="text-button danger">
@@ -340,26 +339,7 @@ function journalEvent(entry: JournalEntry, date: string): TimelineEvent {
     color: CHECKIN_COLOR,
     title: `${entry.kind === "other" ? "Journal" : `${entry.kind[0].toUpperCase()}${entry.kind.slice(1)} journal`}`,
     detail: ratings.join(" · ") || entry.tags.join(", "),
-    details: <CheckinDetails kind="journal" id={entry.id} date={date} text={entry.body} />
-  };
-}
-
-// A habit use, placed at its start time when known, else when it was logged.
-function habitEvent(log: HabitLog, habit: Habit, date: string): TimelineEvent {
-  const loggedAt = localWallClock(log.createdAt);
-  const sameDay = loggedAt != null && loggedAt.slice(0, 10) === date;
-  const at = log.startedAt ? `${date}T${log.startedAt}` : sameDay ? loggedAt : null;
-  const times = [log.startedAt, log.endedAt].every(Boolean)
-    ? `${formatClock(`${date}T${log.startedAt}`)}–${formatClock(`${date}T${log.endedAt}`)}`
-    : null;
-  return {
-    key: `habit-${log.id}`,
-    time: at ? formatClock(at) : "",
-    sort: at ? minuteOfDay(at) : 24 * 60,
-    color: CHECKIN_COLOR,
-    title: `${habit.name} · ${formatHabitAmount(habit, log.amount)}`,
-    detail: [times, log.details].filter(Boolean).join(" · "),
-    details: <CheckinDetails kind="habit_log" id={log.id} date={date} text={null} />
+    details: <CheckinDetails id={entry.id} date={date} text={entry.body} />
   };
 }
 
@@ -530,16 +510,14 @@ export default async function Home({ searchParams }: PageProps) {
   const healthStart = addDays(stripDates[0] < priorDates[0] ? stripDates[0] : priorDates[0], -31);
 
   const db = getPool()!;
-  const [entries, goals, healthDays, workouts, waterOunces, lastRun, journal, habits, habitLogs] = await Promise.all([
+  const [entries, goals, healthDays, workouts, waterOunces, lastRun, journal] = await Promise.all([
     listEntriesForDateRange(user.name, priorDates[0], date),
     getUserGoals(user.name),
     listHealthDays(user.name, healthStart, stripEnd),
     listHealthWorkouts(user.name, date, date),
     getWaterOunces(user.name, date),
     getLatestHealthSyncRun(user.name),
-    listJournalEntries(db, user.name, date, date),
-    listHabits(db, user.name),
-    listHabitLogs(db, user.name, date, date)
+    listJournalEntries(db, user.name, date, date)
   ]);
 
   const healthByDay = new Map(healthDays.map((day) => [day.day, day]));
@@ -692,15 +670,15 @@ export default async function Home({ searchParams }: PageProps) {
   const timed: TimelineEvent[] = [];
   // One row per meal entry; tapping it shows its items and the edit card.
   for (const entry of [...dayEntries].reverse()) {
-    // created_at is when the meal was logged; only treat it as a time when it was logged that same day.
+    // eaten_at when set; otherwise created_at (when it was logged), but only if logged that same day.
     const loggedAt = localWallClock(entry.created_at);
-    const sameDay = loggedAt != null && loggedAt.slice(0, 10) === date;
-    const minute = sameDay ? minuteOfDay(loggedAt) : null;
+    const at = entry.eaten_at ? `${date}T${entry.eaten_at}` : loggedAt != null && loggedAt.slice(0, 10) === date ? loggedAt : null;
+    const minute = at ? minuteOfDay(at) : null;
     // Chat-logged meals carry their type; older ones are guessed from the time.
     const label = entry.meal_type ? entry.meal_type[0].toUpperCase() + entry.meal_type.slice(1) : mealSlot(minute);
     timed.push({
       key: `meal-${entry.id}`,
-      time: sameDay ? formatClock(loggedAt) : "",
+      time: at ? formatClock(at) : "",
       sort: minute ?? 24 * 60,
       color: FUEL_COLOR,
       title: label,
@@ -708,17 +686,11 @@ export default async function Home({ searchParams }: PageProps) {
       extra: <MacroChips totals={entry} />,
       value: integer.format(entry.calories),
       unit: "kcal",
-      details: <MealDetails entry={entry} date={date} />
+      details: <MealDetails entry={entry} date={date} time={at ? at.slice(11, 16) : ""} />
     });
   }
   for (const entry of journal) {
     timed.push(journalEvent(entry, date));
-  }
-  // Zeros ("didn't today") show in the Check-in card, not as rows.
-  const habitsById = new Map(habits.map((habit) => [habit.id, habit]));
-  for (const log of habitLogs) {
-    const habit = habitsById.get(log.habitId);
-    if (habit && log.amount > 0) timed.push(habitEvent(log, habit, date));
   }
   for (const workout of workouts) {
     const workoutLoad = workoutStrain(workout);
@@ -843,9 +815,7 @@ export default async function Home({ searchParams }: PageProps) {
         <WaterRow ounces={waterOunces} goalOz={goals.waterOz} date={date} />
       </section>
 
-      <CheckinSummary entries={journal} habitDays={summarizeHabitDay(habits, date, habitLogs)} isToday={isToday} logLink />
-
-      <GoalsForm goals={goals} redirectDate={date} />
+      <CheckinSummary entries={journal} isToday={isToday} />
 
       <Timeline title={isToday ? "Today so far" : "The day"} events={events} />
 
@@ -855,6 +825,8 @@ export default async function Home({ searchParams }: PageProps) {
         <SyncNote run={lastRun} />
         <RefreshButton />
       </div>
+
+      <GoalsForm goals={goals} redirectDate={date} />
 
     </AppShell>
   );

@@ -31,14 +31,17 @@ function DeleteButton({
 }
 
 // A saved meal with Edit and Delete. compact shows only the buttons, for use
-// under a meal that's already displayed (Today's timeline).
+// under a meal that's already displayed (Today's timeline). time is the local
+// "HH:MM" the timeline shows it at, if any.
 export function EntryCard({
   entry,
   selectedDate,
+  time = "",
   compact = false
 }: {
   entry: MacroEntry;
   selectedDate: string;
+  time?: string;
   compact?: boolean;
 }) {
   const [isEditing, setIsEditing] = useState(false);
@@ -138,6 +141,10 @@ export function EntryCard({
               />
             </label>
           </div>
+          <label className="field">
+            <span>Time eaten</span>
+            <input name="eatenAt" type="time" defaultValue={time} />
+          </label>
           <label className="field">
             <span>Notes</span>
             <input name="notes" defaultValue={entry.notes || ""} />

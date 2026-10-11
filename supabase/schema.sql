@@ -251,6 +251,11 @@ alter table public.macro_entries
   add constraint macro_entries_meal_type_check
   check (meal_type in ('breakfast', 'lunch', 'dinner', 'snack', 'dessert'));
 
+-- Local wall-clock time the meal was eaten, when it differs from when it was
+-- logged. Null means "when it was logged" (created_at).
+alter table public.macro_entries
+  add column if not exists eaten_at time;
+
 -- One row per logged workout: what was trained and how hard. Linked to the
 -- matching Fitbit workout (health_workouts.id) when there is one; 'pending'
 -- sessions are linked after a later sync, 'untracked' ones never are.

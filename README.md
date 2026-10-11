@@ -196,8 +196,8 @@ vercel env add GOOGLE_REFRESH_TOKEN production --sensitive
 ### Syncing
 
 - **Scheduled:** six Vercel Cron jobs in `vercel.json` call `/api/cron/health-sync`, each once a day (the Hobby plan limit), ±59 minutes:
-  - 11:00 UTC (7 AM Eastern in summer): **full** run, replacing whole months.
-  - 14:00, 17:00, 20:00, 23:00, 02:00 UTC: **recent** runs (`?mode=recent`), upserting the last 3 days.
+  - 13:00 UTC (9 AM Eastern in summer, 8 AM in winter): **full** run, replacing whole months.
+  - 16:00, 19:00, 22:00, 01:00, 04:00 UTC: **recent** runs (`?mode=recent`), upserting the last 3 days.
   - The route requires `Authorization: Bearer $CRON_SECRET`.
 - **Manual:** `npm run health:sync`. Options: `--recent` for a light run, `--types daily-steps sleep`, `--start 2026-06-01` to replay from a date.
 

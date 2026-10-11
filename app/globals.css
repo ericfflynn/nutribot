@@ -3119,33 +3119,6 @@ button.fab {
   text-transform: capitalize;
 }
 
-.checkin-habits {
-  display: grid;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.checkin-habits li {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 8px 0;
-  border-top: 1px solid var(--line);
-  font-size: 15px;
-}
-
-.checkin-habits li span:last-child {
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-.checkin-habits li.unknown span:last-child {
-  color: var(--muted);
-  font-weight: 400;
-}
-
 .checkin-details {
   display: grid;
   gap: 8px;
@@ -3444,15 +3417,3 @@ details[open] .journal-preview {
   font-size: 13px;
 }
 
-.checkin-habits-head {
-  display: flex;
-  justify-content: space-between;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.checkin-habits-head a {
-  color: var(--accent);
-  text-decoration: none;
-}

@@ -84,7 +84,7 @@ Storage is about 1.4 MB for January through early October.
 
 1. **Plan** (this document).
 2. **Raw health load.** Done locally: health tables in Supabase, `npm run health:auth` and `npm run health:sync`.
-3. **Scheduled sync.** Done: six daily Vercel Cron jobs (a full run at 11:00 UTC, five light "last 3 days" runs through the day), Google credentials in Vercel env vars, every run logged in `health_sync_runs`.
+3. **Scheduled sync.** Done: six daily Vercel Cron jobs (a full run at 13:00 UTC, five light "last 3 days" runs through the day), Google credentials in Vercel env vars, every run logged in `health_sync_runs`.
 4. **Chat.** Done for meals and workouts: Chat tab and floating sheet, draft tools, Fitbit matching, conversations with New chat (`chat_conversations`, `chat_messages`), meal history and edits, goals. The old OpenAI meal logger is removed. Remaining: habits, journal and the health metrics tool.
 5. **Dashboard.** Today (scores, nutrition and goals, water, a timeline with one row per meal, 7-day trends with tooltips) and Training (missing muscle groups, unlabeled workouts, coverage, sessions, recent workouts) are live, with a home-screen icon.
 6. **Next:** journal and habit logging, then reminders.

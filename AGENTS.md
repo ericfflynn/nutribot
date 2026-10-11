@@ -78,7 +78,7 @@ psql "$DB" -c "select count(*) from macro_entries;"
 ## Health sync
 
 - Google Health data lands in `health_records` (raw JSONB) and is read through the `health_daily` and `health_workouts` views. Code is in `lib/health/`.
-- Runs on six daily Vercel Cron jobs (`vercel.json` → `/api/cron/health-sync`, guarded by `CRON_SECRET`): a full month-replacing run at 11:00 UTC and five `?mode=recent` runs that upsert the last 3 days. The Hobby plan allows each cron job once a day, so more frequent syncs mean more entries, not a tighter schedule. Locally: `npm run health:sync` (`--recent` for a light run).
+- Runs on six daily Vercel Cron jobs (`vercel.json` → `/api/cron/health-sync`, guarded by `CRON_SECRET`): a full month-replacing run at 13:00 UTC (9 AM Eastern in summer, 8 AM in winter) and five `?mode=recent` runs that upsert the last 3 days. The Hobby plan allows each cron job once a day, so more frequent syncs mean more entries, not a tighter schedule. Locally: `npm run health:sync` (`--recent` for a light run).
 - Two more daily jobs (00:00 and 01:00 UTC) hit `/api/cron/reminders`; only the one in the local 8 pm hour sends. Hobby cron fires anywhere within its hour. `reminder_sends` records each day's send. Push needs `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`, and only works over HTTPS, so test reminders on production or a preview, not the LAN dev server.
 - Every run is logged in `health_sync_runs` (scope, status, records, failed types). Check there first when data looks stale.
 - If runs fail with `invalid_grant`, the Google refresh token was revoked: run `npm run health:auth`, then update `GOOGLE_REFRESH_TOKEN` in Vercel (`vercel env add GOOGLE_REFRESH_TOKEN production --sensitive`).
