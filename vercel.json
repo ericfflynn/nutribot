@@ -5,6 +5,8 @@
     { "path": "/api/cron/health-sync?mode=recent&slot=17", "schedule": "0 17 * * *" },
     { "path": "/api/cron/health-sync?mode=recent&slot=20", "schedule": "0 20 * * *" },
     { "path": "/api/cron/health-sync?mode=recent&slot=23", "schedule": "0 23 * * *" },
-    { "path": "/api/cron/health-sync?mode=recent&slot=2", "schedule": "0 2 * * *" }
+    { "path": "/api/cron/health-sync?mode=recent&slot=2", "schedule": "0 2 * * *" },
+    { "path": "/api/cron/reminders?slot=0", "schedule": "0 0 * * *" },
+    { "path": "/api/cron/reminders?slot=1", "schedule": "0 1 * * *" }
   ]
 }

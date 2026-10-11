@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { addWaterAction } from "./actions";
+import { addWaterAction, deleteCheckinAction } from "./actions";
+import { CheckinSummary } from "./checkin-card";
 import { Sparkline } from "./charts";
 import { DayStrip, type StripDay } from "./day-strip";
 import { RefreshButton } from "./refresh-button";
@@ -9,6 +10,8 @@ import { AppShell, GoalsForm, Login } from "./shared-ui";
 import { getSessionUser } from "@/lib/auth";
 import { addDays, isValidLocalDate, rollingDateWindow, todayLocalDate } from "@/lib/dates";
 import { gramsFromPercentGoals } from "@/lib/goals";
+import { formatHabitAmount, listHabitLogs, listHabits, summarizeHabitDay, type Habit, type HabitLog } from "@/lib/habits";
+import { RATINGS, listJournalEntries, type JournalEntry } from "@/lib/journal";
 import {
   getLatestHealthSyncRun,
   listHealthDays,
@@ -57,6 +60,7 @@ const BAND_NOTES: Record<RecoveryBand, string> = {
 const SLEEP_COLOR = "#2a78d6";
 const STRAIN_COLOR = "#eb6834";
 const FUEL_COLOR = "#7a4fd1";
+const CHECKIN_COLOR = "#8e8e93";
 
 const integer = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 const weekdayLong = new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: "UTC" });
@@ -306,6 +310,59 @@ function MealDetails({ entry, date }: { entry: MacroEntry; date: string }) {
   );
 }
 
+// Tapping a journal or habit row: the full text and a Delete button.
+function CheckinDetails({ kind, id, date, text }: { kind: "journal" | "habit_log"; id: string; date: string; text: string | null }) {
+  return (
+    <div className="checkin-details">
+      {text ? <p>{text}</p> : null}
+      <form action={deleteCheckinAction}>
+        <input type="hidden" name="kind" value={kind} />
+        <input type="hidden" name="id" value={id} />
+        <input type="hidden" name="entryDate" value={date} />
+        <button type="submit" className="text-button danger">
+          Delete
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function journalEvent(entry: JournalEntry, date: string): TimelineEvent {
+  const loggedAt = localWallClock(entry.createdAt);
+  const sameDay = loggedAt != null && loggedAt.slice(0, 10) === date;
+  const ratings = RATINGS.filter((name) => entry.ratings[name] != null).map(
+    (name) => `${name[0].toUpperCase()}${name.slice(1)} ${entry.ratings[name]}`
+  );
+  return {
+    key: `journal-${entry.id}`,
+    time: sameDay ? formatClock(loggedAt) : "",
+    sort: sameDay ? minuteOfDay(loggedAt) : 24 * 60,
+    color: CHECKIN_COLOR,
+    title: `${entry.kind === "other" ? "Journal" : `${entry.kind[0].toUpperCase()}${entry.kind.slice(1)} journal`}`,
+    detail: ratings.join(" · ") || entry.tags.join(", "),
+    details: <CheckinDetails kind="journal" id={entry.id} date={date} text={entry.body} />
+  };
+}
+
+// A habit use, placed at its start time when known, else when it was logged.
+function habitEvent(log: HabitLog, habit: Habit, date: string): TimelineEvent {
+  const loggedAt = localWallClock(log.createdAt);
+  const sameDay = loggedAt != null && loggedAt.slice(0, 10) === date;
+  const at = log.startedAt ? `${date}T${log.startedAt}` : sameDay ? loggedAt : null;
+  const times = [log.startedAt, log.endedAt].every(Boolean)
+    ? `${formatClock(`${date}T${log.startedAt}`)}–${formatClock(`${date}T${log.endedAt}`)}`
+    : null;
+  return {
+    key: `habit-${log.id}`,
+    time: at ? formatClock(at) : "",
+    sort: at ? minuteOfDay(at) : 24 * 60,
+    color: CHECKIN_COLOR,
+    title: `${habit.name} · ${formatHabitAmount(habit, log.amount)}`,
+    detail: [times, log.details].filter(Boolean).join(" · "),
+    details: <CheckinDetails kind="habit_log" id={log.id} date={date} text={null} />
+  };
+}
+
 function Timeline({ title, events }: { title: string; events: TimelineEvent[] }) {
   return (
     <section className="card timeline-card" aria-label={title}>
@@ -472,13 +529,17 @@ export default async function Home({ searchParams }: PageProps) {
   // Each scored day needs a 30-day recovery baseline before it.
   const healthStart = addDays(stripDates[0] < priorDates[0] ? stripDates[0] : priorDates[0], -31);
 
-  const [entries, goals, healthDays, workouts, waterOunces, lastRun] = await Promise.all([
+  const db = getPool()!;
+  const [entries, goals, healthDays, workouts, waterOunces, lastRun, journal, habits, habitLogs] = await Promise.all([
     listEntriesForDateRange(user.name, priorDates[0], date),
     getUserGoals(user.name),
     listHealthDays(user.name, healthStart, stripEnd),
     listHealthWorkouts(user.name, date, date),
     getWaterOunces(user.name, date),
-    getLatestHealthSyncRun(user.name)
+    getLatestHealthSyncRun(user.name),
+    listJournalEntries(db, user.name, date, date),
+    listHabits(db, user.name),
+    listHabitLogs(db, user.name, date, date)
   ]);
 
   const healthByDay = new Map(healthDays.map((day) => [day.day, day]));
@@ -650,6 +711,15 @@ export default async function Home({ searchParams }: PageProps) {
       details: <MealDetails entry={entry} date={date} />
     });
   }
+  for (const entry of journal) {
+    timed.push(journalEvent(entry, date));
+  }
+  // Zeros ("didn't today") show in the Check-in card, not as rows.
+  const habitsById = new Map(habits.map((habit) => [habit.id, habit]));
+  for (const log of habitLogs) {
+    const habit = habitsById.get(log.habitId);
+    if (habit && log.amount > 0) timed.push(habitEvent(log, habit, date));
+  }
   for (const workout of workouts) {
     const workoutLoad = workoutStrain(workout);
     timed.push({
@@ -772,6 +842,8 @@ export default async function Home({ searchParams }: PageProps) {
         <p className={`nutrition-callout ${callout.tone}`}>{callout.text}</p>
         <WaterRow ounces={waterOunces} goalOz={goals.waterOz} date={date} />
       </section>
+
+      <CheckinSummary entries={journal} habitDays={summarizeHabitDay(habits, habitLogs)} isToday={isToday} />
 
       <GoalsForm goals={goals} redirectDate={date} />
 

@@ -10,6 +10,9 @@ import { HEALTH_DATA_TYPES } from "@/lib/health/google";
 import { runHealthSync } from "@/lib/health/sync";
 import type { Draft } from "@/lib/brain";
 import { newConversation, withDraft } from "@/lib/chat";
+import { deleteHabitLog, saveHabit, saveHabitLogs } from "@/lib/habits";
+import { deleteJournalEntry, saveJournalEntry } from "@/lib/journal";
+import { deletePushSubscription, savePushSubscription, type PushSubscriptionInput } from "@/lib/reminders";
 import { z } from "zod";
 import {
   MUSCLE_GROUPS,
@@ -235,6 +238,17 @@ export async function saveDraftAction(
           client
         });
         saved = { ...stored, saved_id: savedId };
+      } else if (stored.type === "journal") {
+        savedId = await saveJournalEntry(client, user.name, stored);
+        saved = { ...stored, saved_id: savedId };
+      } else if (stored.type === "habits") {
+        const ids = await saveHabitLogs(client, user.name, stored.date, stored.logs);
+        // Zeros already covered by a saved log are skipped, so this can be empty.
+        savedId = ids.join(",") || "none";
+        saved = { ...stored, saved_id: savedId };
+      } else if (stored.type === "habit") {
+        savedId = await saveHabit(client, user.name, stored.habit, stored.habit_id);
+        saved = { ...stored, saved_id: savedId };
       } else {
         let healthRecordKey = stored.untracked ? null : (stored.match.match?.id ?? null);
         let linkedBy = stored.linked_by;
@@ -328,6 +342,43 @@ export async function updateWorkoutSessionAction(
   if (!updated) return { ok: false, error: "That workout no longer exists." };
   revalidatePath("/training");
   return { ok: true };
+}
+
+// Reminders: store or forget this phone's push subscription.
+export async function savePushSubscriptionAction(subscription: PushSubscriptionInput): Promise<{ ok: boolean }> {
+  const user = await getSessionUser();
+  const db = getPool();
+  const valid =
+    typeof subscription?.endpoint === "string" &&
+    subscription.endpoint.startsWith("https://") &&
+    typeof subscription.keys?.p256dh === "string" &&
+    typeof subscription.keys?.auth === "string";
+  if (!user || !db || !valid) return { ok: false };
+  await savePushSubscription(db, user.name, subscription);
+  return { ok: true };
+}
+
+export async function deletePushSubscriptionAction(endpoint: string): Promise<{ ok: boolean }> {
+  const user = await getSessionUser();
+  const db = getPool();
+  if (!user || !db) return { ok: false };
+  await deletePushSubscription(db, user.name, endpoint);
+  return { ok: true };
+}
+
+// Today: remove a journal entry or one habit log.
+export async function deleteCheckinAction(formData: FormData) {
+  const user = await getSessionUser();
+  const db = getPool();
+  if (!user || !db) {
+    redirect("/");
+  }
+  const id = String(formData.get("id") || "");
+  const redirectDate = getFormDate(formData);
+  const deleted =
+    formData.get("kind") === "journal" ? await deleteJournalEntry(db, user.name, id) : await deleteHabitLog(db, user.name, id);
+  revalidatePath("/");
+  redirect(todayPath(redirectDate, deleted ? undefined : "That entry no longer exists."));
 }
 
 // Training page: remove a logged workout. Its Fitbit workout becomes unlabeled again.

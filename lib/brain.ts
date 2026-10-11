@@ -1,10 +1,12 @@
-// The chat brain: one user message in, a reply plus meal/workout drafts out.
+// The chat brain: one user message in, a reply plus drafts (meals, workouts,
+// journal entries, habits) out.
 // Contract and rationale: docs/brain.md. Tools only create drafts; nothing is
 // saved until the owner taps Save (app/actions.ts → saveDraftAction).
 import { randomUUID } from "crypto";
 import type { Pool } from "pg";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
+import { CHECKIN_PROMPT, CHECKIN_TOOLS, checkinTools, type CheckinDraft } from "./brain-checkin";
 import { runClaude } from "./claude-brain";
 import { addDays, isValidLocalDate, localDateTime } from "./dates";
 import { HEALTH_DATA_TYPES } from "./health/google";
@@ -76,7 +78,7 @@ export type WorkoutDraft = {
   discarded?: boolean;
 };
 
-export type Draft = MealDraft | WorkoutDraft;
+export type Draft = MealDraft | WorkoutDraft | CheckinDraft;
 
 export type Turn = { role: "user" | "assistant"; text: string };
 
@@ -100,7 +102,7 @@ export type BrainContext = {
 };
 
 const SERVER = "nutribot";
-const TOOLS = ["draft_meal", "draft_workout", "list_workouts", "list_meals", "get_goals"];
+const TOOLS = ["draft_meal", "draft_workout", "list_workouts", "list_meals", "get_goals", ...CHECKIN_TOOLS];
 
 const localDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("Local date, YYYY-MM-DD.");
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
@@ -188,8 +190,10 @@ Today is ${today}; local time is ${nowLocal.slice(11)}. The person is looking at
 - list_workouts also shows what each workout was logged as (name, muscle groups, RPE). Use it when they ask about recent training or what to train next.
 - The tool result says which watch workout was matched. Mention it briefly ("matched to your 6:12 PM weightlifting, 49 min"), or say it will link when the watch syncs.
 
+${CHECKIN_PROMPT}
+
 ## Everything else
-- Answer general questions directly and briefly. You can see their saved meals, workouts, goals and water, but not yet their health metrics (sleep, recovery, heart rate); say so if asked.
+- Answer general questions directly and briefly. You can see their saved meals, workouts, goals, water, journal and habits, but not yet their health metrics (sleep, recovery, heart rate); say so if asked.
 - Write plain text in short sentences: no markdown, bullets, bold or headings. A blank line between topics is fine.`;
 }
 
@@ -202,7 +206,9 @@ function promptFor(message: string, history: Turn[], openDrafts: Draft[]) {
   }
   if (openDrafts.length) {
     const summary = openDrafts.map((draft) =>
-      draft.type === "meal"
+      draft.type === "journal" || draft.type === "habits" || draft.type === "habit"
+        ? draft
+        : draft.type === "meal"
         ? {
             id: draft.id,
             type: "meal",
@@ -249,7 +255,9 @@ export async function runBrain(message: string, context: BrainContext): Promise<
         error:
           previous.type === "meal"
             ? `That draft is already saved as meal ${previous.saved_id}. Call draft_meal with edits set to that id instead.`
-            : "That workout is already saved; it can be edited on the Training page."
+            : previous.type === "workout"
+              ? "That workout is already saved; it can be edited on the Training page."
+              : "That draft is already saved. Make a new draft, or delete the saved one on Today."
       };
     }
     return { id: replaces, previous };
@@ -302,7 +310,7 @@ export async function runBrain(message: string, context: BrainContext): Promise<
         }
       }
       // An edit stays on the saved meal's day unless it says otherwise.
-      const day = checkDate(args.date ?? (edits ? (target.previous?.date ?? edits.date) : undefined));
+      const day = checkDate(args.date ?? (edits ? (target.previous?.type === "meal" ? target.previous.date : edits.date) : undefined));
       if ("error" in day) return errorText(day.error!);
 
       const estimate = normalizeGeneratedMacroEstimate({
@@ -521,7 +529,18 @@ export async function runBrain(message: string, context: BrainContext): Promise<
     prompt: promptFor(message, context.history, context.openDrafts),
     server: {
       name: SERVER,
-      config: createSdkMcpServer({ name: SERVER, version: "1.0.0", tools: [draftMeal, draftWorkout, listWorkouts, listMeals, getGoals] }),
+      config: createSdkMcpServer({
+        name: SERVER,
+        version: "1.0.0",
+        tools: [
+          draftMeal,
+          draftWorkout,
+          listWorkouts,
+          listMeals,
+          getGoals,
+          ...checkinTools({ db, userName, today, resolveDraftId, checkDate, putDraft: (draft) => drafts.set(draft.id, draft) })
+        ]
+      }),
       tools: TOOLS
     }
   });

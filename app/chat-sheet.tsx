@@ -4,6 +4,9 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { discardDraftAction, newChatAction, saveDraftAction } from "./actions";
 import type { Draft, MealDraft, WorkoutDraft } from "@/lib/brain";
+import type { HabitDraft, HabitsDraft, JournalDraft } from "@/lib/brain-checkin";
+import { formatHabitAmount, scaleGuideLines } from "@/lib/habits";
+import { RATINGS } from "@/lib/journal";
 import type { ChatMessage } from "@/lib/chat";
 import type { FitbitWorkout } from "@/lib/workouts";
 
@@ -195,10 +198,128 @@ function WorkoutCard({ draft, today, superseded, onSave, onDiscard }: { draft: W
   );
 }
 
+// The frame shared by journal and habit cards: a heading, then Save/Discard.
+function CheckinCard({
+  draft,
+  kind,
+  aside,
+  superseded,
+  onSave,
+  onDiscard,
+  children
+}: {
+  draft: Draft;
+  kind: string;
+  aside?: ReactNode;
+  children: ReactNode;
+} & Omit<DraftHandlers, "today">) {
+  const [busy, setBusy] = useState(false);
+  const run = (action: () => Promise<void>) => async () => {
+    setBusy(true);
+    await action();
+    setBusy(false);
+  };
+  return (
+    <div className="draft-card">
+      <div className="draft-head">
+        <span className="draft-kind">{kind}</span>
+        {aside ? <strong>{aside}</strong> : null}
+      </div>
+      {children}
+      <DraftActions draft={draft} superseded={superseded} busy={busy} onSave={run(() => onSave())} onDiscard={run(onDiscard)} />
+    </div>
+  );
+}
+
+function timeRange(start: string | null, end: string | null) {
+  if (!start && !end) return "";
+  const at = (time: string | null) => (time ? clock(`2000-01-01T${time}`) : "?");
+  return start && end ? `${at(start)}–${at(end)}` : end ? `until ${at(end)}` : `from ${at(start)}`;
+}
+
+function JournalCard({ draft, today, ...handlers }: { draft: JournalDraft } & DraftHandlers) {
+  const day = dayLabel(draft.date, today);
+  const ratings = RATINGS.filter((name) => draft.ratings[name] != null);
+  return (
+    <CheckinCard draft={draft} kind={`${draft.kind} journal${day ? ` · ${day}` : ""}`} {...handlers}>
+      {ratings.length ? (
+        <div className="draft-ratings">
+          {ratings.map((name) => (
+            <span key={name}>
+              {name} <strong>{draft.ratings[name]}</strong>
+            </span>
+          ))}
+        </div>
+      ) : null}
+      <p className="draft-body">{draft.body}</p>
+      {draft.tags.length ? (
+        <div className="draft-chips">
+          {draft.tags.map((tag) => (
+            <span key={tag}>{tag}</span>
+          ))}
+        </div>
+      ) : null}
+    </CheckinCard>
+  );
+}
+
+function HabitsCard({ draft, today, ...handlers }: { draft: HabitsDraft } & DraftHandlers) {
+  const day = dayLabel(draft.date, today);
+  return (
+    <CheckinCard draft={draft} kind={`habits${day ? ` · ${day}` : ""}`} {...handlers}>
+      <ul className="draft-items">
+        {draft.logs.map((log, index) => (
+          <li key={`${log.habitId}-${index}`}>
+            <span>
+              {log.name}
+              {log.details || log.startedAt || log.endedAt ? (
+                <small>{[log.details, timeRange(log.startedAt, log.endedAt)].filter(Boolean).join(" · ")}</small>
+              ) : null}
+            </span>
+            <span>{formatHabitAmount(log, log.amount)}</span>
+          </li>
+        ))}
+      </ul>
+    </CheckinCard>
+  );
+}
+
+function HabitCard({ draft, ...handlers }: { draft: HabitDraft } & DraftHandlers) {
+  const { habit } = draft;
+  const measure = habit.measure === "intensity" ? "Intensity 1–3" : habit.measure === "count" ? `Count of ${habit.unit}` : "Minutes";
+  const details = [measure, habit.direction === "limit" ? "less is better" : "more is better"];
+  if (habit.cutoff) details.push(`late after ${clock(`2000-01-01T${habit.cutoff}`)}`);
+  if (!habit.active) details.push("archived");
+  return (
+    <CheckinCard draft={draft} kind={draft.habit_id ? "change habit" : "new habit"} {...handlers}>
+      <p className="draft-title">{habit.name}</p>
+      <p className="draft-edit-note">{details.join(" · ")}</p>
+      {habit.scaleGuide ? (
+        <ul className="draft-items">
+          {scaleGuideLines(habit.scaleGuide).map((line) => (
+            <li key={line}>
+              <span>{line}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </CheckinCard>
+  );
+}
+
 // Opens the chat sheet from anywhere, optionally with text ready to send.
 const OPEN_EVENT = "nutribot:open-chat";
 export function openChat(text = "") {
   window.dispatchEvent(new CustomEvent(OPEN_EVENT, { detail: { text } }));
+}
+
+// A button that opens the chat with text ready to send.
+export function ChatPromptButton({ prompt, children }: { prompt: string; children: ReactNode }) {
+  return (
+    <button type="button" className="pill-button" onClick={() => openChat(prompt)}>
+      {children}
+    </button>
+  );
 }
 
 // The conversation: thread, draft cards and composer. Used by the floating
@@ -311,7 +432,7 @@ export function ChatThread({
       <div className="chat-thread" ref={threadRef}>
         {loaded && !messages.length ? (
           <p className="chat-empty">
-            Tell me what you ate or trained, like "eggs and toast" or "chest and tris, hard". Ask anything else too.
+            Tell me what you ate or trained ("eggs and toast", "chest and tris, hard"), or how your day went. Ask anything else too.
           </p>
         ) : null}
         {messages.map((message) => (
@@ -334,11 +455,18 @@ export function ChatThread({
                   else setError(result.error);
                 }
               };
-              return draft.type === "meal" ? (
-                <MealCard key={draft.id} draft={draft} {...handlers} />
-              ) : (
-                <WorkoutCard key={draft.id} draft={draft} {...handlers} />
-              );
+              switch (draft.type) {
+                case "meal":
+                  return <MealCard key={draft.id} draft={draft} {...handlers} />;
+                case "workout":
+                  return <WorkoutCard key={draft.id} draft={draft} {...handlers} />;
+                case "journal":
+                  return <JournalCard key={draft.id} draft={draft} {...handlers} />;
+                case "habits":
+                  return <HabitsCard key={draft.id} draft={draft} {...handlers} />;
+                case "habit":
+                  return <HabitCard key={draft.id} draft={draft} {...handlers} />;
+              }
             })}
           </div>
         ))}

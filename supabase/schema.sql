@@ -319,3 +319,76 @@ create index if not exists chat_messages_conversation_idx
   on public.chat_messages (conversation_id, id);
 
 alter table public.chat_conversations enable row level security;
+
+-- Journal, habits and reminders (docs/journal-habits-plan.md).
+create table if not exists public.journal_entries (
+  id uuid primary key default gen_random_uuid(),
+  user_name text not null,
+  entry_date date not null,
+  kind text not null check (kind in ('morning', 'evening', 'other')),
+  body text not null,
+  mood smallint check (mood between 1 and 5),
+  energy smallint check (energy between 1 and 5),
+  stress smallint check (stress between 1 and 5),
+  soreness smallint check (soreness between 1 and 5),
+  tags text[] not null default '{}',
+  created_at timestamptz not null default now()
+);
+
+create index if not exists journal_entries_user_date_idx
+  on public.journal_entries (user_name, entry_date);
+
+-- Tracked habits are rows, so new ones are added through chat.
+create table if not exists public.habits (
+  id uuid primary key default gen_random_uuid(),
+  user_name text not null,
+  name text not null,
+  measure text not null check (measure in ('intensity', 'count', 'minutes')),
+  unit text,
+  direction text not null check (direction in ('limit', 'build')),
+  scale_guide text,
+  cutoff time,
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  unique (user_name, name)
+);
+
+-- One row per use; amount 0 records "didn't today".
+create table if not exists public.habit_logs (
+  id uuid primary key default gen_random_uuid(),
+  user_name text not null,
+  habit_id uuid not null references public.habits (id),
+  entry_date date not null,
+  amount numeric not null check (amount >= 0),
+  details text,
+  started_at time,
+  ended_at time,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists habit_logs_user_date_idx
+  on public.habit_logs (user_name, entry_date);
+
+-- Web push: one row per device that turned reminders on.
+create table if not exists public.push_subscriptions (
+  endpoint text primary key,
+  user_name text not null,
+  p256dh text not null,
+  auth text not null,
+  created_at timestamptz not null default now()
+);
+
+-- One row per reminder sent, so a day never gets two.
+create table if not exists public.reminder_sends (
+  user_name text not null,
+  local_date date not null,
+  kind text not null,
+  sent_at timestamptz not null default now(),
+  primary key (user_name, local_date, kind)
+);
+
+alter table public.journal_entries enable row level security;
+alter table public.habits enable row level security;
+alter table public.habit_logs enable row level security;
+alter table public.push_subscriptions enable row level security;
+alter table public.reminder_sends enable row level security;

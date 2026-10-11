@@ -42,7 +42,7 @@ Model: `claude-sonnet-5-5` at low effort, overridable with `CLAUDE_MODEL`. A tur
 
 ## Memory
 
-Claude remembers nothing between requests. Each turn it sees only what the route sends: the current conversation's last 10 messages, its unsaved drafts, and today's date and time. **New chat** (`newChatAction`) starts a fresh conversation; the old one stays in the database but isn't shown or sent. Long-term memory is the logged data itself, which Claude reads through `list_meals`, `list_workouts` and `get_goals`.
+Claude remembers nothing between requests. Each turn it sees only what the route sends: the current conversation's last 10 messages, its unsaved drafts, and today's date and time. **New chat** (`newChatAction`) starts a fresh conversation; the old one stays in the database but isn't shown or sent. Long-term memory is the logged data itself, which Claude reads through its list tools and `get_goals`.
 
 ## Tools
 
@@ -52,6 +52,10 @@ Claude remembers nothing between requests. Each turn it sees only what the route
 | `draft_workout` | Creates or revises a workout draft and matches it to a Fitbit workout. One call per activity. |
 | `list_meals` | Read-only: saved meals in a date range, newest first, at most 40, with ids, totals and each item's macros and portion. `search` keeps meals whose text or item names contain every word, and allows ranges up to 365 days (31 without). The prompt has Claude search past meals before estimating one, and reuse a matching meal's items and macros, since the owner repeats meals often. Also how Claude finds a saved meal to edit. |
 | `get_goals` | Read-only: daily targets (calories, macros in grams and percent, water oz) and one day's saved totals against them (`target`, `done`, `left`). Open drafts aren't counted. Goals are changed in the Goals panel on Today, not through chat. |
+| `draft_journal` | A journal entry draft: kind (morning, evening, other), body in their words, 1–5 mood, energy, stress and soreness (null when unsaid), tags. |
+| `draft_habits` | One card with a day's habit logs: each use (intensity 1–3, count or minutes, details, optional start and end times) and each explicit zero. The result lists active habits not logged yet that day, so Claude can ask. |
+| `draft_habit` | Adds a tracked habit or changes one: measure, direction, scale guide (required for intensity), cutoff, archived. |
+| `list_habits`, `list_journal`, `list_habit_logs` | Read-only: tracked habits with scale guides; journal entries with ratings; each day's habit status (level, uses, minutes past cutoff, unlogged). Ranges up to 92 days. |
 | `list_workouts` | Read-only: workouts in a date range (31 days at most), newest first. Each watch workout comes with what it was logged as (name, muscle groups, RPE), plus logged sessions with no watch workout; optionally only unlabeled watch workouts. Used for backfill and for questions about recent training. |
 
 Tools only build drafts. A read tool for health metrics (sleep, recovery, strain) comes next; it plugs into the same in-process server.

@@ -1375,10 +1375,9 @@ button {
   inset: auto 0 0;
   z-index: 10;
   display: flex;
-  justify-content: center;
-  gap: 64px;
+  justify-content: space-evenly;
   height: calc(var(--tab-bar-height) + env(safe-area-inset-bottom));
-  padding-bottom: env(safe-area-inset-bottom);
+  padding: 0 max(0px, calc((100% - 420px) / 2)) env(safe-area-inset-bottom);
   border-top: 0.5px solid rgba(60, 60, 67, 0.29);
   background: rgba(249, 249, 249, 0.94);
   backdrop-filter: saturate(180%) blur(20px);
@@ -2524,6 +2523,27 @@ button.fab {
   font-size: 13px;
 }
 
+.draft-body {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.draft-ratings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  color: var(--muted);
+  font-size: 13px;
+  text-transform: capitalize;
+}
+
+.draft-ratings strong {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
 .draft-chips {
   display: flex;
   flex-wrap: wrap;
@@ -3066,4 +3086,197 @@ button.fab {
 
 .workout-editor-spacer {
   flex: 1;
+}
+
+/* Check-in: today's journal ratings and habit statuses */
+.checkin-card {
+  display: grid;
+  gap: 12px;
+  padding: 18px 20px;
+}
+
+.checkin-ratings {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  text-align: center;
+}
+
+.checkin-ratings div {
+  display: grid;
+  gap: 2px;
+}
+
+.checkin-ratings strong {
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.checkin-ratings span {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: capitalize;
+}
+
+.checkin-habits {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.checkin-habits li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+  font-size: 15px;
+}
+
+.checkin-habits li span:last-child {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.checkin-habits li.unknown span:last-child {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.checkin-details {
+  display: grid;
+  gap: 8px;
+  padding: 4px 0 8px;
+}
+
+.checkin-details p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.checkin-details form {
+  justify-self: start;
+}
+
+.reminders-card {
+  display: grid;
+  gap: 6px;
+  padding: 16px 20px;
+}
+
+.reminders-card .footnote {
+  margin: 0;
+}
+
+.text-button.danger {
+  color: var(--bad);
+}
+
+/* Habits tab: 14-day grid (limit habits in strain orange, build habits in green) */
+.coverage-cell.habit-build.level-1 {
+  background: #bfe3cf;
+}
+
+.coverage-cell.habit-build.level-2 {
+  background: #7cc59d;
+}
+
+.coverage-cell.habit-build.level-3 {
+  background: var(--accent);
+}
+
+/* An explicit "didn't today": an empty box, unlike the solid "not logged". */
+.coverage-cell.none {
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1.5px var(--line);
+}
+
+.habit-grid {
+  grid-template-columns: 96px minmax(0, 1fr) 24px;
+}
+
+.journal-list,
+.habit-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.journal-list > li,
+.habit-list > li {
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.journal-list > li:first-child,
+.habit-list > li:first-child {
+  border-top: 0;
+  padding-top: 2px;
+}
+
+.journal-list summary {
+  display: grid;
+  gap: 2px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.journal-list summary::-webkit-details-marker {
+  display: none;
+}
+
+.journal-when {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.journal-ratings {
+  color: var(--muted);
+  font-size: 13px;
+  text-transform: capitalize;
+}
+
+.journal-preview {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 15px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+details[open] .journal-preview {
+  display: none;
+}
+
+.journal-body {
+  margin: 4px 0 8px;
+  font-size: 15px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.habit-list > li {
+  display: grid;
+  gap: 2px;
+}
+
+.habit-list > li > span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.habit-list ul {
+  display: grid;
+  gap: 2px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
 }

@@ -87,6 +87,14 @@ function TrainingIcon() {
   );
 }
 
+function HabitsIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20zm4.3 6.3L10.5 14l-2.8-2.8-1.4 1.4 4.2 4.2 7.2-7.1z" />
+    </svg>
+  );
+}
+
 function ChatIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -98,6 +106,7 @@ function ChatIcon() {
 const TABS = [
   { key: "home", href: "/", label: "Today", icon: <TodayIcon /> },
   { key: "training", href: "/training", label: "Training", icon: <TrainingIcon /> },
+  { key: "habits", href: "/habits", label: "Habits", icon: <HabitsIcon /> },
   { key: "chat", href: "/chat", label: "Chat", icon: <ChatIcon /> }
 ] as const;
 
