@@ -320,7 +320,11 @@ function HabitCard({ draft, ...handlers }: { draft: HabitDraft } & DraftHandlers
 
 function FeedbackCard({ draft, ...handlers }: { draft: FeedbackDraft } & DraftHandlers) {
   return (
-    <CheckinCard draft={draft} kind={`app ${draft.kind} · ${draft.area}`} {...handlers}>
+    <CheckinCard
+      draft={draft}
+      kind={`${draft.feedback_id ? (draft.status && draft.status !== "open" ? `mark ${draft.status}` : "change") : "app"} ${draft.kind} · ${draft.area}`}
+      {...handlers}
+    >
       <p className="draft-title">{draft.title}</p>
       <p className="draft-body">{draft.details}</p>
     </CheckinCard>

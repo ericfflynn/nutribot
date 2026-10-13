@@ -59,7 +59,7 @@ Claude remembers nothing between requests. Each turn it sees only what the route
 | `get_health` | Read-only (`lib/brain-health.ts`): watch data for up to 366 days, one line per day with sleep (duration, stages, bed and wake), HRV, resting HR, SpO2, breathing rate, VO2 max, skin temperature vs baseline, steps, active kcal, zone minutes, the app's Sleep / Recovery / Strain scores and that day's watch workouts, then averages over the full days in the range. |
 | `list_workouts` | Read-only: workouts in a date range (31 days at most), newest first. Each watch workout comes with what it was logged as (name, type, muscles, RPE) and how many duplicate watch recordings it combines ([workout-dedupe.md](workout-dedupe.md)), plus logged sessions with no watch workout; optionally only unlabeled watch workouts. Used for backfill, check-ins and questions about recent training. |
 
-| `draft_feedback`, `list_feedback` | Queues a bug, change or idea about the app itself (one draft per item, saved to `app_feedback` on Save) for the next dev pass; lists the queue. `lib/feedback.ts`. |
+| `draft_feedback`, `list_feedback` | Queues a bug, change or idea about the app itself (one draft per item, saved to `app_feedback` on Save) for the next dev pass, or changes a saved one (`feedback_id`): rewording, or marking it done or dropped. Items are never deleted. `list_feedback` lists the queue with ids. `lib/feedback.ts`. |
 
 Tools only build drafts; the rest only read.
 

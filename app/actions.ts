@@ -290,7 +290,7 @@ export async function saveDraftAction(
         savedId = ids.join(",") || "none";
         saved = { ...stored, saved_id: savedId };
       } else if (stored.type === "feedback") {
-        savedId = await saveFeedback(client, user.name, stored);
+        savedId = await saveFeedback(client, user.name, stored, stored.feedback_id);
         saved = { ...stored, saved_id: savedId };
       } else if (stored.type === "habit") {
         savedId = await saveHabit(client, user.name, stored.habit, stored.habit_id);
