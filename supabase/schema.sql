@@ -521,3 +521,21 @@ alter table public.habits enable row level security;
 alter table public.habit_logs enable row level security;
 alter table public.push_subscriptions enable row level security;
 alter table public.reminder_sends enable row level security;
+
+-- App feedback queued from chat for the next dev pass (lib/feedback.ts).
+create table if not exists public.app_feedback (
+  id uuid primary key default gen_random_uuid(),
+  user_name text not null,
+  kind text not null check (kind in ('bug', 'idea', 'change')),
+  area text not null,
+  title text not null,
+  details text not null,
+  status text not null default 'open' check (status in ('open', 'done', 'dropped')),
+  note text,
+  created_at timestamptz not null default now(),
+  resolved_at timestamptz
+);
+
+create index if not exists app_feedback_status_idx on public.app_feedback (status, created_at);
+
+alter table public.app_feedback enable row level security;

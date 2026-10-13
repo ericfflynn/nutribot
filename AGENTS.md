@@ -22,6 +22,8 @@ npm run db:backup   # replace the local database backup in backups/
 
 `npm test` runs the unit tests in `tests/` (Node's test runner with tsx): workout dedupe, habit edits and frequency, reminders, journal tags. Verify changes with `npm test` and `npm run build`, then exercise the affected page against the dev server.
 
+**Feedback queue.** The owner tells the chat about bugs and ideas for the app; they're saved to `app_feedback`. At the start of a dev pass, run `npm run feedback` to see open items, and mark each one `-- --done <id> "what changed"` (or `--drop`) once it's handled.
+
 Other scripts: `npm run workouts:dedupe` (dry run; `-- --apply` writes), `npm run demo:seed` (fictional data into a **local** database only; [docs/demo.md](docs/demo.md)).
 
 ## Environment

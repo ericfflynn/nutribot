@@ -13,6 +13,7 @@
     "health:sync": "node --env-file=.env.local --import tsx scripts/health-sync.ts",
     "health:auth": "node --env-file=.env.local --import tsx scripts/health-auth.ts",
     "workouts:dedupe": "node --env-file=.env.local --import tsx scripts/workout-dedupe.ts",
+    "feedback": "node --env-file=.env.local --import tsx scripts/feedback.ts",
     "demo:seed": "node --env-file-if-exists=.env.local --import tsx scripts/demo-seed.ts",
     "brain": "node --env-file=.env.local --import tsx scripts/brain.ts",
     "db:backup": "scripts/db-backup.sh"

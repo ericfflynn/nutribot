@@ -100,8 +100,10 @@ export function workoutTypeOf(fitbitType: string): WorkoutType {
   return found ?? "other";
 }
 
-// Fitbit workouts worth labeling when nothing is logged for them.
-const LABELABLE_TYPES = new Set(Object.values(FITBIT_TYPES).flat().filter((type) => type !== "WALKING"));
+// Only strength workouts are worth labeling when nothing is logged for them:
+// runs, rides and classes say what they were already.
+export const STRENGTH_FITBIT_TYPES = ["WEIGHTLIFTING", "WEIGHTS"];
+const LABELABLE_TYPES = new Set(STRENGTH_FITBIT_TYPES);
 
 export function fitsType(workoutType: WorkoutType, fitbitType: string) {
   if (workoutType === "other") return fitbitType !== "WALKING";
@@ -232,7 +234,7 @@ export async function listFitbitWorkouts(
   return rows;
 }
 
-// Fitbit workouts nothing has been logged for, excluding walks.
+// Strength workouts from the watch that nothing has been logged for.
 export async function listUnlabeledWorkouts(db: Pool, userName: string, startDate: string, endDate: string) {
   const workouts = await listFitbitWorkouts(db, userName, startDate, endDate);
   return workouts.filter((w) => !w.sessionId && LABELABLE_TYPES.has(w.type));

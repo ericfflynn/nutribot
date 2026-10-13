@@ -1,14 +1,16 @@
 import { AppShell, Login } from "../shared-ui";
-import { LabelButton, MergeControls, WorkoutEditor } from "../training-ui";
+import { CoverageGrid, LabelButton, MergeControls, WorkoutEditor, type CoverageRow } from "../training-ui";
 import { getSessionUser } from "@/lib/auth";
-import { rollingDateWindow, todayLocalDate } from "@/lib/dates";
+import { addDays, rollingDateWindow, todayLocalDate } from "@/lib/dates";
 import { listHealthWorkouts, type HealthWorkout } from "@/lib/health/queries";
 import { workoutStrain } from "@/lib/health/scores";
 import { getPool } from "@/lib/supabase";
 import { isPossibleDuplicate, type WorkoutRecord } from "@/lib/health/dedupe-rules";
 import {
   CARDIO_FITBIT_TYPES,
+  MUSCLES,
   MUSCLE_GROUPS,
+  STRENGTH_FITBIT_TYPES,
   TRACKED_GROUPS,
   WORKOUT_TYPES,
   WORKOUT_TYPE_LABELS,
@@ -28,6 +30,8 @@ import {
 export const dynamic = "force-dynamic";
 
 const WINDOW_DAYS = 14;
+// Unlabeled strength workouts worth asking about.
+const UNLABELED_DAYS = 7;
 // A muscle group not trained for this many days shows as missing.
 const MISSING_AFTER_DAYS = 7;
 
@@ -135,7 +139,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     listWorkoutSessions(db, user.name, start, today),
     listFitbitWorkouts(db, user.name, start, today),
     listHealthWorkouts(user.name, start, today),
-    listUnlabeledWorkouts(db, user.name, start, today),
+    listUnlabeledWorkouts(db, user.name, addDays(today, -(UNLABELED_DAYS - 1)), today),
     lastTrainedByMuscle(db, user.name, today)
   ]);
   const healthById = new Map<string, HealthWorkout>(healthWorkouts.map((workout) => [workout.id, workout]));
@@ -148,18 +152,21 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     const current = coverage.get(key);
     coverage.set(key, current == null ? rpe : rpe == null ? current : Math.max(current, rpe));
   };
-  const sessionCounts = new Map<MuscleGroup, number>();
+  // Specific muscles, keyed the same way, for the expanded rows.
+  const muscleCoverage = new Map<string, number | null>();
+  const muscleLast = new Map<string, string>();
   for (const session of sessions) {
-    for (const group of groupsOf(session.muscleGroups)) {
-      mark(session.date, group, session.rpe);
-      sessionCounts.set(group, (sessionCounts.get(group) ?? 0) + 1);
+    for (const group of groupsOf(session.muscleGroups)) mark(session.date, group, session.rpe);
+    for (const name of session.muscleGroups) {
+      if ((MUSCLE_GROUPS as readonly string[]).includes(name)) continue;
+      const key = `${session.date}|${name}`;
+      const current = muscleCoverage.get(key);
+      muscleCoverage.set(key, current == null ? session.rpe : session.rpe == null ? current : Math.max(current, session.rpe));
+      if ((muscleLast.get(name) ?? "") < session.date) muscleLast.set(name, session.date);
     }
   }
   for (const workout of fitbit) {
-    if (!workout.sessionId && CARDIO_FITBIT_TYPES.includes(workout.type)) {
-      mark(workout.day, "Cardio", null);
-      sessionCounts.set("Cardio", (sessionCounts.get("Cardio") ?? 0) + 1);
-    }
+    if (!workout.sessionId && CARDIO_FITBIT_TYPES.includes(workout.type)) mark(workout.day, "Cardio", null);
   }
 
   const rows = MUSCLE_GROUPS.map((group) => {
@@ -171,7 +178,28 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
   const longestGap = Math.max(...missing.map((row) => row.since ?? Infinity));
   const recentGroups = rows.filter((row) => !row.missing && TRACKED_GROUPS.includes(row.group)).sort((a, b) => (a.since ?? 0) - (b.since ?? 0));
 
-  const maxCount = Math.max(1, ...sessionCounts.values());
+  const coverageRows: CoverageRow[] = rows.map((row) => ({
+    name: row.group,
+    since: row.since,
+    missing: row.missing && TRACKED_GROUPS.includes(row.group),
+    levels: days.map((day) => {
+      const key = `${day}|${row.group}`;
+      return coverage.has(key) ? intensityClass(coverage.get(key)) : "";
+    }),
+    muscles: (MUSCLES[row.group] as readonly string[]).map((muscle) => {
+      const last = muscleLast.get(muscle);
+      return {
+        name: muscle,
+        since: last ? daysBetween(last, today) : null,
+        missing: false,
+        levels: days.map((day) => {
+          const key = `${day}|${muscle}`;
+          return muscleCoverage.has(key) ? intensityClass(muscleCoverage.get(key)) : "";
+        }),
+        muscles: []
+      };
+    })
+  }));
 
   // Recent workouts: every Fitbit workout except unlabeled walks, plus sessions
   // that aren't linked to one (pending or untracked).
@@ -208,7 +236,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
       fitbitId: workout.id,
       mergedCount: workout.mergedIds.length,
       overlaps,
-      labelPrompt: session
+      labelPrompt: session || !STRENGTH_FITBIT_TYPES.includes(workout.type)
         ? null
         : `My ${workout.name.toLowerCase()} on ${formatDay(workout.day)} at ${formatClock(workout.startedAt)} was `,
       status: null
@@ -293,6 +321,8 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
                   </small>
                 </span>
                 <LabelButton
+                  workoutId={workout.id}
+                  date={workout.day}
                   prompt={`My ${workout.name.toLowerCase()} on ${formatDay(workout.day)} at ${formatClock(workout.startedAt)} was `}
                 />
               </li>
@@ -303,32 +333,10 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
 
       <section className="card" aria-label="Coverage">
         <h2 className="card-title">Coverage</h2>
-        <div className="coverage">
-          <span />
-          <div className="coverage-cells">
-            {days.map((day) => (
-              <span key={day} className="coverage-dow">
-                {weekdayLetter.format(new Date(`${day}T00:00:00Z`))}
-              </span>
-            ))}
-          </div>
-          <span className="coverage-since-head">since</span>
-          {rows.map((row) => (
-            <div className="coverage-row" key={row.group}>
-              <span className={row.missing ? "coverage-name missing" : "coverage-name"}>{row.group}</span>
-              <div className="coverage-cells">
-                {days.map((day) => {
-                  const key = `${day}|${row.group}`;
-                  const level = coverage.has(key) ? intensityClass(coverage.get(key)) : "";
-                  return <span key={day} className={`coverage-cell ${level}`} />;
-                })}
-              </div>
-              <span className={row.missing ? "coverage-since missing" : "coverage-since"}>
-                {row.since == null ? "–" : `${row.since}d`}
-              </span>
-            </div>
-          ))}
-        </div>
+        <CoverageGrid
+          days={days.map((day) => ({ date: day, letter: weekdayLetter.format(new Date(`${day}T00:00:00Z`)) }))}
+          rows={coverageRows}
+        />
         <div className="coverage-legend" aria-hidden="true">
           <span>
             <i className="coverage-cell level-1" /> Easy
@@ -340,33 +348,6 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
             <i className="coverage-cell level-3" /> Hard
           </span>
         </div>
-      </section>
-
-      <section className="card" aria-label="Sessions per muscle group">
-        <div className="card-heading">
-          <h2 className="card-title">Sessions</h2>
-          <span className="card-aside">{WINDOW_DAYS} days</span>
-        </div>
-        {sessionCounts.size ? (
-          <div className="training-volume">
-            {MUSCLE_GROUPS.filter((group) => sessionCounts.has(group))
-              .sort((a, b) => (sessionCounts.get(b) ?? 0) - (sessionCounts.get(a) ?? 0))
-              .map((group) => {
-                const count = sessionCounts.get(group) ?? 0;
-                return (
-                  <div key={group} className="training-volume-row">
-                    <span>{group}</span>
-                    <div className="training-volume-track">
-                      <div style={{ width: `${(count / maxCount) * 100}%` }} />
-                    </div>
-                    <strong>{count}</strong>
-                  </div>
-                );
-              })}
-          </div>
-        ) : (
-          <p className="footnote">Nothing logged in the last {WINDOW_DAYS} days. Tell the chat what you trained.</p>
-        )}
       </section>
 
       <section className="group" aria-label="Recent workouts">
@@ -407,7 +388,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
                       <span key={chip}>{chip}</span>
                     ))}
                   </div>
-                  {item.labelPrompt ? <LabelButton prompt={item.labelPrompt} /> : null}
+                  {item.labelPrompt && item.fitbitId ? <LabelButton prompt={item.labelPrompt} workoutId={item.fitbitId} date={item.date} /> : null}
                 </div>
               ) : null}
               {item.fitbitId ? (

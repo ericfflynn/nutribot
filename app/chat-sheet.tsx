@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { discardDraftAction, newChatAction, saveDraftAction } from "./actions";
 import type { Draft, MealDraft, WorkoutDraft } from "@/lib/brain";
 import type { HabitDraft, HabitsDraft, JournalDraft } from "@/lib/brain-checkin";
+import type { FeedbackDraft } from "@/lib/feedback";
 import { describeGoal, formatHabitAmount, scaleGuideLines } from "@/lib/habits";
 import { recordedRatings } from "@/lib/journal";
 import type { ChatMessage } from "@/lib/chat";
@@ -317,6 +318,15 @@ function HabitCard({ draft, ...handlers }: { draft: HabitDraft } & DraftHandlers
   );
 }
 
+function FeedbackCard({ draft, ...handlers }: { draft: FeedbackDraft } & DraftHandlers) {
+  return (
+    <CheckinCard draft={draft} kind={`app ${draft.kind} · ${draft.area}`} {...handlers}>
+      <p className="draft-title">{draft.title}</p>
+      <p className="draft-body">{draft.details}</p>
+    </CheckinCard>
+  );
+}
+
 // Opens the chat sheet from anywhere, optionally with text ready to send.
 const OPEN_EVENT = "nutribot:open-chat";
 export function openChat(text = "") {
@@ -476,6 +486,8 @@ export function ChatThread({
                   return <HabitsCard key={draft.id} draft={draft} {...handlers} />;
                 case "habit":
                   return <HabitCard key={draft.id} draft={draft} {...handlers} />;
+                case "feedback":
+                  return <FeedbackCard key={draft.id} draft={draft} {...handlers} />;
               }
             })}
           </div>

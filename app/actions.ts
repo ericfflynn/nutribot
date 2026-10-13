@@ -22,6 +22,7 @@ import {
 } from "@/lib/habits";
 import { deleteJournalEntry, listJournalTags, saveJournalEntry, updateJournalEntry } from "@/lib/journal";
 import { normalizeTags } from "@/lib/journal-tags";
+import { saveFeedback } from "@/lib/feedback";
 import {
   deletePushSubscription,
   deleteReminder,
@@ -38,6 +39,7 @@ import { mergeWorkouts, separateWorkout } from "@/lib/health/dedupe";
 import {
   MUSCLE_NAMES,
   deleteWorkoutSession,
+  groupsOf,
   normalizeMuscles,
   listFitbitWorkouts,
   saveWorkoutSession,
@@ -287,6 +289,9 @@ export async function saveDraftAction(
         // Zeros already covered by a saved log are skipped, so this can be empty.
         savedId = ids.join(",") || "none";
         saved = { ...stored, saved_id: savedId };
+      } else if (stored.type === "feedback") {
+        savedId = await saveFeedback(client, user.name, stored);
+        saved = { ...stored, saved_id: savedId };
       } else if (stored.type === "habit") {
         savedId = await saveHabit(client, user.name, stored.habit, stored.habit_id);
         saved = { ...stored, saved_id: savedId };
@@ -386,6 +391,47 @@ export async function updateWorkoutSessionAction(
 }
 
 const recordKey = z.string().min(1).max(300);
+
+// "Chest + Triceps" from the picked muscles' groups, for a quick label.
+function sessionName(groups: string[]) {
+  return groups.slice(0, 3).join(" + ") || "Strength";
+}
+
+// Training page: label a watch workout by picking muscles, without the chat.
+export async function labelWorkoutAction(
+  fitbitWorkoutId: string,
+  date: string,
+  input: { muscleGroups: string[]; rpe: number | null }
+): Promise<{ ok: boolean; error?: string }> {
+  const user = await getSessionUser();
+  const db = getPool();
+  if (!user || !db) return { ok: false, error: "Log in again." };
+  const parsed = workoutEditSchema.omit({ name: true }).safeParse(input);
+  if (!parsed.success || !recordKey.safeParse(fitbitWorkoutId).success || !isValidLocalDate(date)) {
+    return { ok: false, error: "Pick at least one muscle group and an RPE from 1 to 10." };
+  }
+  const workouts = await listFitbitWorkouts(db, user.name, date, date);
+  const workout = workouts.find((item) => item.id === fitbitWorkoutId);
+  if (!workout) return { ok: false, error: "That watch workout no longer exists." };
+  if (workout.sessionId) return { ok: false, error: "That workout is already labeled." };
+  await saveWorkoutSession(db, user.name, {
+    date,
+    rawText: "Labeled on the Training tab",
+    name: sessionName(groupsOf(parsed.data.muscleGroups)),
+    workoutType: "strength",
+    muscleGroups: parsed.data.muscleGroups,
+    rpe: parsed.data.rpe,
+    durationMin: null,
+    notes: "",
+    timeHint: null,
+    untracked: false,
+    healthRecordKey: workout.id,
+    linkedBy: "user"
+  });
+  revalidatePath("/");
+  revalidatePath("/training");
+  return { ok: true };
+}
 
 // Training page: two watch recordings of one workout become one.
 export async function mergeWorkoutsAction(firstId: string, secondId: string): Promise<{ ok: boolean; error?: string }> {

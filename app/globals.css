@@ -2855,6 +2855,40 @@ button.fab {
   color: var(--bad);
 }
 
+.coverage-toggle {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.coverage-toggle span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.coverage-sub .coverage-name {
+  padding-left: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.coverage-sub .coverage-since {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.coverage-sub .coverage-cell {
+  height: 12px;
+}
+
 .coverage-cell {
   display: block;
   height: 18px;
@@ -3716,5 +3750,19 @@ details[open] .journal-preview {
 .habit-archived summary {
   color: var(--muted);
   cursor: pointer;
+}
+
+.label-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.training-unlabeled li:has(.label-picker),
+.training-workout-foot:has(.label-picker) {
+  flex-wrap: wrap;
+}
+
+.label-picker {
+  flex-basis: 100%;
 }
 

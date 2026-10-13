@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   deleteWorkoutSessionAction,
+  labelWorkoutAction,
   mergeWorkoutsAction,
   separateWorkoutAction,
   updateWorkoutSessionAction
@@ -11,12 +12,66 @@ import {
 import { openChat } from "./chat-sheet";
 import { MUSCLE_GROUPS, MUSCLES, groupOf, type MuscleGroup, type MuscleName } from "@/lib/workouts";
 
-// Opens chat with a sentence about this Fitbit workout, ready to finish.
-export function LabelButton({ prompt }: { prompt: string }) {
+// Labels an unlabeled watch workout: describe it in chat (opens with a
+// sentence ready to finish), or pick muscles and effort right here.
+export function LabelButton({ prompt, workoutId, date }: { prompt: string; workoutId: string; date: string }) {
+  const router = useRouter();
+  const [picking, setPicking] = useState(false);
+  const [muscles, setMuscles] = useState<MuscleName[]>([]);
+  const [effort, setEffort] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    const result = await labelWorkoutAction(workoutId, date, { muscleGroups: muscles, rpe: effort === "" ? null : Number(effort) });
+    setBusy(false);
+    if (!result.ok) {
+      setError(result.error ?? "Couldn't save that.");
+      return;
+    }
+    setPicking(false);
+    router.refresh();
+  }
+
+  if (!picking) {
+    return (
+      <span className="label-actions">
+        <button type="button" className="pill-button" onClick={() => setPicking(true)}>
+          Pick muscles
+        </button>
+        <button type="button" className="pill-button" onClick={() => openChat(prompt)}>
+          Chat
+        </button>
+      </span>
+    );
+  }
   return (
-    <button type="button" className="pill-button" onClick={() => openChat(prompt)}>
-      Label
-    </button>
+    <div className="workout-editor label-picker">
+      <MusclePicker value={muscles} onChange={setMuscles} />
+      <label className="workout-editor-field">
+        <span>RPE</span>
+        <select value={effort} onChange={(event) => setEffort(event.target.value)}>
+          <option value="">Not set</option>
+          {Array.from({ length: 10 }, (_, index) => index + 1).map((value) => (
+            <option key={value} value={value}>
+              {value}
+            </option>
+          ))}
+        </select>
+      </label>
+      {error ? <p className="workout-editor-error">{error}</p> : null}
+      <div className="workout-editor-actions">
+        <span className="workout-editor-spacer" />
+        <button type="button" className="button secondary compact" disabled={busy} onClick={() => setPicking(false)}>
+          Cancel
+        </button>
+        <button type="button" className="button compact" disabled={busy || !muscles.length} onClick={save}>
+          {busy ? "Saving…" : "Save"}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -247,3 +302,54 @@ export function WorkoutEditor({
     </div>
   );
 }
+
+export type CoverageRow = {
+  name: string;
+  since: number | null;
+  missing: boolean;
+  levels: string[]; // a cell class per day: "", "level-1".."level-3"
+  muscles: CoverageRow[]; // specific muscles, for an expandable group
+};
+
+// The coverage grid. Tapping a group with muscles shows a row per muscle;
+// sessions logged as the whole group only shade the group's row.
+export function CoverageGrid({ days, rows }: { days: { date: string; letter: string }[]; rows: CoverageRow[] }) {
+  const [open, setOpen] = useState<string | null>(null);
+  const line = (row: CoverageRow, sub: boolean) => (
+    <div className={sub ? "coverage-row coverage-sub" : "coverage-row"} key={`${sub ? "m" : "g"}-${row.name}`}>
+      {!sub && row.muscles.length ? (
+        <button
+          type="button"
+          className={`coverage-name coverage-toggle${row.missing ? " missing" : ""}`}
+          aria-expanded={open === row.name}
+          onClick={() => setOpen(open === row.name ? null : row.name)}
+        >
+          {row.name} <span aria-hidden="true">{open === row.name ? "▾" : "▸"}</span>
+        </button>
+      ) : (
+        <span className={`coverage-name${row.missing ? " missing" : ""}`}>{row.name}</span>
+      )}
+      <div className="coverage-cells">
+        {row.levels.map((level, index) => (
+          <span key={days[index].date} className={`coverage-cell ${level}`} />
+        ))}
+      </div>
+      <span className={row.missing ? "coverage-since missing" : "coverage-since"}>{row.since == null ? "–" : `${row.since}d`}</span>
+    </div>
+  );
+  return (
+    <div className="coverage">
+      <span />
+      <div className="coverage-cells">
+        {days.map((day) => (
+          <span key={day.date} className="coverage-dow">
+            {day.letter}
+          </span>
+        ))}
+      </div>
+      <span className="coverage-since-head">since</span>
+      {rows.flatMap((row) => [line(row, false), ...(open === row.name ? row.muscles.map((muscle) => line(muscle, true)) : [])])}
+    </div>
+  );
+}
+
