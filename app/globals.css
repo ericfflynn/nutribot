@@ -2812,7 +2812,7 @@ button.fab {
 /* Coverage grid: one row per muscle group, one cell per day */
 .coverage {
   display: grid;
-  grid-template-columns: 68px minmax(0, 1fr) 34px;
+  grid-template-columns: 84px minmax(0, 1fr) 34px;
   gap: 6px;
   align-items: center;
 }
@@ -2856,6 +2856,7 @@ button.fab {
 }
 
 .coverage-toggle {
+  white-space: nowrap;
   padding: 0;
   border: 0;
   background: none;
@@ -3764,5 +3765,22 @@ details[open] .journal-preview {
 
 .label-picker {
   flex-basis: 100%;
+}
+
+/* Training: the activity mix, one color per kind of training */
+.coverage-cell.activity-strength {
+  background: var(--strain);
+}
+
+.coverage-cell.activity-cardio {
+  background: #5ac8fa;
+}
+
+.coverage-cell.activity-mobility {
+  background: #af52de;
+}
+
+.coverage-cell.activity-sport {
+  background: #34c759;
 }
 

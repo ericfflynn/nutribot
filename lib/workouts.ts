@@ -16,7 +16,7 @@ export const MUSCLES = {
   Back: ["Lats", "Upper Back", "Lower Back"],
   Shoulders: ["Front Delts", "Side Delts", "Rear Delts", "Traps"],
   Arms: ["Biceps", "Triceps", "Forearms"],
-  Legs: ["Quads", "Hamstrings", "Glutes", "Calves", "Adductors"],
+  Legs: ["Quads", "Hamstrings", "Glutes", "Calves"],
   Core: ["Abs", "Obliques"],
   Cardio: [],
   Mobility: []
@@ -30,8 +30,74 @@ export const MUSCLE_NAMES = [
   ...MUSCLE_GROUPS.flatMap((group) => MUSCLES[group] as readonly SpecificMuscle[])
 ] as [MuscleName, ...MuscleName[]];
 
-// Groups whose gaps the Training tab calls out; Mobility is optional work.
-export const TRACKED_GROUPS: MuscleGroup[] = ["Chest", "Back", "Shoulders", "Arms", "Legs", "Core", "Cardio"];
+// The strength groups: the Training tab's coverage grid and "Next up".
+// Cardio and Mobility are tracked as activities instead (ACTIVITY_CATEGORIES).
+export const STRENGTH_GROUPS: MuscleGroup[] = ["Chest", "Back", "Shoulders", "Arms", "Legs", "Core"];
+
+// The higher-level mix: what kind of training each workout was.
+export const ACTIVITY_CATEGORIES = ["strength", "cardio", "mobility", "sport"] as const;
+export type ActivityCategory = (typeof ACTIVITY_CATEGORIES)[number] | "other";
+export const ACTIVITY_LABELS: Record<ActivityCategory, string> = {
+  strength: "Strength",
+  cardio: "Cardio",
+  mobility: "Mobility",
+  sport: "Sport",
+  other: "Other"
+};
+
+export function activityCategoryOf(type: WorkoutType): ActivityCategory {
+  if (type === "strength") return "strength";
+  if (type === "run" || type === "walk" || type === "ride" || type === "class") return "cardio";
+  if (type === "pilates" || type === "yoga") return "mobility";
+  if (type === "sport") return "sport";
+  return "other";
+}
+
+// Strength days to suggest, each with the muscles it covers.
+const SPLITS: { name: string; muscles: SpecificMuscle[] }[] = [
+  { name: "Push day", muscles: ["Upper Chest", "Mid Chest", "Front Delts", "Side Delts", "Triceps"] },
+  { name: "Pull day", muscles: ["Lats", "Upper Back", "Rear Delts", "Biceps"] },
+  { name: "Leg day", muscles: ["Quads", "Hamstrings", "Glutes", "Calves"] }
+];
+// Core is added to whichever day comes next, not a day of its own.
+const CORE: SpecificMuscle[] = ["Abs", "Obliques"];
+
+// Days counted for a muscle never logged, and the cap on any gap, so one
+// ancient gap doesn't swamp the average.
+const NEVER_DAYS = 30;
+// Everything trained within this many days: nothing is neglected.
+const RECENT_DAYS = 3;
+
+export type NextUp = {
+  split: string | null; // null when everything was hit recently
+  neglected: { muscle: SpecificMuscle; since: number | null }[]; // most neglected first, at most 3
+  addCore: boolean; // core hasn't been trained in a week or more
+};
+
+// What to train next: the split whose muscles have gone longest without
+// work. A session logged as a whole group ("Legs") counts for every muscle
+// in it. `lastByName` maps group and muscle names to the last date trained.
+export function recommendNext(lastByName: Map<string, string>, today: string): NextUp {
+  const days = (date: string | undefined) =>
+    date ? Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${date}T00:00:00Z`)) / 86_400_000) : null;
+  const sinceOf = (muscle: SpecificMuscle) => {
+    const values = [days(lastByName.get(muscle)), days(lastByName.get(groupOf(muscle)))].filter((value): value is number => value != null);
+    return values.length ? Math.min(...values) : null;
+  };
+  const scored = SPLITS.map((split) => {
+    const muscles = split.muscles.map((muscle) => ({ muscle, since: sinceOf(muscle) }));
+    const gap = (since: number | null) => Math.min(NEVER_DAYS, since ?? NEVER_DAYS);
+    return { split, muscles, score: muscles.reduce((sum, item) => sum + gap(item.since), 0) / muscles.length };
+  });
+  const best = scored.reduce((a, b) => (b.score > a.score ? b : a));
+  const addCore = CORE.every((muscle) => (sinceOf(muscle) ?? Infinity) >= 7);
+  if (best.muscles.every((item) => item.since != null && item.since <= RECENT_DAYS)) return { split: null, neglected: [], addCore };
+  const neglected = [...best.muscles]
+    .sort((a, b) => (b.since ?? Infinity) - (a.since ?? Infinity))
+    .filter((item) => item.since == null || item.since > RECENT_DAYS)
+    .slice(0, 3);
+  return { split: best.split.name, neglected, addCore };
+}
 
 export function groupOf(name: MuscleName): MuscleGroup {
   if ((MUSCLE_GROUPS as readonly string[]).includes(name)) return name as MuscleGroup;
@@ -387,37 +453,27 @@ export async function listWorkoutSessions(
 // Unlabeled runs and rides still count as Cardio; walks don't.
 export const CARDIO_FITBIT_TYPES = ["RUNNING", "TREADMILL", "BIKING", "SPINNING"];
 
-// The last date each muscle group was trained, on or before endDate, over the
-// past year: from logged sessions (a specific muscle counts for its group),
-// plus unlabeled Fitbit runs and rides as Cardio.
-export async function lastTrainedByMuscle(db: Pick<Pool, "query">, userName: string, endDate: string) {
-  const { rows } = await db.query<{ muscle: MuscleName; day: string }>(
+// The last date each group or muscle name was logged, on or before endDate,
+// over the past year, from logged sessions.
+export async function lastTrainedByName(db: Pick<Pool, "query">, userName: string, endDate: string) {
+  const { rows } = await db.query<{ name: string; day: string }>(
     `
-    select muscle, max(day)::text as "day"
-    from (
-      select unnest(muscle_groups) as muscle, entry_date as day
-      from public.workout_sessions
-      where user_name = $1 and entry_date <= $2::date and entry_date > $2::date - 365
-      union all
-      select 'Cardio', w.day
-      from public.health_workouts w
-      where w.user_name = $1 and w.day <= $2::date and w.day > $2::date - 365
-        and w.type = any($3)
-        and not exists (
-          select 1 from public.workout_sessions s
-          where s.user_name = w.user_name and s.health_record_key = w.id
-        )
-    ) trained
-    group by muscle
+    select name, max(entry_date)::text as "day"
+    from public.workout_sessions, unnest(muscle_groups) as name
+    where user_name = $1 and entry_date <= $2::date and entry_date > $2::date - 365
+    group by name
     `,
-    [userName, endDate, CARDIO_FITBIT_TYPES]
+    [userName, endDate]
   );
+  return new Map(rows.map((row) => [row.name, row.day]));
+}
+
+// The last date each group was trained: a muscle counts for its group.
+export function lastByGroup(lastByName: Map<string, string>) {
   const byGroup = new Map<MuscleGroup, string>();
-  for (const row of rows) {
-    const group = groupOf(row.muscle);
-    if (!group) continue;
-    const current = byGroup.get(group);
-    if (!current || row.day > current) byGroup.set(group, row.day);
+  for (const [name, day] of lastByName) {
+    const group = groupOf(name as MuscleName);
+    if (group && (byGroup.get(group) ?? "") < day) byGroup.set(group, day);
   }
   return byGroup;
 }

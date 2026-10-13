@@ -40,7 +40,7 @@ Picked group first, then specific muscles (`MUSCLES` in `lib/workouts.ts`):
 | Back | Lats, Upper Back, Lower Back |
 | Shoulders | Front Delts, Side Delts, Rear Delts, Traps |
 | Arms | Biceps, Triceps, Forearms |
-| Legs | Quads, Hamstrings, Glutes, Calves, Adductors |
+| Legs | Quads, Hamstrings, Glutes, Calves |
 | Core | Abs, Obliques |
 | Cardio | |
 | Mobility | |
@@ -51,12 +51,13 @@ In the editor, tapping a group selects the whole group and shows its muscles; pi
 
 ## What the Training tab reads
 
+- **Next up:** the strength day to do next (`recommendNext`): push, pull or legs, whichever's muscles have gone longest without work (a whole-group session counts for all its muscles; gaps capped at 30 days), with the three most neglected muscles, and "+ core" when core is a week or more out. "You're covered" when everything was hit in the last 3 days.
+- **Activity:** a 14-day grid of strength, cardio (run, walk, ride, class), mobility (pilates, yoga) and sport, from logged sessions and watch workouts (auto-detected walks left out), with counts per kind.
 - **Days since each muscle group was trained:** the latest session per group; a specific muscle counts for its group.
-- **14-day coverage grid:** sessions per day per group, shaded by RPE. Tapping a group expands a row per specific muscle; sessions logged as the whole group shade only the group row. The old "sessions per muscle group" card was dropped as redundant. This replaces "hard sets per muscle group", which needs per-set data.
+- **14-day strength coverage grid:** sessions per day for the six strength groups (Cardio and Mobility live in Activity), shaded by RPE. Tapping a group expands a row per specific muscle; sessions logged as the whole group shade only the group row. The old "sessions per muscle group" card was dropped as redundant. This replaces "hard sets per muscle group", which needs per-set data.
 - **Recent workouts:** Fitbit workouts (unlabeled walks left out) joined to their sessions for duration, heart rate and strain, plus sessions with no Fitbit link. Chips show muscles by group ("Shoulders: Side Delts, Rear Delts"). A filter row picks one workout type, with counts per type. Each logged one opens to edit its name, muscles and RPE, or to delete it; deleting makes its Fitbit workout unlabeled again. Combined and overlapping watch recordings can be separated or merged ([workout-dedupe.md](workout-dedupe.md)).
 - **Unlabeled workouts:** watch strength workouts (WEIGHTLIFTING, WEIGHTS) from the last 7 days with no session. Each can be labeled with **Pick muscles** (muscle picker and RPE, saved straight away) or **Chat** (opens chat with a sentence to finish). Runs, rides and classes aren't asked about. `listUnlabeledWorkouts` in `lib/workouts.ts`.
-- **Missing:** groups not trained in 7 or more days, looking back a year, with a suggested next session. Mobility is optional and never called missing.
-- Unlabeled runs and rides count as Cardio; walks don't.
+- Groups not trained in 7 or more days show in red in the coverage grid.
 
 ## Later: per-exercise sets
 

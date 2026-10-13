@@ -7,16 +7,20 @@ import { workoutStrain } from "@/lib/health/scores";
 import { getPool } from "@/lib/supabase";
 import { isPossibleDuplicate, type WorkoutRecord } from "@/lib/health/dedupe-rules";
 import {
-  CARDIO_FITBIT_TYPES,
+  ACTIVITY_CATEGORIES,
+  ACTIVITY_LABELS,
   MUSCLES,
   MUSCLE_GROUPS,
   STRENGTH_FITBIT_TYPES,
-  TRACKED_GROUPS,
+  STRENGTH_GROUPS,
+  activityCategoryOf,
+  lastByGroup,
+  recommendNext,
   WORKOUT_TYPES,
   WORKOUT_TYPE_LABELS,
   describeMuscles,
   groupsOf,
-  lastTrainedByMuscle,
+  lastTrainedByName,
   listFitbitWorkouts,
   listUnlabeledWorkouts,
   listWorkoutSessions,
@@ -52,24 +56,6 @@ function daysBetween(from: string, to: string) {
   return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
 }
 
-function joinNames(names: string[]) {
-  const lower = names.map((name, index) => (index === 0 ? name : name.toLowerCase()));
-  if (lower.length <= 1) return lower.join("");
-  return `${lower.slice(0, -1).join(", ")} and ${lower[lower.length - 1]}`;
-}
-
-// What to train next, from the groups that are missing.
-function suggestion(missing: MuscleGroup[]) {
-  const has = (group: MuscleGroup) => missing.includes(group);
-  if (has("Back")) return "Next session could be a pull day.";
-  if (has("Chest") || has("Shoulders")) return "Next session could be a push day.";
-  if (has("Legs")) return "Next session could be a leg day.";
-  if (has("Arms")) return "Add some arm work to the next session.";
-  if (has("Core")) return "Add some core work, or a pilates class.";
-  if (has("Cardio")) return "A run or a ride would cover cardio.";
-  return "";
-}
-
 // Coverage cell shade from the day's hardest session for that group.
 function intensityClass(rpe: number | null | undefined) {
   if (rpe === undefined) return "";
@@ -88,6 +74,7 @@ type RecentItem = {
   detail: string;
   strain: number | null;
   chips: string[];
+  minutes: number | null;
   workoutType: WorkoutType;
   session: WorkoutSession | null;
   // Watch workout id, for merging and separating recordings.
@@ -135,12 +122,12 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     );
   }
 
-  const [sessions, fitbit, healthWorkouts, unlabeled, lastTrained] = await Promise.all([
+  const [sessions, fitbit, healthWorkouts, unlabeled, lastByName] = await Promise.all([
     listWorkoutSessions(db, user.name, start, today),
     listFitbitWorkouts(db, user.name, start, today),
     listHealthWorkouts(user.name, start, today),
     listUnlabeledWorkouts(db, user.name, addDays(today, -(UNLABELED_DAYS - 1)), today),
-    lastTrainedByMuscle(db, user.name, today)
+    lastTrainedByName(db, user.name, today)
   ]);
   const healthById = new Map<string, HealthWorkout>(healthWorkouts.map((workout) => [workout.id, workout]));
   const fitbitById = new Map<string, FitbitWorkout>(fitbit.map((workout) => [workout.id, workout]));
@@ -154,7 +141,6 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
   };
   // Specific muscles, keyed the same way, for the expanded rows.
   const muscleCoverage = new Map<string, number | null>();
-  const muscleLast = new Map<string, string>();
   for (const session of sessions) {
     for (const group of groupsOf(session.muscleGroups)) mark(session.date, group, session.rpe);
     for (const name of session.muscleGroups) {
@@ -162,44 +148,34 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
       const key = `${session.date}|${name}`;
       const current = muscleCoverage.get(key);
       muscleCoverage.set(key, current == null ? session.rpe : session.rpe == null ? current : Math.max(current, session.rpe));
-      if ((muscleLast.get(name) ?? "") < session.date) muscleLast.set(name, session.date);
     }
   }
-  for (const workout of fitbit) {
-    if (!workout.sessionId && CARDIO_FITBIT_TYPES.includes(workout.type)) mark(workout.day, "Cardio", null);
-  }
 
-  const rows = MUSCLE_GROUPS.map((group) => {
-    const last = lastTrained.get(group);
-    const since = last ? daysBetween(last, today) : null;
-    return { group, since, missing: since == null || since >= MISSING_AFTER_DAYS };
-  });
-  const missing = rows.filter((row) => row.missing && TRACKED_GROUPS.includes(row.group));
-  const longestGap = Math.max(...missing.map((row) => row.since ?? Infinity));
-  const recentGroups = rows.filter((row) => !row.missing && TRACKED_GROUPS.includes(row.group)).sort((a, b) => (a.since ?? 0) - (b.since ?? 0));
-
-  const coverageRows: CoverageRow[] = rows.map((row) => ({
-    name: row.group,
-    since: row.since,
-    missing: row.missing && TRACKED_GROUPS.includes(row.group),
-    levels: days.map((day) => {
-      const key = `${day}|${row.group}`;
-      return coverage.has(key) ? intensityClass(coverage.get(key)) : "";
-    }),
-    muscles: (MUSCLES[row.group] as readonly string[]).map((muscle) => {
-      const last = muscleLast.get(muscle);
-      return {
+  const lastTrained = lastByGroup(lastByName);
+  const sinceOf = (date: string | undefined) => (date ? daysBetween(date, today) : null);
+  const coverageRows: CoverageRow[] = STRENGTH_GROUPS.map((group) => {
+    const since = sinceOf(lastTrained.get(group));
+    return {
+      name: group,
+      since,
+      missing: since == null || since >= MISSING_AFTER_DAYS,
+      levels: days.map((day) => {
+        const key = `${day}|${group}`;
+        return coverage.has(key) ? intensityClass(coverage.get(key)) : "";
+      }),
+      muscles: (MUSCLES[group] as readonly string[]).map((muscle) => ({
         name: muscle,
-        since: last ? daysBetween(last, today) : null,
+        since: sinceOf(lastByName.get(muscle)),
         missing: false,
         levels: days.map((day) => {
           const key = `${day}|${muscle}`;
           return muscleCoverage.has(key) ? intensityClass(muscleCoverage.get(key)) : "";
         }),
         muscles: []
-      };
-    })
-  }));
+      }))
+    };
+  });
+  const nextUp = recommendNext(lastByName, today);
 
   // Recent workouts: every Fitbit workout except unlabeled walks, plus sessions
   // that aren't linked to one (pending or untracked).
@@ -209,7 +185,6 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     if (!session && workout.type === "WALKING") continue;
     const health = healthById.get(workout.id);
     const strain = health ? workoutStrain(health) : null;
-    const isCardio = CARDIO_FITBIT_TYPES.includes(workout.type);
     // Other watch workouts that overlap this one without being folded into it.
     const overlaps = fitbit
       .filter((other) => other.id !== workout.id)
@@ -230,7 +205,8 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
         .filter(Boolean)
         .join(" · "),
       strain,
-      chips: session ? describeMuscles(session.muscleGroups) : isCardio ? ["Cardio"] : [],
+      chips: session ? describeMuscles(session.muscleGroups) : [],
+      minutes: workout.activeMinutes,
       workoutType: session?.workoutType ?? workoutTypeOf(workout.type),
       session,
       fitbitId: workout.id,
@@ -259,6 +235,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
         .join(" · "),
       strain: null,
       chips: describeMuscles(session.muscleGroups),
+      minutes: session.durationMin,
       workoutType: session.workoutType,
       session,
       fitbitId: null,
@@ -274,6 +251,26 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
   for (const item of recent) typeCounts.set(item.workoutType, (typeCounts.get(item.workoutType) ?? 0) + 1);
   const shown = typeFilter ? recent.filter((item) => item.workoutType === typeFilter) : recent;
 
+  // The mix: strength, cardio, mobility and sport by day, from the same list
+  // (auto-detected walks are already left out).
+  const activityRows: CoverageRow[] = ACTIVITY_CATEGORIES.map((category) => {
+    const items = recent.filter((item) => activityCategoryOf(item.workoutType) === category);
+    const dates = new Set(items.map((item) => item.date));
+    const last = items.map((item) => item.date).sort().at(-1);
+    return {
+      name: ACTIVITY_LABELS[category],
+      since: sinceOf(last),
+      missing: false,
+      levels: days.map((day) => (dates.has(day) ? `activity-${category}` : "")),
+      muscles: []
+    };
+  });
+  const activityTotals = ACTIVITY_CATEGORIES.map((category) => {
+    const items = recent.filter((item) => activityCategoryOf(item.workoutType) === category);
+    const minutes = items.reduce((sum, item) => sum + (item.minutes ?? 0), 0);
+    return { category, count: items.length, minutes };
+  }).filter((total) => total.count);
+
   return (
     <AppShell
       user={user}
@@ -286,23 +283,30 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
         {shortDay.format(new Date(`${today}T00:00:00Z`))}
       </p>
 
-      {missing.length ? (
-        <section className="card training-missing" aria-label="Missing">
-          <span className="training-missing-label">Missing</span>
-          <strong>
-            {joinNames(missing.map((row) => row.group))}:{" "}
-            {Number.isFinite(longestGap) ? `${longestGap} days` : "not logged yet"}
-          </strong>
-          <span className="training-missing-note">
-            {recentGroups.length
-              ? `${joinNames(recentGroups.slice(0, 3).map((row) => row.group))} trained ${
-                  recentGroups[0].since === 0 ? "today" : `${recentGroups[0].since} days ago`
-                }. `
-              : ""}
-            {suggestion(missing.map((row) => row.group))}
+      <section className="card training-missing" aria-label="Next up">
+        <span className="training-missing-label">Next up</span>
+        <strong>{nextUp.split ? `${nextUp.split}${nextUp.addCore ? " + core" : ""}` : "You're covered"}</strong>
+        <span className="training-missing-note">
+          {nextUp.split
+            ? nextUp.neglected
+                .map((item) => `${item.muscle} ${item.since == null ? "not logged yet" : `${item.since} days`}`)
+                .join(" · ")
+            : "Every strength group was hit in the last few days. A rest day, cardio or mobility fits."}
+        </span>
+      </section>
+
+      <section className="card" aria-label="Activity">
+        <div className="card-heading">
+          <h2 className="card-title">Activity</h2>
+          <span className="card-aside">
+            {activityTotals.map((total) => `${ACTIVITY_LABELS[total.category]} ${total.count}`).join(" · ") || "Nothing yet"}
           </span>
-        </section>
-      ) : null}
+        </div>
+        <CoverageGrid
+          days={days.map((day) => ({ date: day, letter: weekdayLetter.format(new Date(`${day}T00:00:00Z`)) }))}
+          rows={activityRows}
+        />
+      </section>
 
       {unlabeled.length ? (
         <section className="card" aria-label="Unlabeled workouts">
@@ -332,7 +336,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
       ) : null}
 
       <section className="card" aria-label="Coverage">
-        <h2 className="card-title">Coverage</h2>
+        <h2 className="card-title">Strength coverage</h2>
         <CoverageGrid
           days={days.map((day) => ({ date: day, letter: weekdayLetter.format(new Date(`${day}T00:00:00Z`)) }))}
           rows={coverageRows}
