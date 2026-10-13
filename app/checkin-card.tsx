@@ -1,6 +1,6 @@
 import { ChatPromptButton } from "./chat-sheet";
 import { localDateTime } from "@/lib/dates";
-import { RATINGS, type JournalEntry } from "@/lib/journal";
+import { RATINGS, ratingLabel, type JournalEntry } from "@/lib/journal";
 
 // Today's journal ratings. The entries themselves are rows in the timeline.
 export function CheckinSummary({ entries, isToday }: { entries: JournalEntry[]; isToday: boolean }) {
@@ -22,14 +22,15 @@ export function CheckinSummary({ entries, isToday }: { entries: JournalEntry[]; 
       {ratings.length ? (
         <div className="checkin-ratings">
           {ratings.map((rating) => (
-            <div key={rating.name}>
+            <div key={rating.name} className={rating.name === "mood" ? "primary" : undefined}>
               <strong>{rating.value}</strong>
               <span>{rating.name}</span>
+              <small>{ratingLabel(rating.name, rating.value!)}</small>
             </div>
           ))}
         </div>
       ) : (
-        <p className="footnote">{entries.length ? "No ratings in today's entries." : "No journal entry yet."}</p>
+        <p className="footnote">{entries.length ? "No mood in today's entries yet." : "No check-in yet. Mood is all it takes; the rest is optional."}</p>
       )}
     </section>
   );

@@ -3,7 +3,7 @@
 // minutes; 0 means "didn't today", said explicitly. A day with no logs is
 // unknown, never zero. Plan: docs/journal-habits-plan.md.
 import type { Pool } from "pg";
-import { isWeeknight } from "./dates";
+import { isWeeknight, weekdayOf } from "./dates";
 
 type Queryable = Pick<Pool, "query">;
 
@@ -14,8 +14,11 @@ export type HabitDirection = (typeof HABIT_DIRECTIONS)[number];
 
 export const INTENSITY_LABELS = ["None", "Light", "Moderate", "Heavy"] as const;
 
+export const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+
 export type HabitInput = {
   name: string;
+  description: string | null; // what counts, in the owner's words
   measure: HabitMeasure;
   unit: string | null; // for counts: "drinks"
   direction: HabitDirection;
@@ -25,6 +28,9 @@ export type HabitInput = {
   goal: number | null;
   cutoff: string | null; // local "HH:MM" after which any use is a miss
   cutoffWeeknights: boolean; // the cutoff applies Sunday-Thursday only
+  // Frequency: the weekdays (0 Sunday-6 Saturday) the habit is tracked.
+  // Null means every day. Unlogged days off are "off", not missed.
+  days: number[] | null;
   active: boolean;
 };
 
@@ -55,12 +61,13 @@ export type HabitDay = {
 
 // How a day went against the habit's goal: met, a miss of 1 (a little) to 3
 // (a lot), unknown when nothing was logged, or "used" when the habit has no
-// goal to judge by.
-export type HabitOutcome = "unknown" | "met" | "miss-1" | "miss-2" | "miss-3" | "used";
+// goal to judge by, or "off" for an unlogged day the habit isn't tracked.
+export type HabitOutcome = "unknown" | "off" | "met" | "miss-1" | "miss-2" | "miss-3" | "used";
 
 const HABIT_COLUMNS = `
   id::text,
   name,
+  description,
   measure,
   unit,
   direction,
@@ -68,6 +75,7 @@ const HABIT_COLUMNS = `
   goal::float8,
   to_char(cutoff, 'HH24:MI') as cutoff,
   cutoff_weeknights as "cutoffWeeknights",
+  days::int[] as days,
   active
 `;
 
@@ -84,7 +92,18 @@ export async function listHabits(db: Queryable, userName: string, includeArchive
   return rows;
 }
 
-// Adds a habit, or replaces one when id is given.
+// Every day, or a sorted list of distinct weekdays.
+export function normalizeDays(days: readonly number[] | null | undefined) {
+  if (!days) return null;
+  const unique = [...new Set(days.filter((day) => Number.isInteger(day) && day >= 0 && day <= 6))].sort();
+  return unique.length === 0 || unique.length === 7 ? null : unique;
+}
+
+export class HabitError extends Error {}
+
+// Adds a habit, or changes one when id is given. Logs belong to the habit's
+// id, so a rename or a new goal keeps its history. The measure can't change
+// once a habit has logs: old amounts would be read on the wrong scale.
 export async function saveHabit(db: Queryable, userName: string, input: HabitInput, id?: string | null) {
   const values = [
     userName,
@@ -96,29 +115,49 @@ export async function saveHabit(db: Queryable, userName: string, input: HabitInp
     input.goal,
     input.cutoff,
     input.cutoffWeeknights,
-    input.active
+    input.active,
+    input.description ?? null,
+    normalizeDays(input.days)
   ];
-  const { rows } = id
-    ? await db.query<{ id: string }>(
+  try {
+    if (id) {
+      const { rows: current } = await db.query<{ measure: string; logs: number }>(
         `
-        update public.habits
-        set name = $2, measure = $3, unit = $4, direction = $5, scale_guide = $6, goal = $7,
-          cutoff = $8::time, cutoff_weeknights = $9, active = $10
-        where user_name = $1 and id = $11::uuid
-        returning id::text
+        select h.measure, (select count(*) from public.habit_logs l where l.habit_id = h.id)::int as logs
+        from public.habits h where h.user_name = $1 and h.id = $2::uuid
         `,
-        [...values, id]
-      )
-    : await db.query<{ id: string }>(
-        `
-        insert into public.habits (user_name, name, measure, unit, direction, scale_guide, goal, cutoff, cutoff_weeknights, active)
-        values ($1, $2, $3, $4, $5, $6, $7, $8::time, $9, $10)
-        returning id::text
-        `,
-        values
+        [userName, id]
       );
-  if (!rows[0]) throw new Error("That habit no longer exists.");
-  return rows[0].id;
+      if (!current[0]) throw new HabitError("That habit no longer exists.");
+      if (current[0].measure !== input.measure && current[0].logs > 0) {
+        throw new HabitError("A habit with logs can't change how it's measured. Start a new habit instead.");
+      }
+    }
+    const { rows } = id
+      ? await db.query<{ id: string }>(
+          `
+          update public.habits
+          set name = $2, measure = $3, unit = $4, direction = $5, scale_guide = $6, goal = $7,
+            cutoff = $8::time, cutoff_weeknights = $9, active = $10, description = $11, days = $12::smallint[]
+          where user_name = $1 and id = $13::uuid
+          returning id::text
+          `,
+          [...values, id]
+        )
+      : await db.query<{ id: string }>(
+          `
+          insert into public.habits (user_name, name, measure, unit, direction, scale_guide, goal, cutoff, cutoff_weeknights, active, description, days)
+          values ($1, $2, $3, $4, $5, $6, $7, $8::time, $9, $10, $11, $12::smallint[])
+          returning id::text
+          `,
+          values
+        );
+    if (!rows[0]) throw new HabitError("That habit no longer exists.");
+    return rows[0].id;
+  } catch (error) {
+    if ((error as { code?: string }).code === "23505") throw new HabitError(`You already track a habit called ${input.name}.`);
+    throw error;
+  }
 }
 
 // Saves a day's logs. A use replaces that day's "none" for the habit; a "none"
@@ -175,6 +214,69 @@ export async function listHabitLogs(db: Queryable, userName: string, startDate: 
   return rows;
 }
 
+export type HabitLogEdit = {
+  date: string;
+  amount: number;
+  details: string | null;
+  startedAt: string | null;
+  endedAt: string | null;
+};
+
+// What an edit to one log means for the other logs on its (new) day, using
+// the same rules as saveHabitLogs: a use replaces that day's "none", and a
+// "none" can't sit next to another entry. Pure, so it's tested directly.
+export function planHabitLogEdit(
+  edit: Pick<HabitLogEdit, "amount">,
+  logId: string,
+  sameDayLogs: Pick<HabitLog, "id" | "amount">[]
+): { removeIds: string[] } | { error: string } {
+  const others = sameDayLogs.filter((log) => log.id !== logId);
+  if (edit.amount > 0) return { removeIds: others.filter((log) => log.amount === 0).map((log) => log.id) };
+  if (others.length) return { error: "That day already has an entry for this habit. Remove this one instead." };
+  return { removeIds: [] };
+}
+
+// Changes one log in place (amount, note, times, or its day), so a fix
+// never leaves a duplicate behind.
+export async function updateHabitLog(db: Pool, userName: string, id: string, edit: HabitLogEdit) {
+  const client = await db.connect();
+  try {
+    await client.query("begin");
+    const { rows: current } = await client.query<{ habitId: string }>(
+      `select habit_id::text as "habitId" from public.habit_logs where id = $1::uuid and user_name = $2 for update`,
+      [id, userName]
+    );
+    if (!current[0]) throw new HabitError("That entry no longer exists.");
+    const { rows: sameDay } = await client.query<{ id: string; amount: number }>(
+      `
+      select id::text, amount::float8 from public.habit_logs
+      where user_name = $1 and habit_id = $2::uuid and entry_date = $3::date
+      for update
+      `,
+      [userName, current[0].habitId, edit.date]
+    );
+    const plan = planHabitLogEdit(edit, id, sameDay);
+    if ("error" in plan) throw new HabitError(plan.error);
+    if (plan.removeIds.length) {
+      await client.query(`delete from public.habit_logs where user_name = $1 and id = any($2::uuid[])`, [userName, plan.removeIds]);
+    }
+    await client.query(
+      `
+      update public.habit_logs
+      set entry_date = $3::date, amount = $4, details = $5, started_at = $6::time, ended_at = $7::time
+      where id = $1::uuid and user_name = $2
+      `,
+      [id, userName, edit.date, edit.amount, edit.details, edit.startedAt, edit.endedAt]
+    );
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function deleteHabitLog(db: Queryable, userName: string, id: string) {
   const { rowCount } = await db.query(`delete from public.habit_logs where id = $1::uuid and user_name = $2`, [id, userName]);
   return Boolean(rowCount);
@@ -192,6 +294,11 @@ function lateMinutesOf(log: HabitLog, cutoff: string) {
   let end = eveningMinutes(log.endedAt);
   if (end < start) end += 24 * 60;
   return Math.max(0, end - Math.max(start, eveningMinutes(cutoff)));
+}
+
+// Whether the habit is tracked on that date (its frequency).
+export function trackedOn(habit: Pick<Habit, "days">, date: string) {
+  return !habit.days || habit.days.includes(weekdayOf(date));
 }
 
 export function cutoffApplies(habit: Pick<Habit, "cutoff" | "cutoffWeeknights">, date: string) {
@@ -232,7 +339,9 @@ function missFrom(severity: number): HabitOutcome {
 // how short they fell; an explicit zero is the biggest miss.
 export function habitOutcome(day: HabitDay): HabitOutcome {
   const { habit } = day;
-  if (day.status === "unknown") return "unknown";
+  if (day.status === "unknown") return trackedOn(habit, day.date) ? "unknown" : "off";
+  // A build habit done on a day off is a bonus; a "none" that day is fine.
+  if (!trackedOn(habit, day.date) && habit.direction === "build") return day.level > 0 ? "met" : "off";
   const judged = habit.goal != null || cutoffApplies(habit, day.date);
   if (!judged) return habit.cutoff ? "met" : day.status === "none" ? "met" : "used";
 
@@ -275,6 +384,15 @@ export function describeGoal(habit: HabitInput) {
   }
   const text = parts.join(", ");
   return text ? text[0].toUpperCase() + text.slice(1) : null;
+}
+
+// "Every day", "Weekdays", "Mon, Wed, Fri".
+export function describeDays(days: readonly number[] | null) {
+  if (!days) return "Every day";
+  const key = days.join(",");
+  if (key === "1,2,3,4,5") return "Weekdays";
+  if (key === "0,6") return "Weekends";
+  return days.map((day) => WEEKDAY_LABELS[day]).join(", ");
 }
 
 export function formatMinutes(minutes: number) {

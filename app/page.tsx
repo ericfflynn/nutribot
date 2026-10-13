@@ -10,7 +10,7 @@ import { AppShell, GoalsForm, Login } from "./shared-ui";
 import { getSessionUser } from "@/lib/auth";
 import { addDays, isValidLocalDate, rollingDateWindow, todayLocalDate } from "@/lib/dates";
 import { gramsFromPercentGoals } from "@/lib/goals";
-import { RATINGS, listJournalEntries, type JournalEntry } from "@/lib/journal";
+import { listJournalEntries, recordedRatings, type JournalEntry } from "@/lib/journal";
 import {
   getLatestHealthSyncRun,
   listHealthDays,
@@ -329,9 +329,10 @@ function CheckinDetails({ id, date, text }: { id: string; date: string; text: st
 function journalEvent(entry: JournalEntry, date: string): TimelineEvent {
   const loggedAt = localWallClock(entry.createdAt);
   const sameDay = loggedAt != null && loggedAt.slice(0, 10) === date;
-  const ratings = RATINGS.filter((name) => entry.ratings[name] != null).map(
-    (name) => `${name[0].toUpperCase()}${name.slice(1)} ${entry.ratings[name]}`
-  );
+  // Mood first, then stress, each with its label: "Mood 4 · Good".
+  const ratings = recordedRatings(entry.ratings)
+    .filter((rating) => rating.name === "mood" || rating.name === "stress")
+    .map((rating) => `${rating.name[0].toUpperCase()}${rating.name.slice(1)} ${rating.value} · ${rating.label}`);
   return {
     key: `journal-${entry.id}`,
     time: sameDay ? formatClock(loggedAt) : "",

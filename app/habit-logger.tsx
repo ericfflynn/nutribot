@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { deleteHabitLogAction, logHabitAction } from "./actions";
+import { deleteHabitLogAction, logHabitAction, updateHabitLogAction } from "./actions";
 import {
   INTENSITY_LABELS,
   describeGoal,
@@ -23,18 +23,131 @@ function minutesBetween(start: string, end: string) {
   return diff >= 0 ? diff : diff + 24 * 60;
 }
 
+// Fixes one logged entry in place: amount, day, note and times.
+function LogEditor({
+  habit,
+  log,
+  today,
+  onDone,
+  onCancel
+}: {
+  habit: Habit;
+  log: HabitLog;
+  today: string;
+  onDone: (error?: string) => void;
+  onCancel: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [date, setDate] = useState(log.date);
+  const [amount, setAmount] = useState(String(log.amount));
+  const [details, setDetails] = useState(log.details ?? "");
+  const [startedAt, setStartedAt] = useState(log.startedAt ?? "");
+  const [endedAt, setEndedAt] = useState(log.endedAt ?? "");
+
+  async function save() {
+    const value = Number(amount);
+    if (!Number.isFinite(value) || value < 0) {
+      setError("Enter an amount of 0 or more.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const result = await updateHabitLogAction(log.id, habit.id, {
+      date,
+      amount: value,
+      details: details || null,
+      startedAt: startedAt || null,
+      endedAt: endedAt || null
+    });
+    setBusy(false);
+    if (!result.ok) {
+      setError(result.error ?? "Couldn't save that.");
+      return;
+    }
+    onDone();
+  }
+
+  return (
+    <div className="habit-log-editor">
+      <div className="habit-times">
+        <label>
+          <span>Day</span>
+          <input type="date" value={date} max={today} onChange={(event) => setDate(event.target.value)} />
+        </label>
+        <label>
+          <span>{habit.measure === "intensity" ? "Level" : habit.measure === "count" ? habit.unit ?? "Count" : "Minutes"}</span>
+          {habit.measure === "intensity" ? (
+            <select value={amount} onChange={(event) => setAmount(event.target.value)}>
+              {INTENSITY_LABELS.map((label, level) => (
+                <option key={label} value={level}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              type="number"
+              inputMode="decimal"
+              min="0"
+              max="1440"
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+            />
+          )}
+        </label>
+      </div>
+      {Number(amount) > 0 ? (
+        <>
+          <input
+            className="habit-note"
+            value={details}
+            onChange={(event) => setDetails(event.target.value)}
+            placeholder="Note (optional)"
+            maxLength={300}
+          />
+          {habit.cutoff || log.startedAt || log.endedAt ? (
+            <div className="habit-times">
+              <label>
+                <span>From</span>
+                <input type="time" value={startedAt} onChange={(event) => setStartedAt(event.target.value)} />
+              </label>
+              <label>
+                <span>Until</span>
+                <input type="time" value={endedAt} onChange={(event) => setEndedAt(event.target.value)} />
+              </label>
+            </div>
+          ) : null}
+        </>
+      ) : null}
+      {error ? <p className="workout-editor-error">{error}</p> : null}
+      <div className="habit-choices">
+        <button type="button" className="pill-button primary" onClick={save} disabled={busy}>
+          {busy ? "Saving…" : "Save"}
+        </button>
+        <button type="button" className="pill-button" onClick={onCancel} disabled={busy}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function HabitPanel({
   habit,
   date,
+  today,
   logs,
   onDone
 }: {
   habit: Habit;
   date: string;
+  today: string;
   logs: HabitLog[];
   onDone: (error?: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [details, setDetails] = useState("");
   const [count, setCount] = useState(1);
   const [minutes, setMinutes] = useState("");
@@ -76,18 +189,38 @@ function HabitPanel({
     <div className="habit-panel">
       {logs.length ? (
         <ul className="habit-panel-logs">
-          {logs.map((log) => (
-            <li key={log.id}>
-              <span>
-                {formatHabitAmount(habit, log.amount)}
-                {log.startedAt && log.endedAt ? ` · ${formatClockTime(log.startedAt)}–${formatClockTime(log.endedAt)}` : ""}
-                {log.details ? <small>{log.details}</small> : null}
-              </span>
-              <button type="button" className="text-button danger" onClick={() => remove(log.id)} disabled={busy} aria-label="Remove">
-                ✕
-              </button>
-            </li>
-          ))}
+          {logs.map((log) =>
+            editingId === log.id ? (
+              <li key={log.id}>
+                <LogEditor
+                  habit={habit}
+                  log={log}
+                  today={today}
+                  onCancel={() => setEditingId(null)}
+                  onDone={() => {
+                    setEditingId(null);
+                    onDone();
+                  }}
+                />
+              </li>
+            ) : (
+              <li key={log.id}>
+                <span>
+                  {formatHabitAmount(habit, log.amount)}
+                  {log.startedAt && log.endedAt ? ` · ${formatClockTime(log.startedAt)}–${formatClockTime(log.endedAt)}` : ""}
+                  {log.details ? <small>{log.details}</small> : null}
+                </span>
+                <span className="habit-log-actions">
+                  <button type="button" className="text-button" onClick={() => setEditingId(log.id)} disabled={busy}>
+                    Edit
+                  </button>
+                  <button type="button" className="text-button danger" onClick={() => remove(log.id)} disabled={busy} aria-label="Remove">
+                    ✕
+                  </button>
+                </span>
+              </li>
+            )
+          )}
         </ul>
       ) : null}
 
@@ -177,6 +310,7 @@ const dayFormat = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "s
 
 const OUTCOME_LABELS: Record<HabitOutcome, string> = {
   unknown: "not logged",
+  off: "not tracked that day",
   met: "goal met",
   "miss-1": "a little over",
   "miss-2": "over",
@@ -199,7 +333,7 @@ export function HabitGrid({ habits, days, logs }: { habits: Habit[]; days: strin
       const day = byDay.get(date)![index];
       return { date, day, outcome: habitOutcome(day) };
     });
-    const logged = cells.filter((cell) => cell.outcome !== "unknown");
+    const logged = cells.filter((cell) => cell.outcome !== "unknown" && cell.outcome !== "off");
     return { habit, cells, met: logged.filter((cell) => cell.outcome === "met").length, logged: logged.length };
   });
 
@@ -284,6 +418,7 @@ export function HabitGrid({ habits, days, logs }: { habits: Habit[]; days: strin
             key={`${selected.habitId}-${selected.date}`}
             habit={selectedHabit}
             date={selected.date}
+            today={today}
             logs={logs.filter((log) => log.habitId === selected.habitId && log.date === selected.date)}
             onDone={(message) => {
               setError(message ?? null);

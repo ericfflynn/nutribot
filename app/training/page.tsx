@@ -1,20 +1,28 @@
 import { AppShell, Login } from "../shared-ui";
-import { LabelButton, WorkoutEditor } from "../training-ui";
+import { LabelButton, MergeControls, WorkoutEditor } from "../training-ui";
 import { getSessionUser } from "@/lib/auth";
 import { rollingDateWindow, todayLocalDate } from "@/lib/dates";
 import { listHealthWorkouts, type HealthWorkout } from "@/lib/health/queries";
 import { workoutStrain } from "@/lib/health/scores";
 import { getPool } from "@/lib/supabase";
+import { isPossibleDuplicate, type WorkoutRecord } from "@/lib/health/dedupe-rules";
 import {
   CARDIO_FITBIT_TYPES,
   MUSCLE_GROUPS,
+  TRACKED_GROUPS,
+  WORKOUT_TYPES,
+  WORKOUT_TYPE_LABELS,
+  describeMuscles,
+  groupsOf,
   lastTrainedByMuscle,
   listFitbitWorkouts,
   listUnlabeledWorkouts,
   listWorkoutSessions,
   type FitbitWorkout,
   type MuscleGroup,
-  type WorkoutSession
+  type WorkoutSession,
+  type WorkoutType,
+  workoutTypeOf
 } from "@/lib/workouts";
 
 export const dynamic = "force-dynamic";
@@ -49,10 +57,11 @@ function joinNames(names: string[]) {
 // What to train next, from the groups that are missing.
 function suggestion(missing: MuscleGroup[]) {
   const has = (group: MuscleGroup) => missing.includes(group);
-  if (has("Back") || has("Biceps")) return "Next session could be a pull day.";
-  if (has("Chest") || has("Shoulders") || has("Triceps")) return "Next session could be a push day.";
+  if (has("Back")) return "Next session could be a pull day.";
+  if (has("Chest") || has("Shoulders")) return "Next session could be a push day.";
   if (has("Legs")) return "Next session could be a leg day.";
-  if (has("Abs")) return "Add some core work to the next session.";
+  if (has("Arms")) return "Add some arm work to the next session.";
+  if (has("Core")) return "Add some core work, or a pilates class.";
   if (has("Cardio")) return "A run or a ride would cover cardio.";
   return "";
 }
@@ -74,14 +83,37 @@ type RecentItem = {
   title: string;
   detail: string;
   strain: number | null;
-  chips: MuscleGroup[];
+  chips: string[];
+  workoutType: WorkoutType;
   session: WorkoutSession | null;
+  // Watch workout id, for merging and separating recordings.
+  fitbitId: string | null;
+  mergedCount: number;
+  overlaps: { id: string; label: string }[];
   // Set when the Fitbit workout has nothing logged for it.
   labelPrompt: string | null;
   status: string | null;
 };
 
-export default async function TrainingPage() {
+// A watch workout in the shape the duplicate rules compare. Local times are
+// fine here: both sides of a comparison are in the same zone.
+function asRecord(workout: FitbitWorkout): WorkoutRecord {
+  return {
+    id: workout.id,
+    type: workout.type,
+    startedAt: Date.parse(`${workout.startedAt}:00Z`),
+    endedAt: Date.parse(`${workout.endedAt}:00Z`),
+    activeMinutes: workout.activeMinutes,
+    calories: workout.calories,
+    avgHr: workout.avgHr,
+    distanceMiles: null,
+    steps: null
+  };
+}
+
+export default async function TrainingPage({ searchParams }: { searchParams: Promise<{ type?: string }> }) {
+  const { type: typeParam } = await searchParams;
+  const typeFilter = (WORKOUT_TYPES as readonly string[]).includes(typeParam ?? "") ? (typeParam as WorkoutType) : null;
   const user = await getSessionUser();
   if (!user) {
     return <Login />;
@@ -118,7 +150,7 @@ export default async function TrainingPage() {
   };
   const sessionCounts = new Map<MuscleGroup, number>();
   for (const session of sessions) {
-    for (const group of session.muscleGroups) {
+    for (const group of groupsOf(session.muscleGroups)) {
       mark(session.date, group, session.rpe);
       sessionCounts.set(group, (sessionCounts.get(group) ?? 0) + 1);
     }
@@ -135,9 +167,9 @@ export default async function TrainingPage() {
     const since = last ? daysBetween(last, today) : null;
     return { group, since, missing: since == null || since >= MISSING_AFTER_DAYS };
   });
-  const missing = rows.filter((row) => row.missing);
+  const missing = rows.filter((row) => row.missing && TRACKED_GROUPS.includes(row.group));
   const longestGap = Math.max(...missing.map((row) => row.since ?? Infinity));
-  const recentGroups = rows.filter((row) => !row.missing).sort((a, b) => (a.since ?? 0) - (b.since ?? 0));
+  const recentGroups = rows.filter((row) => !row.missing && TRACKED_GROUPS.includes(row.group)).sort((a, b) => (a.since ?? 0) - (b.since ?? 0));
 
   const maxCount = Math.max(1, ...sessionCounts.values());
 
@@ -150,6 +182,11 @@ export default async function TrainingPage() {
     const health = healthById.get(workout.id);
     const strain = health ? workoutStrain(health) : null;
     const isCardio = CARDIO_FITBIT_TYPES.includes(workout.type);
+    // Other watch workouts that overlap this one without being folded into it.
+    const overlaps = fitbit
+      .filter((other) => other.id !== workout.id)
+      .filter((other) => isPossibleDuplicate(asRecord(workout), asRecord(other)))
+      .map((other) => ({ id: other.id, label: `${other.name.toLowerCase()} at ${formatClock(other.startedAt)}` }));
     recent.push({
       key: workout.id,
       date: workout.day,
@@ -157,6 +194,7 @@ export default async function TrainingPage() {
       when: `${formatDay(workout.day)} · ${formatClock(workout.startedAt)}`,
       title: session?.name ?? workout.name,
       detail: [
+        session ? WORKOUT_TYPE_LABELS[session.workoutType] : null,
         workout.activeMinutes != null ? `${workout.activeMinutes} min` : null,
         workout.avgHr != null ? `${workout.avgHr} bpm avg` : null,
         session?.rpe != null ? `RPE ${session.rpe}` : null
@@ -164,8 +202,12 @@ export default async function TrainingPage() {
         .filter(Boolean)
         .join(" · "),
       strain,
-      chips: session?.muscleGroups ?? (isCardio ? ["Cardio"] : []),
+      chips: session ? describeMuscles(session.muscleGroups) : isCardio ? ["Cardio"] : [],
+      workoutType: session?.workoutType ?? workoutTypeOf(workout.type),
       session,
+      fitbitId: workout.id,
+      mergedCount: workout.mergedIds.length,
+      overlaps,
       labelPrompt: session
         ? null
         : `My ${workout.name.toLowerCase()} on ${formatDay(workout.day)} at ${formatClock(workout.startedAt)} was `,
@@ -181,19 +223,28 @@ export default async function TrainingPage() {
       when: formatDay(session.date),
       title: session.name,
       detail: [
+        WORKOUT_TYPE_LABELS[session.workoutType],
         session.durationMin != null ? `${session.durationMin} min` : null,
         session.rpe != null ? `RPE ${session.rpe}` : null
       ]
         .filter(Boolean)
         .join(" · "),
       strain: null,
-      chips: session.muscleGroups,
+      chips: describeMuscles(session.muscleGroups),
+      workoutType: session.workoutType,
       session,
+      fitbitId: null,
+      mergedCount: 0,
+      overlaps: [],
       labelPrompt: null,
       status: session.matchStatus === "pending" ? "Waiting for the watch" : "Not on the watch"
     });
   }
   recent.sort((a, b) => b.sort.localeCompare(a.sort));
+  // Workout types present in the window, for the filter and the type counts.
+  const typeCounts = new Map<WorkoutType, number>();
+  for (const item of recent) typeCounts.set(item.workoutType, (typeCounts.get(item.workoutType) ?? 0) + 1);
+  const shown = typeFilter ? recent.filter((item) => item.workoutType === typeFilter) : recent;
 
   return (
     <AppShell
@@ -320,8 +371,20 @@ export default async function TrainingPage() {
 
       <section className="group" aria-label="Recent workouts">
         <h2 className="card-title training-recent-title">Recent workouts</h2>
-        {recent.length ? (
-          recent.map((item) => (
+        {typeCounts.size > 1 || typeFilter ? (
+          <nav className="type-filter" aria-label="Filter by type">
+            <a href="/training" aria-current={typeFilter ? undefined : "true"}>
+              All {recent.length}
+            </a>
+            {WORKOUT_TYPES.filter((type) => typeCounts.has(type)).map((type) => (
+              <a key={type} href={`/training?type=${type}`} aria-current={typeFilter === type ? "true" : undefined}>
+                {WORKOUT_TYPE_LABELS[type]} {typeCounts.get(type)}
+              </a>
+            ))}
+          </nav>
+        ) : null}
+        {shown.length ? (
+          shown.map((item) => (
             <article key={item.key} className="card training-workout">
               <div className="training-workout-head">
                 <div>
@@ -347,6 +410,9 @@ export default async function TrainingPage() {
                   {item.labelPrompt ? <LabelButton prompt={item.labelPrompt} /> : null}
                 </div>
               ) : null}
+              {item.fitbitId ? (
+                <MergeControls id={item.fitbitId} mergedCount={item.mergedCount} overlaps={item.overlaps} />
+              ) : null}
               {item.session ? (
                 <WorkoutEditor
                   id={item.session.id}
@@ -358,7 +424,9 @@ export default async function TrainingPage() {
             </article>
           ))
         ) : (
-          <p className="footnote">No workouts in the last {WINDOW_DAYS} days.</p>
+          <p className="footnote">
+            No {typeFilter ? `${WORKOUT_TYPE_LABELS[typeFilter].toLowerCase()} ` : ""}workouts in the last {WINDOW_DAYS} days.
+          </p>
         )}
       </section>
     </AppShell>

@@ -25,13 +25,17 @@ import {
 } from "./supabase";
 import {
   MUSCLE_GROUPS,
+  MUSCLE_NAMES,
+  MUSCLES,
   WORKOUT_TYPES,
+  describeMuscles,
+  normalizeMuscles,
   chooseMatch,
   listFitbitWorkouts,
   listWorkoutSessions,
   type FitbitWorkout,
   type MatchResult,
-  type MuscleGroup,
+  type MuscleName,
   type TimeHint,
   type WorkoutSession,
   type WorkoutType
@@ -68,7 +72,7 @@ export type WorkoutDraft = {
   raw_text: string;
   name: string;
   workout_type: WorkoutType;
-  muscle_groups: MuscleGroup[];
+  muscle_groups: MuscleName[];
   rpe: number | null;
   duration_min: number | null;
   time_hint: TimeHint | null;
@@ -123,13 +127,14 @@ const mealItem = z.object({
 function describeWorkout(w: FitbitWorkout) {
   const minutes = w.activeMinutes != null ? `, ${w.activeMinutes} min` : "";
   const hr = w.avgHr != null ? `, avg HR ${w.avgHr}` : "";
-  return `${w.name} ${w.startedAt.slice(11)}–${w.endedAt.slice(11)}${minutes}${hr} (id ${w.id})`;
+  const merged = w.mergedIds.length ? `, combined from ${w.mergedIds.length + 1} watch recordings` : "";
+  return `${w.name} ${w.startedAt.slice(11)}–${w.endedAt.slice(11)}${minutes}${hr}${merged} (id ${w.id})`;
 }
 
 function describeSession(s: WorkoutSession) {
   const rpe = s.rpe != null ? `, RPE ${s.rpe}` : "";
-  const groups = s.muscleGroups.length ? ` [${s.muscleGroups.join(", ")}]` : "";
-  return `logged as "${s.name}"${groups}${rpe}`;
+  const groups = s.muscleGroups.length ? ` [${describeMuscles(s.muscleGroups).join("; ")}]` : "";
+  return `logged as "${s.name}" (${s.workoutType})${groups}${rpe}`;
 }
 
 const clockFormat = new Intl.DateTimeFormat("en-US", {
@@ -188,8 +193,9 @@ Today is ${today}; local time is ${nowLocal.slice(11)}. The person is looking at
 - If they ask to fix something without saying which meal and more than one fits, ask which.
 
 ## Workouts
-- Muscle groups are only: ${MUSCLE_GROUPS.join(", ")}. "tris" is Triceps, "bis" Biceps; quads, hamstrings, glutes and calves are Legs; lats and traps are Back; delts are Shoulders; core is Abs. A named exercise counts for the groups it mainly trains (bench press: Chest, Triceps). Push, pull and legs days are Chest/Shoulders/Triceps, Back/Biceps and Legs. Runs, rides and walks are Cardio.
-- workout_type: strength for lifting, run, walk, ride, sport (tennis, golf), class (pilates, yoga, aerobics), or other.
+- muscle_groups holds groups and specific muscles. Groups, each with its muscles: ${MUSCLE_GROUPS.map((group) => (MUSCLES[group].length ? `${group} (${MUSCLES[group].join(", ")})` : group)).join("; ")}.
+- Use a specific muscle when they name it or the exercise clearly targets it ("rear delts", "quads", "lateral raises": Side Delts; "tris": Triceps; "bis": Biceps). Use the group alone when they only say the group ("chest day", "legs") or it's unclear. Never list a group and its own muscles together. A named exercise counts for what it mainly trains (bench press: Mid Chest, Triceps, Front Delts). Push, pull and legs days are Chest/Shoulders/Triceps, Back/Biceps and Legs. Runs, rides and walks are Cardio; pilates is Core unless they say more; yoga and stretching are Mobility.
+- workout_type: strength for lifting, run, walk, ride, sport (tennis, golf), pilates, yoga, class (spin, aerobics, other classes), or other.
 - rpe converts intensity words: easy or light 3-4, moderate or solid 6, hard 8, brutal or all-out 9-10. Use a number they give as is. With no sense of intensity, rpe is null and you ask how hard it was. That is the only question to ask about a workout; never ask for exercises, sets or duration.
 - The watch records most workouts, and the app matches each draft to the right one. Help it with time_hint when they say when: morning 05:00-12:00, afternoon 12:00-17:00, evening or after work 17:00-22:00, or a specific time ±1 hour. Leave time_hint null for "just now" or no time.
 - untracked is true only when they say they didn't wear the watch. Only then is duration_min filled, and only if they state it.
@@ -379,7 +385,7 @@ export async function runBrain(message: string, context: BrainContext): Promise<
       raw_text: z.string().describe("The person's words for this activity."),
       name: z.string().describe('Short session name, e.g. "Chest + Triceps".'),
       workout_type: z.enum(WORKOUT_TYPES),
-      muscle_groups: z.array(z.enum(MUSCLE_GROUPS)).min(1),
+      muscle_groups: z.array(z.enum(MUSCLE_NAMES)).min(1),
       rpe: z.number().min(1).max(10).nullable(),
       duration_min: z.number().int().positive().nullable().describe("Only for untracked workouts with a stated duration."),
       time_hint: z.object({ start: hhmm, end: hhmm }).nullable().describe("Local window when it happened, if stated."),
@@ -437,7 +443,7 @@ export async function runBrain(message: string, context: BrainContext): Promise<
         raw_text: args.raw_text,
         name: args.name,
         workout_type: args.workout_type,
-        muscle_groups: args.muscle_groups,
+        muscle_groups: normalizeMuscles(args.muscle_groups),
         rpe: args.rpe,
         duration_min: args.untracked ? args.duration_min : null,
         time_hint: args.time_hint,

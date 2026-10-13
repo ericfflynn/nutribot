@@ -10,13 +10,35 @@ import { HEALTH_DATA_TYPES } from "@/lib/health/google";
 import { runHealthSync } from "@/lib/health/sync";
 import type { Draft } from "@/lib/brain";
 import { newConversation, withDraft } from "@/lib/chat";
-import { deleteHabitLog, listHabits, saveHabit, saveHabitLogs } from "@/lib/habits";
-import { deleteJournalEntry, saveJournalEntry } from "@/lib/journal";
-import { deletePushSubscription, savePushSubscription, type PushSubscriptionInput } from "@/lib/reminders";
-import { z } from "zod";
 import {
-  MUSCLE_GROUPS,
+  HABIT_DIRECTIONS,
+  HABIT_MEASURES,
+  HabitError,
+  deleteHabitLog,
+  listHabits,
+  saveHabit,
+  saveHabitLogs,
+  updateHabitLog
+} from "@/lib/habits";
+import { deleteJournalEntry, listJournalTags, saveJournalEntry, updateJournalEntry } from "@/lib/journal";
+import { normalizeTags } from "@/lib/journal-tags";
+import {
+  deletePushSubscription,
+  deleteReminder,
+  dismissReminders,
+  savePushSubscription,
+  saveReminder,
+  setHabitReminder,
+  snoozeReminders,
+  type PushSubscriptionInput
+} from "@/lib/reminders";
+import { REMINDER_KINDS } from "@/lib/reminder-rules";
+import { z } from "zod";
+import { mergeWorkouts, separateWorkout } from "@/lib/health/dedupe";
+import {
+  MUSCLE_NAMES,
   deleteWorkoutSession,
+  normalizeMuscles,
   listFitbitWorkouts,
   saveWorkoutSession,
   updateWorkoutSession
@@ -342,7 +364,7 @@ export async function newChatAction(): Promise<{ ok: boolean }> {
 
 const workoutEditSchema = z.object({
   name: z.string().trim().min(1).max(80),
-  muscleGroups: z.array(z.enum(MUSCLE_GROUPS)).min(1),
+  muscleGroups: z.array(z.enum(MUSCLE_NAMES)).min(1).transform(normalizeMuscles),
   rpe: z.number().min(1).max(10).nullable()
 });
 
@@ -359,6 +381,33 @@ export async function updateWorkoutSessionAction(
   if (!parsed.success) return { ok: false, error: "Pick at least one muscle group and an RPE from 1 to 10." };
   const updated = await updateWorkoutSession(db, user.name, id, parsed.data);
   if (!updated) return { ok: false, error: "That workout no longer exists." };
+  revalidatePath("/training");
+  return { ok: true };
+}
+
+const recordKey = z.string().min(1).max(300);
+
+// Training page: two watch recordings of one workout become one.
+export async function mergeWorkoutsAction(firstId: string, secondId: string): Promise<{ ok: boolean; error?: string }> {
+  const user = await getSessionUser();
+  const db = getPool();
+  if (!user || !db) return { ok: false, error: "Log in again." };
+  const ids = z.tuple([recordKey, recordKey]).safeParse([firstId, secondId]);
+  if (!ids.success || firstId === secondId) return { ok: false, error: "Pick two different workouts." };
+  const result = await mergeWorkouts(db, user.name, firstId, secondId);
+  revalidatePath("/");
+  revalidatePath("/training");
+  return result;
+}
+
+// Training page: undo a merge, auto or manual; the recordings stay apart on later syncs.
+export async function separateWorkoutAction(id: string): Promise<{ ok: boolean; error?: string }> {
+  const user = await getSessionUser();
+  const db = getPool();
+  if (!user || !db) return { ok: false, error: "Log in again." };
+  if (!recordKey.safeParse(id).success) return { ok: false, error: "That workout isn't valid." };
+  await separateWorkout(db, user.name, id);
+  revalidatePath("/");
   revalidatePath("/training");
   return { ok: true };
 }
@@ -414,6 +463,105 @@ export async function logHabitAction(input: z.input<typeof habitLogSchema>): Pro
   return { ok: true };
 }
 
+const hhmmSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
+
+const habitSchema = z
+  .object({
+    name: z.string().trim().min(1, "Give the habit a name.").max(40),
+    description: z.string().trim().max(300).nullable(),
+    measure: z.enum(HABIT_MEASURES),
+    unit: z.string().trim().max(20).nullable(),
+    direction: z.enum(HABIT_DIRECTIONS),
+    scaleGuide: z.string().trim().max(600).nullable(),
+    goal: z.number().min(0).max(24 * 60).nullable(),
+    cutoff: hhmmSchema.nullable(),
+    cutoffWeeknights: z.boolean(),
+    days: z.array(z.number().int().min(0).max(6)).nullable(),
+    active: z.boolean()
+  })
+  .refine((habit) => habit.measure !== "count" || Boolean(habit.unit), { message: "Counted habits need a unit, like drinks." })
+  .refine((habit) => habit.measure !== "intensity" || habit.goal == null || (Number.isInteger(habit.goal) && habit.goal <= 3), {
+    message: "An intensity goal is 0 to 3."
+  })
+  .refine((habit) => !habit.days || habit.days.length > 0, { message: "Pick at least one day." });
+
+// Habits tab: change a habit's name, description, goal, days or cutoff, or
+// archive it. Its logs stay attached, so history is kept.
+export async function updateHabitAction(
+  id: string,
+  input: z.input<typeof habitSchema>,
+  reminderHour?: number | null
+): Promise<{ ok: boolean; error?: string }> {
+  const user = await getSessionUser();
+  const db = getPool();
+  if (!user || !db) return { ok: false, error: "Log in again." };
+  if (!z.string().uuid().safeParse(id).success) return { ok: false, error: "That habit isn't valid." };
+  const parsed = habitSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the habit's fields." };
+  const habit = parsed.data;
+  try {
+    await saveHabit(
+      db,
+      user.name,
+      {
+        ...habit,
+        description: habit.description || null,
+        unit: habit.measure === "count" ? habit.unit : null,
+        scaleGuide: habit.measure === "intensity" ? habit.scaleGuide || null : null,
+        cutoffWeeknights: Boolean(habit.cutoff) && habit.cutoffWeeknights
+      },
+      id
+    );
+    if (reminderHour !== undefined) {
+      const hour = reminderHour == null ? null : z.number().int().min(0).max(23).parse(reminderHour);
+      await setHabitReminder(db, user.name, id, hour);
+    }
+  } catch (error) {
+    if (error instanceof HabitError) return { ok: false, error: error.message };
+    throw error;
+  }
+  revalidatePath("/");
+  revalidatePath("/habits");
+  return { ok: true };
+}
+
+const habitLogEditSchema = habitLogSchema.omit({ habitId: true });
+
+// Habits tab: fix a logged entry in place: its amount, note, times or day.
+export async function updateHabitLogAction(
+  id: string,
+  habitId: string,
+  input: z.input<typeof habitLogEditSchema>
+): Promise<{ ok: boolean; error?: string }> {
+  const user = await getSessionUser();
+  const db = getPool();
+  if (!user || !db) return { ok: false, error: "Log in again." };
+  const parsed = habitLogEditSchema.safeParse(input);
+  if (!z.string().uuid().safeParse(id).success || !parsed.success || parsed.data.date > todayLocalDate()) {
+    return { ok: false, error: "That entry isn't valid." };
+  }
+  const edit = parsed.data;
+  const habit = (await listHabits(db, user.name, true)).find((item) => item.id === habitId);
+  if (!habit) return { ok: false, error: "That habit no longer exists." };
+  if (habit.measure === "intensity" && (!Number.isInteger(edit.amount) || edit.amount > 3)) {
+    return { ok: false, error: "Pick none, light, moderate or heavy." };
+  }
+  try {
+    await updateHabitLog(db, user.name, id, {
+      ...edit,
+      details: edit.amount > 0 ? edit.details || null : null,
+      startedAt: edit.amount > 0 ? edit.startedAt : null,
+      endedAt: edit.amount > 0 ? edit.endedAt : null
+    });
+  } catch (error) {
+    if (error instanceof HabitError) return { ok: false, error: error.message };
+    throw error;
+  }
+  revalidatePath("/");
+  revalidatePath("/habits");
+  return { ok: true };
+}
+
 export async function deleteHabitLogAction(id: string): Promise<{ ok: boolean; error?: string }> {
   const user = await getSessionUser();
   const db = getPool();
@@ -450,3 +598,104 @@ export async function deleteWorkoutSessionAction(id: string): Promise<{ ok: bool
   revalidatePath("/training");
   return { ok: true };
 }
+
+const reminderSchema = z
+  .object({
+    kind: z.enum(REMINDER_KINDS),
+    habitId: z.string().uuid().nullable(),
+    hour: z.number().int().min(0).max(23),
+    days: z.array(z.number().int().min(0).max(6)).nullable(),
+    message: z.string().trim().max(120).nullable(),
+    enabled: z.boolean()
+  })
+  .refine((reminder) => (reminder.kind === "habit") === Boolean(reminder.habitId), { message: "Pick the habit to remind about." })
+  .refine((reminder) => reminder.kind !== "custom" || Boolean(reminder.message), { message: "Write the reminder's message." })
+  .refine((reminder) => !reminder.days || reminder.days.length > 0, { message: "Pick at least one day." });
+
+// Habits tab: add or change a reminder.
+export async function saveReminderAction(
+  id: string | null,
+  input: z.input<typeof reminderSchema>
+): Promise<{ ok: boolean; error?: string }> {
+  const user = await getSessionUser();
+  const db = getPool();
+  if (!user || !db) return { ok: false, error: "Log in again." };
+  const parsed = reminderSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the reminder." };
+  if (id && !z.string().uuid().safeParse(id).success) return { ok: false, error: "That reminder isn't valid." };
+  const reminder = parsed.data;
+  const days = reminder.days && reminder.days.length < 7 ? [...new Set(reminder.days)].sort() : null;
+  try {
+    await saveReminder(db, user.name, { ...reminder, days, message: reminder.message || null }, id);
+  } catch (error) {
+    if ((error as { code?: string }).code === "23505") return { ok: false, error: "That habit already has a reminder." };
+    if (error instanceof Error && error.message.startsWith("That reminder")) return { ok: false, error: error.message };
+    throw error;
+  }
+  revalidatePath("/habits");
+  return { ok: true };
+}
+
+export async function deleteReminderAction(id: string): Promise<{ ok: boolean; error?: string }> {
+  const user = await getSessionUser();
+  const db = getPool();
+  if (!user || !db) return { ok: false, error: "Log in again." };
+  if (!z.string().uuid().safeParse(id).success) return { ok: false, error: "That reminder isn't valid." };
+  await deleteReminder(db, user.name, id);
+  revalidatePath("/habits");
+  return { ok: true };
+}
+
+const reminderIdsSchema = z.array(z.string().uuid()).min(1).max(20);
+
+// Snooze from the Habits tab or the chat banner a reminder opens.
+export async function snoozeRemindersAction(ids: string[], hours: number): Promise<{ ok: boolean; error?: string }> {
+  const user = await getSessionUser();
+  const db = getPool();
+  if (!user || !db) return { ok: false, error: "Log in again." };
+  const parsed = reminderIdsSchema.safeParse(ids);
+  if (!parsed.success || ![1, 2, 3].includes(hours)) return { ok: false, error: "That snooze isn't valid." };
+  await snoozeReminders(db, user.name, parsed.data, hours);
+  revalidatePath("/habits");
+  return { ok: true };
+}
+
+// Done for today: no more reminders from these until tomorrow.
+export async function dismissRemindersAction(ids: string[]): Promise<{ ok: boolean; error?: string }> {
+  const user = await getSessionUser();
+  const db = getPool();
+  if (!user || !db) return { ok: false, error: "Log in again." };
+  const parsed = reminderIdsSchema.safeParse(ids);
+  if (!parsed.success) return { ok: false, error: "That reminder isn't valid." };
+  await dismissReminders(db, user.name, parsed.data, todayLocalDate());
+  revalidatePath("/habits");
+  return { ok: true };
+}
+
+const ratingSchema = z.number().int().min(1).max(5).nullable();
+const journalEditSchema = z.object({
+  ratings: z.object({ mood: ratingSchema, energy: ratingSchema, stress: ratingSchema, soreness: ratingSchema }),
+  tags: z.array(z.string().max(60)).max(12)
+});
+
+// Habits tab: fix a saved entry's mood, stress and tags. Unset ratings stay null.
+export async function updateJournalEntryAction(
+  id: string,
+  input: z.input<typeof journalEditSchema>
+): Promise<{ ok: boolean; error?: string }> {
+  const user = await getSessionUser();
+  const db = getPool();
+  if (!user || !db) return { ok: false, error: "Log in again." };
+  const parsed = journalEditSchema.safeParse(input);
+  if (!z.string().uuid().safeParse(id).success || !parsed.success) return { ok: false, error: "That entry isn't valid." };
+  const known = (await listJournalTags(db, user.name, todayLocalDate())).map((row) => row.tag);
+  const updated = await updateJournalEntry(db, user.name, id, {
+    ratings: parsed.data.ratings,
+    tags: normalizeTags(parsed.data.tags, known)
+  });
+  if (!updated) return { ok: false, error: "That entry no longer exists." };
+  revalidatePath("/");
+  revalidatePath("/habits");
+  return { ok: true };
+}
+

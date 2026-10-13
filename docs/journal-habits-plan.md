@@ -1,6 +1,6 @@
 # Journal, habits and reminders plan
 
-Status: built October 10, 2026 (journal, habits, Habits tab, reminders); reminders go live once VAPID keys are in Vercel.
+Status: built October 10, 2026 (journal, habits, Habits tab, reminders). Upgraded October 12, 2026: mood first with optional stress, categorized tags with filters, editing habits and their entries, habit frequency, configurable reminders with snooze, conversational check-ins.
 
 ## Goal
 
@@ -19,8 +19,18 @@ The owner writes or dictates an entry in chat, as often as he likes; morning and
 | `entry_date` | Local date the entry is about. A 1 am entry about the previous evening belongs to the previous day; Claude decides from the text. |
 | `kind` | `morning`, `evening` or `other`. |
 | `body` | The entry in his words, lightly cleaned up (typos, filler); never summarized away. |
-| `mood`, `energy`, `stress`, `soreness` | 1–5 each, or null when the entry doesn't say. Claude never guesses a rating the text doesn't support. |
-| `tags` | Short labels for what came up: `work`, `sore legs`, `poor sleep`, `social`. Free-form, reused where possible. |
+| `mood` | The main rating, 1–5: Very low, A little down, Neutral / okay, Good, Excellent. |
+| `stress` | Optional, 1–5: None / relaxed, Mild, Moderate, High, Overwhelming. Pressure or strain, not mood. |
+| `energy`, `soreness` | Optional, 1–5. |
+| `tags` | One to four tags for what came up, normalized (see Tags). |
+
+Every rating is null when unrecorded, never 0, and Claude never derives stress from mood or mood from stress: they stay separate for later correlation. Labels show next to the numbers everywhere ("Mood 4 · Good").
+
+### Tags
+
+`lib/journal-tags.ts` holds a small vocabulary in categories: Work, Relationships, Health, Exercise, Sleep, Social, Personal Growth, Other. Claude prefers those tags and adds a custom one only for something specific ("sore legs"). Every tag is normalized on save and on read (lowercase, no `#`, synonyms such as "bad sleep" → "poor sleep", plurals folded onto known tags), so variants count as one. Custom tags fall into a category by keyword.
+
+The Journal card on the Habits tab loads 90 days, shows tags grouped by category with counts, and filters by a tag. With a tag picked, it shows average mood and stress with that tag against the rest. Each entry opens to fix its mood, stress and tags (picked by category or typed); the text stays as written.
 | `created_at` | When it was saved. |
 
 The morning prompt leans toward sleep and soreness; the evening one toward the day, stress and habits.
@@ -41,6 +51,10 @@ Habits are rows, not code, so new ones are added by telling the chat "start trac
 | `cutoff` | Optional local time after which any use is a miss (Gaming: 20:00). |
 | `cutoff_weeknights` | The cutoff applies Sunday–Thursday only. |
 | `active` | Archived habits keep their history. |
+| `description` | Optional: what counts, in his words. |
+| `days` | Frequency: the weekdays it's tracked (0 Sunday–6 Saturday), null for every day. An unlogged day off is "off", not missed; a build habit done on a day off counts as met. |
+
+Habits are edited on the Habits tab (Edit on each tracked habit) or through chat. Logs belong to the habit's id, so a rename or new goal keeps history. The measure can't change once a habit has logs. Stopped habits sit under "Stopped tracking" with Track again.
 
 Starting set:
 
@@ -89,8 +103,8 @@ An evening check-in usually ends with two cards: the journal entry and the day's
 
 ## Habits tab
 
-- Check-in card: today's journal ratings and a Check in button.
-- The 14-day grid, colored by outcome. Tapping a square opens that habit and day below the grid, to log a use, a "none", or remove an entry; tapping a name opens today. Intensity habits log with one tap (None, Light, Moderate, Heavy); drinks with a counter; minutes with optional start and end times.
+- Check-in card: today's mood first, with labels, and a Check in button.
+- The 14-day grid, colored by outcome (days off the habit's frequency are outlined). Tapping a square opens that habit and day below the grid, to log a use, a "none", or edit or remove an entry (amount, day, note, times; edited in place, so no duplicates); tapping a name opens today. Intensity habits log with one tap (None, Light, Moderate, Heavy); drinks with a counter; minutes with optional start and end times.
 - Journal history, tracked habits with their goals and scale guides, and the Reminders switch.
 
 ## On Today
@@ -99,30 +113,33 @@ An evening check-in usually ends with two cards: the journal entry and the day's
 - A small Check-in card: today's ratings, and which habits are logged, zero, or unknown.
 - Trends that compare habits with sleep and recovery come later, once there are 3–4 weeks of data.
 
+## Check-ins
+
+A check-in is a short chat, not a form, and nothing is required. Started with no details ("Evening check-in", or from a reminder), Claude reads today's habit logs and workouts, then asks one friendly question covering what's missing: mood (morning: sleep), habits tracked today with no log, an unlabeled workout. From the answer it drafts the journal entry, the day's habits and any workout together. It may ask about mood once if still unclear, never about stress, energy or soreness, and may close with one line of pattern or streak.
+
 ## Reminders
 
 iPhone web push to the Home Screen app (iOS 16.4+; it does not work in a Safari tab).
 
-**Schedule.** One notification at most, in the 8 pm hour (Vercel's free cron fires anywhere in the hour, which is fine):
+**Rows, not code.** `reminders` holds each reminder: kind, hour (local), days, optional message, on/off, snooze and today's dismissal. Kinds (`lib/reminder-rules.ts`):
 
-| Night | Journaled today | Not journaled |
+| Kind | Says | Quiet when |
 | --- | --- | --- |
-| Weeknight (Sun–Thu) | "8 pm: Xbox off, start winding down for bed." | "8 pm: Xbox off. Quick journal before bed?" |
-| Fri, Sat | nothing | "How was today? Take a minute to journal." |
+| `checkin` | "How was today?" plus habits not logged | journaled and every habit tracked today logged |
+| `journal` | "Take a minute to journal." | journaled |
+| `habits` | "Not logged yet: …" | every habit tracked today logged |
+| `habit` | "Log Reading for today?" (one per habit, set from the habit editor) | that habit logged |
+| `custom` | its message | never |
 
-Weeknights are the nights before a workday, Sunday through Thursday. Tapping a notification opens the chat ready for an evening check-in.
+Migrated October 12, 2026 to two rows reproducing the old behavior: "8 pm: Xbox off" (custom, Sun–Thu) and a check-in at 8 pm every day.
 
-**Timing.** Vercel cron runs in UTC, and 8 pm Eastern is 00:00 UTC in summer and 01:00 UTC in winter. Two daily jobs run at both hours; only the one landing in the 8 pm local hour sends. `reminder_sends` records each send, so a day never gets two.
+**Schedule.** Hobby cron runs each job once a day, so `vercel.json` has 24 jobs, one per UTC hour, all hitting `/api/cron/reminders`. Each run sends what's due in the current hour of `APP_TIME_ZONE`; Vercel fires anywhere in the hour. Everything due in one run goes out as a single notification. `reminder_sends` records each reminder's send per local day (kind = reminder id), so nothing fires twice.
 
-**Pieces.**
-- A web app manifest (`app/manifest.ts`, `display: standalone`) and a service worker (`public/sw.js`) that shows the notification and opens the app on tap.
-- An "Enable reminders" button. iOS only shows the permission prompt after a tap.
-- `push_subscriptions`: the phone's push endpoint and keys. A subscription the push service rejects as expired is deleted, and the app asks to enable again.
-- VAPID keys for signing pushes, in Vercel env vars (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`), sent with the `web-push` package.
-- `/api/cron/reminders`, guarded by `CRON_SECRET` like the health sync.
-- A reminders toggle next to Goals, to turn them off without deleting the app.
+**Snooze and dismiss.** Tapping a notification opens the chat with "Evening check-in" ready and a bar to Snooze 1 hr or mark Done for today. The Habits tab's Reminders card shows each reminder's status today with the same buttons, and edits reminders. A snooze fires on the first hourly run after it ends; a dismissal silences that reminder until tomorrow.
 
-**Never annoying.** At most one push a day, only at the set time, and no "you missed 3 days" messages.
+**Pieces.** Manifest (`app/manifest.ts`) and service worker (`public/sw.js`); the push switch per phone in the Reminders card; `push_subscriptions` (expired ones are deleted); VAPID keys in Vercel env vars sent with `web-push`; `/api/cron/reminders` guarded by `CRON_SECRET` (`?force=1` sends every enabled reminder now).
+
+**Never annoying.** Nothing for things already logged, one notification per hour at most, no "you missed 3 days" messages.
 
 ## Schema
 

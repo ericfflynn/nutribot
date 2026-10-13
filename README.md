@@ -21,7 +21,9 @@ A personal health app that pairs a Fitbit with a Claude brain. Fitbit data flows
 
 - **Today:** any day at a glance. Sleep, Recovery and Strain scores computed from Fitbit data, calories and macros against goals, water, a timeline of the day, and 7-day trends.
 - **Chat:** "2 eggs and toast for breakfast", "chest and tris, hard", "Tuesday was back and bis, brutal". Claude answers with review cards. Meals come with item-level macro estimates. Workouts come with muscle groups and an effort score (RPE), already linked to the Fitbit workout they describe. Nothing is saved until you tap Save. Correct anything by just saying so ("actually 3 eggs").
-- **Training:** the last 14 days by muscle group. It shows which groups haven't been trained in a week and suggests the next session, lists Fitbit workouts that still need a label (tap **Label** and finish the sentence in chat), and has a coverage grid shaded by effort and recent workouts with strain.
+- **Training:** the last 14 days by muscle group, picked group first, then specific muscles (Shoulders → Front, Side, Rear Delts, Traps). It shows which groups haven't been trained in a week and suggests the next session, lists Fitbit workouts that still need a label (tap **Label** and finish the sentence in chat), and has a coverage grid shaded by effort and recent workouts with strain, filterable by type (strength, run, pilates, yoga…). Duplicate watch recordings of one workout are folded into one ([docs/workout-dedupe.md](docs/workout-dedupe.md)), with Merge and Separate for edge cases.
+- **Habits and journal:** a 14-day habit grid colored by goal met or missed, with habits and past entries editable in place; journal history filterable by tag, with mood and optional stress shown with labels. Check-ins happen in chat, one short question at a time.
+- **Reminders:** iPhone push reminders you configure (check-in, journal, habits, one habit, or a custom message), at any hour and on chosen days. They skip anything already logged, and you can snooze or dismiss them.
 
 ## How it works
 
@@ -107,9 +109,12 @@ Tested against the real Fitbit history (June–October 2026): after the type fil
 | Table | Holds |
 | --- | --- |
 | `health_records` | Raw Fitbit payloads (JSONB), one row per daily total, metric, sleep session or workout |
-| `health_daily`, `health_workouts` | Views over `health_records` with plain columns and local times |
+| `health_daily`, `health_workouts` | Views over `health_records` with plain columns and local times; `health_workouts` has one row per workout, duplicates folded |
+| `health_workout_records`, `health_workout_merges` | Every raw watch recording, and which ones are duplicates of which (auto or by hand) |
 | `macro_entries` | Saved meals: items, macro totals, confidence, meal type |
 | `workout_sessions` | Saved workouts: muscle groups, RPE, link to a Fitbit workout (`linked`, `pending` or `untracked`) |
+| `journal_entries`, `habits`, `habit_logs` | Journal entries (mood, optional stress, tags) and tracked habits with their logs |
+| `reminders`, `reminder_sends`, `push_subscriptions` | Configured reminders, what was sent each day, and the phones that get them |
 | `chat_conversations`, `chat_messages` | Conversations (New chat starts one), each message, and the drafts shown with it |
 | `user_macro_goals`, `water_entries` | Goals and water |
 
@@ -117,9 +122,8 @@ Everything is in [`supabase/schema.sql`](supabase/schema.sql), written to be saf
 
 ## Roadmap
 
-- **Journal and habits** through chat: morning and evening check-ins with mood, energy, stress and soreness ratings, and habits (weed, nicotine, alcohol, reading) with intensity, compared against sleep and recovery over time.
-- **Gentle reminders** as iPhone web push: only when a check-in is missing, at most once or twice a day.
-- **A health read tool for the brain**, so it can answer "how did I sleep this week?".
+- **Habit and journal trends vs. health:** compare habits, mood and stress tags against sleep and recovery once there are a few weeks of data.
+- **Fresh screenshots** from a fictional demo user ([docs/demo.md](docs/demo.md)).
 
 Details and open questions: [docs/mvp-plan.md](docs/mvp-plan.md).
 
@@ -252,5 +256,5 @@ scripts/
   health-sync.ts                 npm run health:sync
 
 supabase/schema.sql              all tables and views (safe to rerun)
-docs/                            brain.md, training-plan.md, scores.md, mvp-plan.md, screenshots/
+docs/                            brain.md, training-plan.md, workout-dedupe.md, journal-habits-plan.md, demo.md, scores.md, mvp-plan.md, screenshots/
 ```

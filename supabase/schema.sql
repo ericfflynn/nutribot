@@ -217,7 +217,9 @@ left join active_minutes a using (user_name, day)
 left join metrics m using (user_name, day)
 left join sleep s using (user_name, day);
 
-create or replace view public.health_workouts with (security_invoker = true) as
+-- One row per Fitbit exercise record, duplicates included. Read
+-- health_workouts instead, which folds duplicates (lib/health/dedupe.ts).
+create or replace view public.health_workout_records with (security_invoker = true) as
 select
   user_name,
   record_key as id,
@@ -241,6 +243,79 @@ select
 from public.health_records r,
   lateral (select r.payload->'exercise' as e) exercise
 where data_type = 'exercise';
+
+-- Duplicate Fitbit recordings of one workout (docs/workout-dedupe.md). A row
+-- folds record_key into canonical_key; a row whose two keys match pins a
+-- record on its own. 'auto' rows are rebuilt after every exercise sync from
+-- lib/health/dedupe-rules.ts; 'user' rows are the owner's merges and splits
+-- and are never overwritten.
+create table if not exists public.health_workout_merges (
+  user_name text not null,
+  record_key text not null,
+  canonical_key text not null,
+  decided_by text not null check (decided_by in ('auto', 'user')),
+  created_at timestamptz not null default now(),
+  primary key (user_name, record_key)
+);
+
+alter table public.health_workout_merges enable row level security;
+
+-- One row per physical workout: canonical records only. Each metric is the
+-- canonical record's, or the largest from its duplicates when the canonical
+-- lacks it; metrics are never summed. merged_ids lists the folded records.
+create or replace view public.health_workouts with (security_invoker = true) as
+with folded as (
+  select m.user_name, m.record_key, m.canonical_key
+  from public.health_workout_merges m
+  where m.record_key <> m.canonical_key
+    and exists (
+      select 1 from public.health_workout_records c
+      where c.user_name = m.user_name and c.id = m.canonical_key
+    )
+)
+select
+  c.user_name,
+  c.id,
+  c.day,
+  c.started_at,
+  c.ended_at,
+  c.type,
+  c.name,
+  coalesce(c.active_minutes, d.active_minutes) as active_minutes,
+  c.elapsed_minutes,
+  coalesce(c.calories, d.calories) as calories,
+  coalesce(c.avg_hr, d.avg_hr) as avg_hr,
+  coalesce(c.distance_miles, d.distance_miles) as distance_miles,
+  coalesce(c.steps, d.steps) as steps,
+  coalesce(c.active_zone_minutes, d.active_zone_minutes) as active_zone_minutes,
+  coalesce(c.hr_light_minutes, d.hr_light_minutes) as hr_light_minutes,
+  coalesce(c.hr_moderate_minutes, d.hr_moderate_minutes) as hr_moderate_minutes,
+  coalesce(c.hr_vigorous_minutes, d.hr_vigorous_minutes) as hr_vigorous_minutes,
+  coalesce(c.hr_peak_minutes, d.hr_peak_minutes) as hr_peak_minutes,
+  c.has_gps or coalesce(d.has_gps, false) as has_gps,
+  coalesce(d.ids, '{}') as merged_ids
+from public.health_workout_records c
+left join lateral (
+  select
+    max(r.active_minutes) as active_minutes,
+    max(r.calories) as calories,
+    max(r.avg_hr) as avg_hr,
+    max(r.distance_miles) as distance_miles,
+    max(r.steps) as steps,
+    max(r.active_zone_minutes) as active_zone_minutes,
+    max(r.hr_light_minutes) as hr_light_minutes,
+    max(r.hr_moderate_minutes) as hr_moderate_minutes,
+    max(r.hr_vigorous_minutes) as hr_vigorous_minutes,
+    max(r.hr_peak_minutes) as hr_peak_minutes,
+    bool_or(r.has_gps) as has_gps,
+    array_agg(r.id order by r.started_at) as ids
+  from folded f
+  join public.health_workout_records r on r.user_name = f.user_name and r.id = f.record_key
+  where f.user_name = c.user_name and f.canonical_key = c.id
+) d on true
+where not exists (
+  select 1 from folded f where f.user_name = c.user_name and f.record_key = c.id
+);
 
 -- Chat brain (docs/brain.md). Meals the chat logs can carry a meal type.
 alter table public.macro_entries
@@ -266,6 +341,7 @@ create table if not exists public.workout_sessions (
   name text not null,
   workout_type text not null
     check (workout_type in ('strength', 'run', 'walk', 'ride', 'sport', 'class', 'other')),
+  -- widened below to add pilates and yoga
   muscle_groups text[] not null default '{}',
   rpe numeric check (rpe between 1 and 10),
   duration_min integer check (duration_min > 0),
@@ -280,6 +356,13 @@ create table if not exists public.workout_sessions (
   created_at timestamptz not null default now(),
   check ((match_status = 'linked') = (health_record_key is not null))
 );
+
+-- Pilates and yoga are their own types (they used to be 'class').
+alter table public.workout_sessions
+  drop constraint if exists workout_sessions_workout_type_check;
+alter table public.workout_sessions
+  add constraint workout_sessions_workout_type_check
+  check (workout_type in ('strength', 'run', 'walk', 'ride', 'sport', 'class', 'pilates', 'yoga', 'other'));
 
 create index if not exists workout_sessions_user_date_idx
   on public.workout_sessions (user_name, entry_date desc);
@@ -398,6 +481,40 @@ create table if not exists public.reminder_sends (
   sent_at timestamptz not null default now(),
   primary key (user_name, local_date, kind)
 );
+
+-- Habit description (what counts) and frequency: the weekdays it's tracked,
+-- 0 Sunday-6 Saturday; null means every day.
+alter table public.habits
+  add column if not exists description text;
+alter table public.habits
+  add column if not exists days smallint[];
+
+-- Reminders the owner edits (lib/reminder-rules.ts). Each fires at most once a
+-- day in its local hour, plus once after a snooze; reminder_sends.kind holds
+-- the reminder id. 'habit' reminders belong to one habit.
+create table if not exists public.reminders (
+  id uuid primary key default gen_random_uuid(),
+  user_name text not null,
+  kind text not null check (kind in ('checkin', 'journal', 'habits', 'habit', 'custom')),
+  habit_id uuid references public.habits (id) on delete cascade,
+  hour smallint not null check (hour between 0 and 23),
+  days smallint[],
+  message text,
+  enabled boolean not null default true,
+  snoozed_until timestamptz,
+  skip_date date,
+  created_at timestamptz not null default now(),
+  check ((kind = 'habit') = (habit_id is not null)),
+  check (kind <> 'custom' or message is not null)
+);
+
+create index if not exists reminders_user_idx on public.reminders (user_name);
+
+-- One reminder per habit, set from the habit editor.
+create unique index if not exists reminders_habit_idx
+  on public.reminders (user_name, habit_id) where kind = 'habit';
+
+alter table public.reminders enable row level security;
 
 alter table public.journal_entries enable row level security;
 alter table public.habits enable row level security;

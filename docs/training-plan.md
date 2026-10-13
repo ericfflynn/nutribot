@@ -18,8 +18,8 @@ One row per logged workout, whether Fitbit saw it or not. Definition in `supabas
 | --- | --- |
 | `entry_date` | Local calendar date. |
 | `name` | "Chest + Triceps". |
-| `workout_type` | `strength`, `run`, `walk`, `ride`, `sport`, `class`, `other`. |
-| `muscle_groups` | From the list below. |
+| `workout_type` | `strength`, `run`, `walk`, `ride`, `sport`, `pilates`, `yoga`, `class` (spin, aerobics, other classes), `other`. Pilates and yoga became their own types on October 12, 2026; earlier ones stay `class`. |
+| `muscle_groups` | Group names and specific muscles, from the list below. |
 | `rpe` | Overall effort, 1–10, from words ("hard" is 8) or a number. |
 | `duration_min` | Only for untracked workouts; tracked ones use Fitbit's duration. |
 | `match_status` | `linked`, `pending` (waiting for the watch to sync) or `untracked` (watch not worn). |
@@ -32,15 +32,30 @@ Matching rules are in [brain.md](brain.md#matching-workouts-to-fitbit).
 
 ## Muscle groups
 
-Chest, Back, Shoulders, Biceps, Triceps, Legs, Abs, Cardio. Runs, rides and walks logged in chat are tagged Cardio.
+Picked group first, then specific muscles (`MUSCLES` in `lib/workouts.ts`):
+
+| Group | Muscles |
+| --- | --- |
+| Chest | Upper Chest, Mid Chest, Lower Chest |
+| Back | Lats, Upper Back, Lower Back |
+| Shoulders | Front Delts, Side Delts, Rear Delts, Traps |
+| Arms | Biceps, Triceps, Forearms |
+| Legs | Quads, Hamstrings, Glutes, Calves, Adductors |
+| Core | Abs, Obliques |
+| Cardio | |
+| Mobility | |
+
+`muscle_groups` stores a mix: a group name means the whole group (or unspecified), a muscle name means just that muscle, and a group is never stored alongside its own muscles (`normalizeMuscles`). Sessions logged before October 12, 2026 used Chest, Back, Shoulders, Biceps, Triceps, Legs, Abs and Cardio as groups; each of those is still a valid group or muscle, so old sessions read correctly with no data change. Runs, rides and walks are Cardio; pilates is Core unless more is said; yoga and stretching are Mobility.
+
+In the editor, tapping a group selects the whole group and shows its muscles; picking muscles narrows it, and unpicking the last one goes back to the whole group.
 
 ## What the Training tab reads
 
-- **Days since each muscle group was trained:** the latest session per muscle group.
-- **14-day coverage grid:** sessions per day per muscle group, shaded by RPE. This replaces "hard sets per muscle group", which needs per-set data.
-- **Recent workouts:** Fitbit workouts (unlabeled walks left out) joined to their sessions for duration, heart rate and strain, plus sessions with no Fitbit link. Each logged one opens to edit its name, muscle groups and RPE, or to delete it; deleting makes its Fitbit workout unlabeled again.
+- **Days since each muscle group was trained:** the latest session per group; a specific muscle counts for its group.
+- **14-day coverage grid:** sessions per day per group, shaded by RPE. This replaces "hard sets per muscle group", which needs per-set data.
+- **Recent workouts:** Fitbit workouts (unlabeled walks left out) joined to their sessions for duration, heart rate and strain, plus sessions with no Fitbit link. Chips show muscles by group ("Shoulders: Side Delts, Rear Delts"). A filter row picks one workout type, with counts per type. Each logged one opens to edit its name, muscles and RPE, or to delete it; deleting makes its Fitbit workout unlabeled again. Combined and overlapping watch recordings can be separated or merged ([workout-dedupe.md](workout-dedupe.md)).
 - **Unlabeled workouts:** Fitbit lifting, sport and class workouts with no session (walks excluded), each with a "What did you train?" prompt that opens chat. `listUnlabeledWorkouts` in `lib/workouts.ts`.
-- **Missing:** muscle groups not trained in 7 or more days, looking back a year, with a suggested next session.
+- **Missing:** groups not trained in 7 or more days, looking back a year, with a suggested next session. Mobility is optional and never called missing.
 - Unlabeled runs and rides count as Cardio; walks don't.
 
 ## Later: per-exercise sets

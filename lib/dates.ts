@@ -32,6 +32,11 @@ export function isWeeknight(date: string) {
   return new Date(`${date}T12:00:00Z`).getUTCDay() <= 4;
 }
 
+// 0 Sunday through 6 Saturday.
+export function weekdayOf(date: string) {
+  return new Date(`${date}T12:00:00Z`).getUTCDay();
+}
+
 export function addDays(entryDate: string, days: number) {
   const date = new Date(`${entryDate}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() + days);

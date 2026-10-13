@@ -6,9 +6,9 @@ import { discardDraftAction, newChatAction, saveDraftAction } from "./actions";
 import type { Draft, MealDraft, WorkoutDraft } from "@/lib/brain";
 import type { HabitDraft, HabitsDraft, JournalDraft } from "@/lib/brain-checkin";
 import { describeGoal, formatHabitAmount, scaleGuideLines } from "@/lib/habits";
-import { RATINGS } from "@/lib/journal";
+import { recordedRatings } from "@/lib/journal";
 import type { ChatMessage } from "@/lib/chat";
-import type { FitbitWorkout } from "@/lib/workouts";
+import { WORKOUT_TYPE_LABELS, describeMuscles, type FitbitWorkout } from "@/lib/workouts";
 
 const timeFormat = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" });
 
@@ -149,13 +149,14 @@ function WorkoutCard({ draft, today, superseded, onSave, onDiscard }: { draft: W
     <div className="draft-card">
       <div className="draft-head">
         <span className="draft-kind">
-          workout{day ? ` · ${day}` : ""}
+          {(WORKOUT_TYPE_LABELS[draft.workout_type] ?? "workout").toLowerCase()}
+          {day ? ` · ${day}` : ""}
         </span>
         <strong>{draft.rpe != null ? `RPE ${draft.rpe}` : "RPE ?"}</strong>
       </div>
       <p className="draft-title">{draft.name}</p>
       <div className="draft-chips">
-        {draft.muscle_groups.map((group) => (
+        {describeMuscles(draft.muscle_groups).map((group) => (
           <span key={group}>{group}</span>
         ))}
       </div>
@@ -247,14 +248,14 @@ function timeRange(start: string | null, end: string | null) {
 
 function JournalCard({ draft, today, ...handlers }: { draft: JournalDraft } & DraftHandlers) {
   const day = dayLabel(draft.date, today);
-  const ratings = RATINGS.filter((name) => draft.ratings[name] != null);
+  const ratings = recordedRatings(draft.ratings);
   return (
     <CheckinCard draft={draft} kind={`${draft.kind} journal${day ? ` · ${day}` : ""}`} {...handlers}>
       {ratings.length ? (
         <div className="draft-ratings">
-          {ratings.map((name) => (
-            <span key={name}>
-              {name} <strong>{draft.ratings[name]}</strong>
+          {ratings.map((rating) => (
+            <span key={rating.name}>
+              {rating.name} <strong>{rating.value}</strong> {rating.label}
             </span>
           ))}
         </div>

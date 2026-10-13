@@ -52,12 +52,12 @@ Claude remembers nothing between requests. Each turn it sees only what the route
 | `draft_workout` | Creates or revises a workout draft and matches it to a Fitbit workout. One call per activity. |
 | `list_meals` | Read-only: saved meals in a date range, newest first, at most 40, with ids, totals and each item's macros and portion. `search` keeps meals whose text or item names contain every word, and allows ranges up to 365 days (31 without). The prompt has Claude search past meals before estimating one, and reuse a matching meal's items and macros, since the owner repeats meals often. Also how Claude finds a saved meal to edit. |
 | `get_goals` | Read-only: daily targets (calories, macros in grams and percent, water oz) and one day's saved totals against them (`target`, `done`, `left`). Open drafts aren't counted. Goals are changed in the Goals panel on Today, not through chat. |
-| `draft_journal` | A journal entry draft: kind (morning, evening, other), body in their words, 1–5 mood, energy, stress and soreness (null when unsaid), tags. |
+| `draft_journal` | A journal entry draft: kind (morning, evening, other), body in their words, ratings, tags. Mood (1 Very low – 5 Excellent) is the main rating; stress (1 None / relaxed – 5 Overwhelming), energy and soreness are optional. Each is null when unsaid, and stress is never derived from mood or the other way round. Tags are normalized in code (`normalizeTags` in `lib/journal-tags.ts`) against a categorized vocabulary and the owner's earlier tags. |
 | `draft_habits` | One card with a day's habit logs: each use (intensity 1–3, count or minutes, details, optional start and end times) and each explicit zero. The result lists active habits not logged yet that day, so Claude can ask. |
-| `draft_habit` | Adds a tracked habit or changes one: measure, direction, scale guide (required for intensity), cutoff, archived. |
-| `list_habits`, `list_journal`, `list_habit_logs` | Read-only: tracked habits with scale guides; journal entries with ratings; each day's habit status (level, uses, minutes past cutoff, unlogged). Ranges up to 92 days. |
+| `draft_habit` | Adds a tracked habit or changes one: name, description, measure, direction, scale guide (required for intensity), goal, cutoff, days tracked, archived. A change keeps the habit's logs; the measure can't change once a habit has logs. The owner can also edit habits on the Habits tab. |
+| `list_habits`, `list_journal`, `list_habit_logs` | Read-only: tracked habits with descriptions, days and scale guides; journal entries with labeled ratings and tags; each day's habit status (level, uses, minutes past cutoff, unlogged, or not tracked that day). Ranges up to 92 days. |
 | `get_health` | Read-only (`lib/brain-health.ts`): watch data for up to 366 days, one line per day with sleep (duration, stages, bed and wake), HRV, resting HR, SpO2, breathing rate, VO2 max, skin temperature vs baseline, steps, active kcal, zone minutes, the app's Sleep / Recovery / Strain scores and that day's watch workouts, then averages over the full days in the range. |
-| `list_workouts` | Read-only: workouts in a date range (31 days at most), newest first. Each watch workout comes with what it was logged as (name, muscle groups, RPE), plus logged sessions with no watch workout; optionally only unlabeled watch workouts. Used for backfill and for questions about recent training. |
+| `list_workouts` | Read-only: workouts in a date range (31 days at most), newest first. Each watch workout comes with what it was logged as (name, type, muscles, RPE) and how many duplicate watch recordings it combines ([workout-dedupe.md](workout-dedupe.md)), plus logged sessions with no watch workout; optionally only unlabeled watch workouts. Used for backfill, check-ins and questions about recent training. |
 
 Tools only build drafts; the rest only read.
 
@@ -77,8 +77,8 @@ MealDraft = {
 WorkoutDraft = {
   type: "workout", id, date, raw_text,
   name,                        // "Chest + Triceps"
-  workout_type: "strength" | "run" | "walk" | "ride" | "sport" | "class" | "other",
-  muscle_groups: ("Chest" | "Back" | "Shoulders" | "Biceps" | "Triceps" | "Legs" | "Abs" | "Cardio")[],
+  workout_type: "strength" | "run" | "walk" | "ride" | "sport" | "pilates" | "yoga" | "class" | "other",
+  muscle_groups: MuscleName[], // groups ("Shoulders") and specific muscles ("Rear Delts"); see training-plan.md
   rpe: number | null,          // 1–10; "easy" 3–4, "hard" 8, "all-out" 9–10
   duration_min: number | null, // only for untracked workouts
   time_hint: { start: "HH:MM", end: "HH:MM" } | null,
@@ -97,7 +97,7 @@ A draft revised in a later reply keeps its id, so the sheet shows only the lates
 
 Claude supplies the clues: type, date, an optional time window, and whether the watch was worn. `chooseMatch` in `lib/workouts.ts` does the matching:
 
-1. Candidates are that day's Fitbit workouts of a fitting type that no session or other open draft has claimed. Types map as: strength → WEIGHTLIFTING, WEIGHTS, CORE_TRAINING, AEROBIC_WORKOUT; sport → TENNIS, GOLF, SPORT; class → PILATES, YOGA, AEROBIC_WORKOUT; run, walk and ride to their own types.
+1. Candidates are that day's Fitbit workouts of a fitting type that no session or other open draft has claimed. Types map as: strength → WEIGHTLIFTING, WEIGHTS, CORE_TRAINING, AEROBIC_WORKOUT; sport → TENNIS, GOLF, SPORT; pilates → PILATES; yoga → YOGA; class → AEROBIC_WORKOUT, PILATES, YOGA; run, walk and ride to their own types. Candidates come from `health_workouts`, so duplicate recordings never compete with each other.
 2. A time hint narrows to workouts overlapping the window (±15 minutes).
 3. Same-day logs with no hint prefer the workout that most recently ended before the message.
 4. One candidate left is `matched`; several is `ambiguous` with a best guess. The card's **Change** picker lists the rest, plus "link it later".

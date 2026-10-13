@@ -8,18 +8,22 @@ import { addDays } from "./dates";
 import {
   HABIT_DIRECTIONS,
   HABIT_MEASURES,
+  describeDays,
   describeGoal,
   formatHabitAmount,
   formatMinutes,
   habitOutcome,
   listHabitLogs,
   listHabits,
+  normalizeDays,
   summarizeHabitDay,
+  trackedOn,
   type Habit,
   type HabitInput,
   type HabitLogInput
 } from "./habits";
-import { JOURNAL_KINDS, listJournalEntries, type JournalInput } from "./journal";
+import { JOURNAL_KINDS, MOOD_LABELS, STRESS_LABELS, listJournalEntries, listJournalTags, ratingLabel, type JournalInput, type Rating } from "./journal";
+import { TAG_CATEGORIES, normalizeTags } from "./journal-tags";
 
 export type JournalDraft = JournalInput & {
   type: "journal";
@@ -55,11 +59,18 @@ export type CheckinDraft = JournalDraft | HabitsDraft | HabitDraft;
 export const CHECKIN_TOOLS = ["draft_journal", "draft_habits", "draft_habit", "list_habits", "list_journal", "list_habit_logs"];
 
 export const CHECKIN_PROMPT = `## Journal
-- When they write about how they feel or how the day or night went (stress, work, energy, soreness, mood), call draft_journal. Keep body in their words, lightly cleaned up (typos, filler); never shorten it into a summary.
-- Ratings are 1-5: mood (1 awful, 5 great), energy (1 drained, 5 energized), stress (1 calm, 5 overwhelmed), soreness (1 none, 5 very sore). Set one only when the text supports it; otherwise null. Never ask for ratings.
-- tags are a few short lowercase labels for what came up ("work", "sore legs", "poor sleep", "social"). Reuse earlier tags from list_journal when they fit.
+- When they write about how they feel or how the day or night went, call draft_journal. Keep body in their words, lightly cleaned up (typos, filler); never shorten it into a summary.
+- Mood is the main rating: ${MOOD_LABELS.map((label, index) => `${index + 1} ${label}`).join(", ")}. It's how they feel emotionally.
+- Stress is optional and separate: ${STRESS_LABELS.map((label, index) => `${index + 1} ${label}`).join(", ")}. It's pressure or strain, not mood. Set it only when they talk about pressure, worry or calm; never work it out from mood, and never set mood from stress. A great mood can come with high stress.
+- energy (1 drained, 5 energized) and soreness (1 none, 5 very sore) are optional too. Every rating the text doesn't support is null, never a guess.
+- tags: one to four lowercase tags for what came up. Prefer these, by category: ${TAG_CATEGORIES.map((category) => `${category.label}: ${category.tags.join(", ")}`).join("; ")}. Add a custom tag only for something specific that none of these cover ("sore legs"), and reuse the owner's earlier tags (list_journal) over new wording.
 - kind is morning before noon, evening after 5 pm, other in between. An entry written before 4 am about the night before belongs to the previous date.
-- If they start a check-in with no details ("evening check-in", "morning check-in"), ask how the day went, or how they slept and feel, in one short question. In the evening, also ask about habits not logged yet (below).
+
+## Check-ins
+- A check-in is a short conversation, not a form. Nothing is required; skip whatever they don't want to answer.
+- If they start with no details ("evening check-in", "morning check-in", or a reminder's prompt), first call list_habit_logs and list_workouts for today, then ask one short, friendly question that covers what's missing: how they feel (morning: how they slept), any habits tracked today with no log yet, and an unlabeled workout if there is one. Example: "How was today, mood-wise? And any nicotine or drinks, and did you get your reading in?"
+- From their answer, draft what applies in one reply: the journal entry (mood if they gave a sense of it), the day's habits, a workout. If mood is still unclear after they answered, you may ask once ("Would you call today a 3 or more like a 4?"); never ask about stress, energy or soreness.
+- Close with one useful line when the data supports it: a habit streak, a goal met, or an observation from list_journal over recent weeks ("third evening this week tagged work with mood 2"). Keep it to one sentence and never lecture.
 
 ## Habits
 - Call list_habits before logging a habit, and rate each use with that habit's scale_guide so ratings stay consistent. Intensity is 1 light, 2 moderate, 3 heavy; counts and minutes are numbers.
@@ -67,8 +78,8 @@ export const CHECKIN_PROMPT = `## Journal
 - Times are 24-hour local. Read a time without am or pm the way it was most likely meant: gaming, drinks and anything after dinner are evening ("8:30 to 11:15" is 20:30-23:15). Don't ask which.
 - amount 0 means they said they didn't do it today. Only record 0 when they say so. A habit never mentioned stays unlogged.
 - One draft_habits call per day holds all of that day's habit logs, uses and zeros together.
-- In an evening check-in, call list_habit_logs for today and ask in one short sentence about active habits with no log yet, so missing days get their zeros ("Any weed, nicotine or drinks today? Read or play Xbox?").
-- To start tracking something new, or change a habit's scale, goal or cutoff, call draft_habit. Intensity habits need a scale_guide that says what 1, 2 and 3 mean.
+- In an evening check-in, call list_habit_logs for today and ask in one short sentence about active habits tracked today with no log yet, so missing days get their zeros ("Any weed, nicotine or drinks today? Read or play Xbox?").
+- To start tracking something new, or change a habit's name, description, scale, goal, cutoff or days, call draft_habit with the habit's current values for everything that isn't changing (list_habits has them). The owner can also edit habits on the Habits tab. A habit's measure can't change once it has logs; suggest a new habit instead. Intensity habits need a scale_guide that says what 1, 2 and 3 mean.
 - Each habit can have a goal: for limit habits the most that's OK in a day (0 means none), for build habits the least. A cutoff makes any use after that time a miss, optionally on weeknights (Sun-Thu) only. list_habit_logs says whether each day met the goal; use it for "how am I doing".
 - An evening check-in usually ends with two drafts: the journal entry and the day's habits. Mention them in a sentence or two, not a list; the cards show the details.`;
 
@@ -90,6 +101,8 @@ function describeHabit(habit: Habit) {
   const parts = [`${habit.name} (id ${habit.id}): ${measure}, ${habit.direction}`];
   const goal = describeGoal(habit);
   if (goal) parts.push(`goal: ${goal}`);
+  if (habit.days) parts.push(`tracked ${describeDays(habit.days)} only (days ${habit.days.join(",")})`);
+  if (habit.description) parts.push(`description: ${habit.description}`);
   if (habit.scaleGuide) parts.push(`scale: ${habit.scaleGuide}`);
   if (!habit.active) parts.push("archived");
   return parts.join("; ");
@@ -135,6 +148,7 @@ export function checkinTools(context: {
       const day = checkDate(args.date);
       if ("error" in day) return errorText(day.error);
       const ratings = { mood: args.mood, energy: args.energy, stress: args.stress, soreness: args.soreness };
+      const known = (await listJournalTags(db, userName, day.date)).map((row) => row.tag);
       putDraft({
         type: "journal",
         id: target.id,
@@ -142,7 +156,7 @@ export function checkinTools(context: {
         kind: args.kind,
         body: args.body.trim(),
         ratings,
-        tags: [...new Set(args.tags.map((tag) => tag.trim().toLowerCase()).filter(Boolean))],
+        tags: normalizeTags(args.tags, known),
         saved_id: null
       });
       return text({ draft_id: target.id, date: day.date, ratings });
@@ -204,17 +218,24 @@ export function checkinTools(context: {
         draft_id: target.id,
         date: day.date,
         logs: logs.map((log) => `${log.name}: ${formatHabitAmount(log, log.amount)}`),
-        not_logged_yet: habits.filter((habit) => !covered.has(habit.id)).map((habit) => habit.name)
+        not_logged_yet: habits
+          .filter((habit) => !covered.has(habit.id) && trackedOn(habit, day.date))
+          .map((habit) => habit.name)
       });
     }
   );
 
   const draftHabit = tool(
     "draft_habit",
-    "Create or revise a draft that adds a tracked habit, or changes one (habit_id set): its scale, cutoff, or whether it's archived.",
+    "Create or revise a draft that adds a tracked habit, or changes one (habit_id set): its name, description, scale, goal, cutoff, days, or whether it's archived. A change keeps the habit's history.",
     {
       habit_id: z.string().nullable().describe("The habit to change, from list_habits; null for a new one."),
       name: z.string().min(1).max(40),
+      description: z.string().max(300).nullable().describe("What counts, in their words. Keep the current one when changing something else."),
+      days: z
+        .array(z.number().int().min(0).max(6))
+        .nullable()
+        .describe("Weekdays it's tracked, 0 Sunday-6 Saturday; null for every day. Keep the current days when changing something else."),
       measure: z.enum(HABIT_MEASURES),
       unit: z.string().nullable().describe('For counts, e.g. "drinks".'),
       direction: z.enum(HABIT_DIRECTIONS).describe("limit: less is better. build: more is better."),
@@ -253,6 +274,8 @@ export function checkinTools(context: {
           goal: args.goal,
           cutoff: args.cutoff,
           cutoffWeeknights: Boolean(args.cutoff) && args.cutoff_weeknights,
+          description: args.description?.trim() || null,
+          days: normalizeDays(args.days),
           active: args.active
         },
         saved_id: null
@@ -284,9 +307,9 @@ export function checkinTools(context: {
       return text(
         entries
           .map((entry) => {
-            const ratings = Object.entries(entry.ratings)
+            const ratings = (Object.entries(entry.ratings) as [Rating, number | null][])
               .filter(([, value]) => value != null)
-              .map(([name, value]) => `${name} ${value}`)
+              .map(([name, value]) => `${name} ${value} (${ratingLabel(name, value!)})`)
               .join(", ");
             const tags = entry.tags.length ? ` [${entry.tags.join(", ")}]` : "";
             return `${entry.date} ${entry.kind}${ratings ? ` (${ratings})` : ""}${tags}: ${entry.body}`;
@@ -315,6 +338,7 @@ export function checkinTools(context: {
         const days = summarizeHabitDay(habits, date, dayLogs).map((day) => {
           const outcome = habitOutcome(day);
           const verdict = outcome === "met" ? ", goal met" : outcome.startsWith("miss") ? `, goal missed (${outcome.slice(5)} of 3)` : "";
+          if (outcome === "off") return `${day.habit.name}: not tracked that day`;
           if (day.status === "unknown") return `${day.habit.name}: not logged`;
           if (day.status === "none") return `${day.habit.name}: none${verdict}`;
           const uses = dayLogs

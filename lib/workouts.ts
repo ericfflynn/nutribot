@@ -3,11 +3,78 @@
 // only supplies the clues: type, date, an optional time window.
 import type { Pool } from "pg";
 
-export const MUSCLE_GROUPS = ["Chest", "Back", "Shoulders", "Biceps", "Triceps", "Legs", "Abs", "Cardio"] as const;
+// Muscles are picked group first, then specific muscles. A session stores a
+// mix of both: a group name means the whole group (or unspecified), a muscle
+// name means just that muscle. Older sessions stored "Biceps", "Triceps" and
+// "Abs" as groups; they are muscles of Arms and Core now, so they still read
+// the same way.
+export const MUSCLE_GROUPS = ["Chest", "Back", "Shoulders", "Arms", "Legs", "Core", "Cardio", "Mobility"] as const;
 export type MuscleGroup = (typeof MUSCLE_GROUPS)[number];
 
-export const WORKOUT_TYPES = ["strength", "run", "walk", "ride", "sport", "class", "other"] as const;
+export const MUSCLES = {
+  Chest: ["Upper Chest", "Mid Chest", "Lower Chest"],
+  Back: ["Lats", "Upper Back", "Lower Back"],
+  Shoulders: ["Front Delts", "Side Delts", "Rear Delts", "Traps"],
+  Arms: ["Biceps", "Triceps", "Forearms"],
+  Legs: ["Quads", "Hamstrings", "Glutes", "Calves", "Adductors"],
+  Core: ["Abs", "Obliques"],
+  Cardio: [],
+  Mobility: []
+} as const satisfies Record<MuscleGroup, readonly string[]>;
+
+export type SpecificMuscle = (typeof MUSCLES)[MuscleGroup][number];
+// What a session's muscle_groups holds: group names and specific muscles.
+export type MuscleName = MuscleGroup | SpecificMuscle;
+export const MUSCLE_NAMES = [
+  ...MUSCLE_GROUPS,
+  ...MUSCLE_GROUPS.flatMap((group) => MUSCLES[group] as readonly SpecificMuscle[])
+] as [MuscleName, ...MuscleName[]];
+
+// Groups whose gaps the Training tab calls out; Mobility is optional work.
+export const TRACKED_GROUPS: MuscleGroup[] = ["Chest", "Back", "Shoulders", "Arms", "Legs", "Core", "Cardio"];
+
+export function groupOf(name: MuscleName): MuscleGroup {
+  if ((MUSCLE_GROUPS as readonly string[]).includes(name)) return name as MuscleGroup;
+  return MUSCLE_GROUPS.find((group) => (MUSCLES[group] as readonly string[]).includes(name))!;
+}
+
+// The groups a session trained, each once, in display order.
+export function groupsOf(names: readonly MuscleName[]): MuscleGroup[] {
+  const groups = new Set(names.map(groupOf));
+  return MUSCLE_GROUPS.filter((group) => groups.has(group));
+}
+
+// One entry per muscle, and a group dropped when its own muscles are listed
+// (the muscles are the more precise answer).
+export function normalizeMuscles(names: readonly MuscleName[]): MuscleName[] {
+  const unique = [...new Set(names)];
+  return unique.filter(
+    (name) => !(MUSCLE_GROUPS as readonly string[]).includes(name) || !unique.some((other) => other !== name && groupOf(other) === name)
+  );
+}
+
+// Chips for a session: "Shoulders: Side Delts, Rear Delts", or "Legs" for the whole group.
+export function describeMuscles(names: readonly MuscleName[]): string[] {
+  return groupsOf(names).map((group) => {
+    const specific = names.filter((name) => name !== group && groupOf(name) === group);
+    return specific.length && !names.includes(group) ? `${group}: ${specific.join(", ")}` : group;
+  });
+}
+
+export const WORKOUT_TYPES = ["strength", "run", "walk", "ride", "sport", "class", "pilates", "yoga", "other"] as const;
 export type WorkoutType = (typeof WORKOUT_TYPES)[number];
+
+export const WORKOUT_TYPE_LABELS: Record<WorkoutType, string> = {
+  strength: "Strength",
+  run: "Run",
+  walk: "Walk",
+  ride: "Ride",
+  sport: "Sport",
+  class: "Class",
+  pilates: "Pilates",
+  yoga: "Yoga",
+  other: "Other"
+};
 
 // Fitbit exercise types each logged type can match. "other" matches anything
 // except walks, which are mostly auto-detected.
@@ -17,8 +84,21 @@ const FITBIT_TYPES: Record<Exclude<WorkoutType, "other">, string[]> = {
   walk: ["WALKING", "HIKING"],
   ride: ["BIKING", "SPINNING"],
   sport: ["TENNIS", "GOLF", "SPORT"],
-  class: ["PILATES", "YOGA", "AEROBIC_WORKOUT"]
+  class: ["AEROBIC_WORKOUT", "PILATES", "YOGA"],
+  pilates: ["PILATES"],
+  yoga: ["YOGA"]
 };
+
+// The logged type a Fitbit exercise type most likely is, for unlabeled
+// workouts in filters and analytics.
+export function workoutTypeOf(fitbitType: string): WorkoutType {
+  if (fitbitType === "PILATES") return "pilates";
+  if (fitbitType === "YOGA") return "yoga";
+  const found = (Object.keys(FITBIT_TYPES) as Exclude<WorkoutType, "other">[]).find((type) =>
+    FITBIT_TYPES[type].includes(fitbitType)
+  );
+  return found ?? "other";
+}
 
 // Fitbit workouts worth labeling when nothing is logged for them.
 const LABELABLE_TYPES = new Set(Object.values(FITBIT_TYPES).flat().filter((type) => type !== "WALKING"));
@@ -39,6 +119,8 @@ export type FitbitWorkout = {
   avgHr: number | null;
   calories: number | null;
   sessionId: string | null; // the workout_session already linked to it
+  // Duplicate recordings folded into this one (lib/health/dedupe.ts).
+  mergedIds: string[];
 };
 
 export type TimeHint = { start: string; end: string }; // local "HH:MM"
@@ -137,7 +219,8 @@ export async function listFitbitWorkouts(
       w.active_minutes::int as "activeMinutes",
       w.avg_hr::int as "avgHr",
       w.calories::int as "calories",
-      s.id::text as "sessionId"
+      s.id::text as "sessionId",
+      w.merged_ids as "mergedIds"
     from public.health_workouts w
     left join public.workout_sessions s
       on s.user_name = w.user_name and s.health_record_key = w.id
@@ -160,7 +243,7 @@ export type WorkoutSessionInput = {
   rawText: string;
   name: string;
   workoutType: WorkoutType;
-  muscleGroups: MuscleGroup[];
+  muscleGroups: MuscleName[];
   rpe: number | null;
   durationMin: number | null;
   notes: string;
@@ -263,7 +346,7 @@ export type WorkoutSession = {
   date: string;
   name: string;
   workoutType: WorkoutType;
-  muscleGroups: MuscleGroup[];
+  muscleGroups: MuscleName[];
   rpe: number | null;
   durationMin: number | null;
   matchStatus: "linked" | "pending" | "untracked";
@@ -303,9 +386,10 @@ export async function listWorkoutSessions(
 export const CARDIO_FITBIT_TYPES = ["RUNNING", "TREADMILL", "BIKING", "SPINNING"];
 
 // The last date each muscle group was trained, on or before endDate, over the
-// past year: from logged sessions, plus unlabeled Fitbit runs and rides as Cardio.
+// past year: from logged sessions (a specific muscle counts for its group),
+// plus unlabeled Fitbit runs and rides as Cardio.
 export async function lastTrainedByMuscle(db: Pick<Pool, "query">, userName: string, endDate: string) {
-  const { rows } = await db.query<{ muscle: MuscleGroup; day: string }>(
+  const { rows } = await db.query<{ muscle: MuscleName; day: string }>(
     `
     select muscle, max(day)::text as "day"
     from (
@@ -326,14 +410,21 @@ export async function lastTrainedByMuscle(db: Pick<Pool, "query">, userName: str
     `,
     [userName, endDate, CARDIO_FITBIT_TYPES]
   );
-  return new Map(rows.map((row) => [row.muscle, row.day]));
+  const byGroup = new Map<MuscleGroup, string>();
+  for (const row of rows) {
+    const group = groupOf(row.muscle);
+    if (!group) continue;
+    const current = byGroup.get(group);
+    if (!current || row.day > current) byGroup.set(group, row.day);
+  }
+  return byGroup;
 }
 
 export async function updateWorkoutSession(
   db: Pick<Pool, "query">,
   userName: string,
   id: string,
-  changes: { name: string; muscleGroups: MuscleGroup[]; rpe: number | null }
+  changes: { name: string; muscleGroups: MuscleName[]; rpe: number | null }
 ) {
   const { rowCount } = await db.query(
     `

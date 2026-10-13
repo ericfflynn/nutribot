@@ -3065,6 +3065,80 @@ button.fab {
   cursor: pointer;
 }
 
+.workout-editor-groups {
+  display: grid;
+  gap: 8px;
+}
+
+.muscle-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.muscle-subgroup {
+  display: grid;
+  gap: 4px;
+  padding-left: 10px;
+  border-left: 2px solid var(--line);
+}
+
+.muscle-subgroup > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.muscle-toggle.small {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+.merge-controls {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.merge-controls > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.merge-controls .text-button {
+  padding: 0;
+  border: 0;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.type-filter {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.type-filter a {
+  flex: none;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: #e4e4ea;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.type-filter a[aria-current="true"] {
+  background: var(--accent);
+  color: #fff;
+}
+
 .muscle-toggle.on {
   border-color: var(--strain);
   background: #fdebe3;
@@ -3119,6 +3193,15 @@ button.fab {
   text-transform: capitalize;
 }
 
+.checkin-ratings small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.checkin-ratings .primary strong {
+  color: var(--accent);
+}
+
 .checkin-details {
   display: grid;
   gap: 8px;
@@ -3170,6 +3253,12 @@ button.fab {
 /* Logged, but the habit has no goal to judge it by. */
 .coverage-cell.used {
   background: #a7a7b0;
+}
+
+/* A day the habit isn't tracked (its frequency), and nothing was logged. */
+.coverage-cell.off {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 
 .habit-cell {
@@ -3337,6 +3426,30 @@ details[open] .journal-preview {
   gap: 10px;
 }
 
+.habit-log-actions {
+  display: inline-flex;
+  gap: 12px;
+}
+
+.habit-log-editor {
+  display: grid;
+  flex: 1;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 12px;
+  background: var(--bg);
+}
+
+.habit-times select {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfa;
+  color: var(--ink);
+  padding: 9px 11px;
+  font-size: 16px;
+}
+
 .habit-panel-logs small {
   display: block;
   color: var(--muted);
@@ -3415,5 +3528,193 @@ details[open] .journal-preview {
   gap: 4px;
   color: var(--muted);
   font-size: 13px;
+}
+
+/* Habits tab: the reminders list */
+.reminder-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reminder-list > li {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.reminder-list > li:first-child {
+  border-top: 0;
+}
+
+.reminder-list > li > div {
+  display: grid;
+  gap: 2px;
+}
+
+.reminder-list > li span,
+.reminder-list > li small {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.reminder-list > li.off strong {
+  color: var(--muted);
+}
+
+.reminder-list .text-button,
+.reminder-banner .text-button {
+  padding: 0;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.reminder-enabled {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.reminders-device {
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.reminder-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface);
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.type-filter button {
+  flex: none;
+  padding: 4px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: #e4e4ea;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.type-filter button.on {
+  background: var(--accent);
+  color: #fff;
+}
+
+.scale-picker {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+
+.tag-custom {
+  display: flex;
+  gap: 8px;
+}
+
+.tag-custom input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.journal-tag-filter {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.journal-tag-filter > div {
+  display: grid;
+  gap: 4px;
+}
+
+.journal-tag-filter > div > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.journal-pattern {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--bg);
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.journal-entry-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.journal-entry-foot .text-button,
+.habit-edit-actions .text-button {
+  padding: 0;
+  border: 0;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.habit-list-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.habit-edit-actions {
+  display: inline-flex;
+  gap: 12px;
+}
+
+.habit-editor textarea {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+}
+
+.habit-archived {
+  margin-top: 10px;
+  font-size: 14px;
+}
+
+.habit-archived summary {
+  color: var(--muted);
+  cursor: pointer;
 }
 

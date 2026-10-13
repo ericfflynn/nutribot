@@ -4,6 +4,7 @@ import { createHash } from "crypto";
 import type { Pool } from "pg";
 import { addDays, todayLocalDate } from "../dates";
 import { autoLinkPendingSessions } from "../workouts";
+import { reconcileWorkoutDuplicates } from "./dedupe";
 import { GoogleHealthClient, GoogleHealthError, type HealthDataType } from "./google";
 
 export const HEALTH_SYNC_START = "2026-01-01";
@@ -235,7 +236,12 @@ export async function runHealthSync(
       [runId, result.failedTypes.length ? "failed" : "succeeded", result.records, result.failedTypes]
     );
     if (options.types.includes("exercise") && !result.failedTypes.includes("exercise")) {
-      // Link chat-logged workouts that were waiting for this sync. Never fails the sync.
+      // Fold duplicate recordings first, so pending sessions link to the
+      // canonical workout. Neither step fails the sync.
+      await reconcileWorkoutDuplicates(db, options.userName).catch(() => {
+        options.report?.("workout dedupe failed");
+      });
+      // Link chat-logged workouts that were waiting for this sync.
       await autoLinkPendingSessions(db, options.userName).catch(() => {
         options.report?.("workout auto-link failed");
       });
