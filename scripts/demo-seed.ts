@@ -1,14 +1,12 @@
-// Fills a LOCAL database with a fictional user's data, for README screenshots
-// and demos. Nothing here is real: names, meals, workouts, journal entries,
-// habits and health metrics are generated from a fixed seed.
+// Fills the database with a fictional user, "Demo", for README screenshots
+// and demos. Nothing here is real: meals, workouts, journal entries, habits
+// and health metrics are generated from a fixed seed. See docs/demo.md.
 //
-//   DEMO_DATABASE_URL=postgres://localhost/nutribot_demo npm run demo:seed
+//   npm run demo:seed -- --main               # into DATABASE_URL, as user Demo
+//   DEMO_DATABASE_URL=... npm run demo:seed   # into a separate database
 //
-// Then run the app against it (docs/demo.md):
-//   DATABASE_URL=$DEMO_DATABASE_URL APP_USERS=Demo APP_USER_PASSWORDS=Demo:demo npm run dev
-//
-// It refuses to touch any database that isn't on this machine, and the
-// production database in particular. Re-running replaces the demo user's rows.
+// It only deletes and writes rows whose user_name is Demo. Re-running
+// replaces Demo's rows; days are relative to today.
 import { readFileSync } from "fs";
 import { Pool } from "pg";
 import { addDays, todayLocalDate } from "../lib/dates";
@@ -18,13 +16,13 @@ const USER = "Demo";
 const DAYS = 28;
 const TIME_ZONE = process.env.APP_TIME_ZONE || "America/New_York";
 
-function checkTarget(url: string | undefined) {
-  if (!url) throw new Error("Set DEMO_DATABASE_URL to a local Postgres database.");
-  const production = process.env.DATABASE_URL;
-  if (production && url === production) throw new Error("DEMO_DATABASE_URL is the production database. Refusing.");
-  const host = new URL(url).hostname;
-  if (!["localhost", "127.0.0.1", "::1", ""].includes(host) || /supabase/i.test(url)) {
-    throw new Error(`DEMO_DATABASE_URL must point at this machine (got host ${host}). Refusing.`);
+// DEMO_DATABASE_URL picks a separate database; otherwise Demo goes into
+// DATABASE_URL beside the real user, which needs --main to say so.
+function checkTarget() {
+  const url = process.env.DEMO_DATABASE_URL || (process.argv.includes("--main") ? process.env.DATABASE_URL : undefined);
+  if (!url) throw new Error("Pass --main to seed Demo into DATABASE_URL, or set DEMO_DATABASE_URL.");
+  if ((process.env.GOOGLE_HEALTH_USER || "").toLowerCase() === USER.toLowerCase()) {
+    throw new Error(`${USER} is the real health user here. Refusing.`);
   }
   return url;
 }
@@ -186,10 +184,11 @@ const JOURNAL = [
 ];
 
 async function main() {
-  const url = checkTarget(process.env.DEMO_DATABASE_URL);
+  const url = checkTarget();
   const db = new Pool({ connectionString: url });
   try {
-    await db.query(readFileSync("supabase/schema.sql", "utf8"));
+    // A separate demo database gets the schema; the main one already has it.
+    if (process.env.DEMO_DATABASE_URL) await db.query(readFileSync("supabase/schema.sql", "utf8"));
     const today = todayLocalDate();
     const dates = Array.from({ length: DAYS }, (_, index) => addDays(today, index - DAYS + 1));
 
@@ -204,6 +203,9 @@ async function main() {
         "journal_entries",
         "workout_sessions",
         "health_workout_merges",
+        "chat_messages",
+        "chat_conversations",
+        "app_feedback",
         "health_records",
         "water_entries",
         "macro_entries",
