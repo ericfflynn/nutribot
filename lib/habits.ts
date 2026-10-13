@@ -432,5 +432,7 @@ export function formatHabitAmount(habit: Pick<Habit, "measure" | "unit">, amount
   if (amount <= 0) return "None";
   if (habit.measure === "intensity") return INTENSITY_LABELS[Math.min(3, Math.round(amount))];
   if (habit.measure === "minutes") return formatMinutes(Math.round(amount));
-  return `${amount} ${habit.unit ?? ""}`.trim();
+  // "1 drink", not "1 drinks".
+  const unit = amount === 1 && habit.unit?.endsWith("s") ? habit.unit.slice(0, -1) : habit.unit;
+  return `${amount} ${unit ?? ""}`.trim();
 }

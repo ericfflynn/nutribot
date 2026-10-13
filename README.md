@@ -7,15 +7,22 @@ A personal health app that pairs a Fitbit with a Claude brain. Fitbit data flows
 <table>
   <tr>
     <td align="center"><img src="docs/screenshots/today.png" width="240" alt="Today: sleep, recovery and strain scores, nutrition and water"><br><sub><b>Today</b>: scores from Fitbit, nutrition vs goals, water</sub></td>
-    <td align="center"><img src="docs/screenshots/chat.png" width="240" alt="Chat: one message describing breakfast and a past workout, and Claude's reply"><br><sub><b>Chat</b>: one message, a meal and a workout</sub></td>
-    <td align="center"><img src="docs/screenshots/chat-cards.png" width="240" alt="Draft cards: breakfast with item-level macros, and a workout matched to a Fitbit session"><br><sub><b>Drafts</b>: item-level macros; the workout matched to the watch</sub></td>
+    <td align="center"><img src="docs/screenshots/today-timeline.png" width="240" alt="Today's timeline: sleep, recovery, meals with macros, a workout with strain"><br><sub><b>Timeline</b>: sleep, recovery, meals, workouts</sub></td>
+    <td align="center"><img src="docs/screenshots/chat.png" width="240" alt="Chat: one message describing dinner and a workout, and Claude's reply"><br><sub><b>Chat</b>: one message, a meal and a workout</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/screenshots/today-timeline.png" width="240" alt="Today's timeline: sleep, recovery, walks with strain, breakfast with macros"><br><sub><b>Timeline</b>: sleep, recovery, workouts, meals</sub></td>
-    <td align="center"><img src="docs/screenshots/training.png" width="240" alt="Training: missing muscle groups and unlabeled Fitbit workouts"><br><sub><b>Training</b>: what's missing, what needs a label</sub></td>
-    <td align="center"><img src="docs/screenshots/training-recent.png" width="240" alt="Training: 14-day coverage grid shaded by effort, sessions per muscle group, recent workouts"><br><sub><b>Coverage</b>: 14 days by muscle group, shaded by effort</sub></td>
+    <td align="center"><img src="docs/screenshots/chat-cards.png" width="240" alt="Draft cards from an evening check-in: a journal entry with mood, and the day's habits"><br><sub><b>Check-in</b>: a journal entry and habits, saved on tap</sub></td>
+    <td align="center"><img src="docs/screenshots/training.png" width="240" alt="Training: next strength day, activity mix by kind, unlabeled workouts"><br><sub><b>Training</b>: what to train next, the activity mix</sub></td>
+    <td align="center"><img src="docs/screenshots/training-coverage.png" width="240" alt="Strength coverage by muscle group with Legs expanded into muscles, and recent workouts"><br><sub><b>Coverage</b>: groups open into muscles; duplicates combined</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/habits.png" width="240" alt="Habits: check-in card and a 14-day grid colored by goal met or missed"><br><sub><b>Habits</b>: 14 days colored by goal met or missed</sub></td>
+    <td align="center"><img src="docs/screenshots/journal.png" width="240" alt="Journal history filtered by the work tag, with mood and stress compared"><br><sub><b>Journal</b>: tags by category; mood and stress by tag</sub></td>
+    <td align="center"><img src="docs/screenshots/reminders.png" width="240" alt="Tracked habits with edit buttons, and configurable reminders"><br><sub><b>Reminders</b>: editable habits and reminders</sub></td>
   </tr>
 </table>
+
+<sub>Screenshots show a fictional demo user ([docs/demo.md](docs/demo.md)).</sub>
 
 ## What it does
 
@@ -123,7 +130,6 @@ Everything is in [`supabase/schema.sql`](supabase/schema.sql), written to be saf
 ## Roadmap
 
 - **Habit and journal trends vs. health:** compare habits, mood and stress tags against sleep and recovery once there are a few weeks of data.
-- **Fresh screenshots** from a fictional demo user ([docs/demo.md](docs/demo.md)).
 
 Details and open questions: [docs/mvp-plan.md](docs/mvp-plan.md).
 

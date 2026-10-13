@@ -65,3 +65,9 @@ test("days normalize to sorted weekdays, or null for every day", () => {
   assert.equal(normalizeDays([]), null);
   assert.equal(normalizeDays(null), null);
 });
+
+test("one of a counted unit reads singular", async () => {
+  const { formatHabitAmount } = await import("../lib/habits");
+  assert.equal(formatHabitAmount({ measure: "count", unit: "drinks" }, 1), "1 drink");
+  assert.equal(formatHabitAmount({ measure: "count", unit: "drinks" }, 2), "2 drinks");
+});

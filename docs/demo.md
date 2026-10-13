@@ -19,7 +19,7 @@ Re-running replaces demo's rows. `DEMO_DATABASE_URL=... npm run demo:seed` seeds
 
 ## Screenshots
 
-Take them on the iPhone (the app is iPhone-first) and save them as `docs/screenshots/*.png` under the names README.md uses. Suggested set: Today, Today's timeline, Chat with draft cards, Training (Next up, Activity, coverage), Habits (grid and Check-in), Journal history with a tag selected. Keep chat screenshots to what you type for the fictional user.
+The current set (October 12, 2026) was taken at iPhone size (390×844 at 3x, light mode) in headless Chrome, logged in as demo, after a short demo chat (dinner plus a workout, then an evening check-in) so the chat shots have draft cards. Save new ones as `docs/screenshots/*.png` under the names README.md uses, and only ever as demo.
 
 ## Removing demo
 
