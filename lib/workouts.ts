@@ -458,10 +458,10 @@ export const CARDIO_FITBIT_TYPES = ["RUNNING", "TREADMILL", "BIKING", "SPINNING"
 export async function lastTrainedByName(db: Pick<Pool, "query">, userName: string, endDate: string) {
   const { rows } = await db.query<{ name: string; day: string }>(
     `
-    select name, max(entry_date)::text as "day"
-    from public.workout_sessions, unnest(muscle_groups) as name
-    where user_name = $1 and entry_date <= $2::date and entry_date > $2::date - 365
-    group by name
+    select trained.muscle as name, max(s.entry_date)::text as "day"
+    from public.workout_sessions s, unnest(s.muscle_groups) as trained(muscle)
+    where s.user_name = $1 and s.entry_date <= $2::date and s.entry_date > $2::date - 365
+    group by trained.muscle
     `,
     [userName, endDate]
   );
