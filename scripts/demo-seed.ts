@@ -12,7 +12,7 @@ import { Pool } from "pg";
 import { addDays, todayLocalDate } from "../lib/dates";
 import { reconcileWorkoutDuplicates } from "../lib/health/dedupe";
 
-const USER = "Demo";
+const USER = "demo";
 const DAYS = 28;
 const TIME_ZONE = process.env.APP_TIME_ZONE || "America/New_York";
 
@@ -271,7 +271,7 @@ async function main() {
           const key = `demo-run-${date}`;
           health.push(exerciseRow(date, { key, type: "RUNNING", name: "Run", hour: 9, minutes: int(28, 45), hr: int(145, 158), miles: between(3, 5) }));
           // Fitbit sometimes records a run twice; the dedupe step folds it.
-          if (index % 7 === 6) {
+          if (weekday === 6) {
             health.push(exerciseRow(date, { key: `${key}-dup`, type: "RUNNING", name: "Run", hour: 9, minutes: 9, hr: 150 }));
           }
         }
