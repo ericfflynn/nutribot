@@ -417,7 +417,10 @@ export async function runBrain(message: string, context: BrainContext): Promise<
           exclude: claimedIds(target.id!)
         };
         match = chooseMatch(query, workouts);
-        if (match.status === "none" && date === today && context.syncIfMissing && !synced) {
+        // Only the Fitbit owner's data can be synced; another user's sync
+        // would file the owner's workouts under their name.
+        const ownsFitbit = userName === process.env.GOOGLE_HEALTH_USER;
+        if (match.status === "none" && date === today && context.syncIfMissing && ownsFitbit && !synced) {
           synced = true;
           await runHealthSync(db, {
             trigger: "manual",
