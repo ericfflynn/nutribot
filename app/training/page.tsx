@@ -1,5 +1,5 @@
 import { AppShell, Login } from "../shared-ui";
-import { CoverageGrid, LabelButton, MergeControls, WorkoutEditor, type CoverageRow } from "../training-ui";
+import { CoverageGrid, LabelButton, MergeControls, WeekVolume, WorkoutEditor, type CoverageRow } from "../training-ui";
 import { getSessionUser } from "@/lib/auth";
 import { addDays, rollingDateWindow, todayLocalDate } from "@/lib/dates";
 import { listHealthWorkouts, type HealthWorkout } from "@/lib/health/queries";
@@ -12,8 +12,8 @@ import {
   INTENSITIES,
   INTENSITY_RULES,
   WEEKLY_TARGET_POINTS,
+  groupLoadOf,
   intensityOf,
-  loadOf,
   MUSCLES,
   MUSCLE_GROUPS,
   STRENGTH_FITBIT_TYPES,
@@ -174,8 +174,8 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     };
   });
   const nextUp = recommendNext(lastByName, sessions, today);
-  // This week: each strength group's volume against the target, and recovery.
-  const week = STRENGTH_GROUPS.map((group) => ({ group, ...loadOf(sessions, group, today) }));
+  // This week: each strength group's volume against its target, and recovery.
+  const week = STRENGTH_GROUPS.map((group) => groupLoadOf(sessions, group, today));
 
   // Recent workouts: every Fitbit workout except unlabeled walks, plus sessions
   // that aren't linked to one (pending or untracked).
@@ -315,25 +315,11 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
           <h2 className="card-title">This week</h2>
           <span className="card-aside">Last 7 days</span>
         </div>
-        <div className="training-week">
-          {week.map((row) => (
-            <div key={row.group} className="training-week-row">
-              <span>{row.group}</span>
-              <span className="training-week-bar" aria-label={`${row.points} of ${WEEKLY_TARGET_POINTS} volume points`}>
-                {Array.from({ length: Math.max(WEEKLY_TARGET_POINTS, row.points) }, (_, index) => (
-                  <i key={index} className={index < row.points ? "filled" : ""} />
-                ))}
-              </span>
-              <span className={row.readyIn ? "training-week-status" : "training-week-status ready"}>
-                {row.points}/{WEEKLY_TARGET_POINTS} · {row.readyIn ? `rest ${row.readyIn}d` : "ready"}
-              </span>
-            </div>
-          ))}
-          <p className="training-week-note">
-            Light {INTENSITY_RULES.light.points}, medium {INTENSITY_RULES.medium.points}, hard {INTENSITY_RULES.hard.points} points a
-            session. Recovery: light 1 day, medium 2–3, hard 5–6.
-          </p>
-        </div>
+        <WeekVolume groups={week} target={WEEKLY_TARGET_POINTS} />
+        <p className="training-week-note">
+          {WEEKLY_TARGET_POINTS} points per muscle a week: light {INTENSITY_RULES.light.points}, medium{" "}
+          {INTENSITY_RULES.medium.points}, hard {INTENSITY_RULES.hard.points}. Recovery: light 1 day, medium 2–3, hard 5–6.
+        </p>
       </section>
 
       <section className="card" aria-label="Activity">

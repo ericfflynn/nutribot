@@ -52,7 +52,7 @@ In the editor, tapping a group selects the whole group and shows its muscles; pi
 
 ## Intensity, recovery and weekly volume
 
-Each trained group or muscle is **light** (mostly stretching and light movement), **medium** (solid working sets) or **hard** (heavy or to failure). A name in `muscle_intensity` uses its own; otherwise its group's; otherwise the session RPE's (5 or less light, 6–7 medium, 8+ hard, none medium). So "light chest and heavy tris" is one session, and extra moves worked into a workout ("light pushups after mobility") are just more muscles on it, not a separate tag. Stretching or mobility done inside a workout goes on that workout as Mobility rather than a session of its own.
+Each trained group or muscle is **light** (mostly stretching and light movement), **medium** (solid working sets) or **hard** (heavy or to failure). A name in `muscle_intensity` uses its own; otherwise its group's; otherwise the session RPE's (1–3 light, 4–6 medium, 7–10 hard, none medium). So "light chest and heavy tris" is one session, and extra moves worked into a workout ("light pushups after mobility") are just more muscles on it, not a separate tag. Stretching or mobility done inside a workout goes on that workout as Mobility rather than a session of its own.
 
 | Intensity | Recovery | Volume points |
 | --- | --- | --- |
@@ -60,12 +60,12 @@ Each trained group or muscle is **light** (mostly stretching and light movement)
 | Medium | 2–3 days (ready after 2) | 2 |
 | Hard | 5–6 days (ready after 5) | 3 |
 
-Weekly target: 5 points per strength group in any 7 days (today included): a hard and a medium session, or two medium and a light. `INTENSITY_RULES` and `WEEKLY_TARGET_POINTS` in `lib/workouts.ts`; `loadOf` computes a muscle's or group's points and days until recovered. A session logged as a whole group counts for each of its muscles; for a group, a session counts once at its hardest intensity there.
+Weekly target: 4 points per muscle in any 7 days (today included): a hard and a light session, or two medium. A session logged as a whole group counts for each of its muscles. A group's total is the sum of its muscles' points, each counted up to 4, against 4 × its muscle count (Chest 12, Legs 16), so a group is only full when every muscle is. `INTENSITY_RULES` and `WEEKLY_TARGET_POINTS` in `lib/workouts.ts`; `loadOf` gives a muscle's points and days until recovered, `groupLoadOf` a group's.
 
 ## What the Training tab reads
 
 - **Next up:** the strength day to do next (`recommendNext`): push, pull or legs, whichever has the most weekly volume missing from muscles that have recovered (longer gaps break ties, capped at 30 days), with the three ready muscles furthest below target, and "+ core" when core is ready and short. "Recover" when everything short is still recovering, "You're covered" when every split muscle has its weekly volume.
-- **This week:** each strength group's volume points over the last 7 days against the target, and "ready" or days of rest left.
+- **This week:** each strength group's volume over the last 7 days against its target, and "ready" (some muscle in it has recovered) or days of rest left. Tapping a group shows each muscle's points, short ones highlighted.
 - **Activity:** a 14-day grid of strength, cardio (run, walk, ride, class), mobility (pilates, yoga) and sport, from logged sessions and watch workouts (auto-detected walks left out), with counts per kind. A session tagged Mobility or Cardio also counts for that kind on its day.
 - **Days since each muscle group was trained:** the latest session per group; a specific muscle counts for its group.
 - **14-day strength coverage grid:** sessions per day for the six strength groups (Cardio and Mobility live in Activity), shaded light, medium or hard (the hardest that day). Tapping a group expands a row per specific muscle; sessions logged as the whole group shade only the group row. The old "sessions per muscle group" card was dropped as redundant. This replaces "hard sets per muscle group", which needs per-set data.

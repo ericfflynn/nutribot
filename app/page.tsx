@@ -16,6 +16,7 @@ import {
   listHealthDays,
   listHealthWorkouts,
   type HealthDay,
+  type HealthWorkout,
   type HealthSyncRun
 } from "@/lib/health/queries";
 import {
@@ -519,17 +520,21 @@ export default async function Home({ searchParams }: PageProps) {
   const healthStart = addDays(stripDates[0] < priorDates[0] ? stripDates[0] : priorDates[0], -31);
 
   const db = getPool()!;
-  const [entries, goals, healthDays, workouts, waterOunces, lastRun, journal] = await Promise.all([
+  const [entries, goals, healthDays, rangeWorkouts, waterOunces, lastRun, journal] = await Promise.all([
     listEntriesForDateRange(user.name, priorDates[0], date),
     getUserGoals(user.name),
     listHealthDays(user.name, healthStart, stripEnd),
-    listHealthWorkouts(user.name, date, date),
+    // Every day the strip and trends score; day strain builds on its workouts.
+    listHealthWorkouts(user.name, priorDates[0] < stripDates[0] ? priorDates[0] : stripDates[0], stripEnd),
     getWaterOunces(user.name, date),
     getLatestHealthSyncRun(user.name),
     listJournalEntries(db, user.name, date, date)
   ]);
 
   const healthByDay = new Map(healthDays.map((day) => [day.day, day]));
+  const workoutsByDay = new Map<string, HealthWorkout[]>();
+  for (const workout of rangeWorkouts) workoutsByDay.set(workout.day, [...(workoutsByDay.get(workout.day) ?? []), workout]);
+  const workouts = workoutsByDay.get(date) ?? [];
   const recoveryByDay = new Map<string, RecoveryScore>();
   healthDays.forEach((day, index) => {
     if (day.hrvMs != null && day.restingHr != null) {
@@ -544,7 +549,7 @@ export default async function Home({ searchParams }: PageProps) {
     return health ? field(health) : null;
   };
   const sleepMinutesOn = (day: string) => pick(day, (health) => health.sleepMinutes);
-  const strainOn = (day: string) => dayStrain(healthByDay.get(day));
+  const strainOn = (day: string) => dayStrain(healthByDay.get(day), workoutsByDay.get(day));
 
   const caloriesByDay = new Map<string, number>();
   for (const entry of entries) {

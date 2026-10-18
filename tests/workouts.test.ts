@@ -6,6 +6,7 @@ import {
   activityCategoryOf,
   describeMuscles,
   intensityOf,
+  groupLoadOf,
   loadOf,
   normalizeMuscles,
   recommendNext,
@@ -44,18 +45,38 @@ test("chips mark muscles with their own intensity", () => {
 test("weekly volume sums the last 7 days; recovery follows the latest hard work", () => {
   const sessions = [
     session("2026-10-10", ["Chest"], 8), // hard, 2 days ago: 3 points, 3 more days to recover
-    session("2026-10-11", ["Upper Chest"], 4), // light, yesterday: 1 point
+    session("2026-10-11", ["Upper Chest"], 3), // light, yesterday: 1 point
     session("2026-10-05", ["Chest"], 8) // 7 days ago: outside the week
   ];
   assert.deepEqual(loadOf(sessions, "Upper Chest", TODAY), { points: 4, readyIn: 3 });
   assert.deepEqual(loadOf(sessions, "Mid Chest", TODAY), { points: 3, readyIn: 3 });
-  assert.deepEqual(loadOf(sessions, "Chest", TODAY), { points: 4, readyIn: 3 });
-  assert.deepEqual(loadOf(sessions, "Back", TODAY), { points: 0, readyIn: 0 });
+  assert.deepEqual(loadOf(sessions, "Lats", TODAY), { points: 0, readyIn: 0 });
+});
+
+test("a group's volume is the sum of its muscles, each capped at the target", () => {
+  const sessions = [
+    session("2026-10-10", ["Upper Chest", "Mid Chest"], 8), // 3 each
+    session("2026-10-11", ["Mid Chest"], 8), // Mid Chest 6, counted as 4
+    session("2026-10-11", ["Arms"], 2) // light, counts for all three arm muscles
+  ];
+  const chest = groupLoadOf(sessions, "Chest", TODAY);
+  assert.equal(chest.points, 7);
+  assert.equal(chest.target, 12);
+  assert.equal(chest.readyIn, 0); // Lower Chest is untouched
+  const arms = groupLoadOf(sessions, "Arms", TODAY);
+  assert.equal(arms.points, 3);
+  assert.deepEqual(arms.muscles.map((item) => item.points), [1, 1, 1]);
+});
+
+test("RPE 1-3 is light, 4-6 medium, 7-10 hard", () => {
+  assert.equal(intensityOf(session(TODAY, ["Lats"], 3), "Lats"), "light");
+  assert.equal(intensityOf(session(TODAY, ["Lats"], 4), "Lats"), "medium");
+  assert.equal(intensityOf(session(TODAY, ["Lats"], 7), "Lats"), "hard");
 });
 
 test("light work recovers in a day, medium in two", () => {
-  assert.equal(loadOf([session("2026-10-11", ["Lats"], 4)], "Lats", TODAY).readyIn, 0);
-  assert.equal(loadOf([session("2026-10-11", ["Lats"], 6)], "Lats", TODAY).readyIn, 1);
+  assert.equal(loadOf([session("2026-10-11", ["Lats"], 3)], "Lats", TODAY).readyIn, 0);
+  assert.equal(loadOf([session("2026-10-11", ["Lats"], 5)], "Lats", TODAY).readyIn, 1);
 });
 
 test("recommends the split with the most volume missing from recovered muscles", () => {

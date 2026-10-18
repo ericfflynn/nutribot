@@ -87,29 +87,43 @@ export function strainBand(strain: number): StrainBand {
   return strain >= 18 ? "All out" : strain >= 14 ? "Strenuous" : strain >= 10 ? "Moderate" : "Light";
 }
 
-// Day strain from Fitbit's daily heart-zone minutes (fat burn, cardio, peak) and steps.
-export function dayStrain(day: HealthDay | undefined) {
+// Day strain is the sum of its parts: every workout's load, plus what the
+// rest of the day added. The rest is Fitbit's daily heart-zone minutes (fat
+// burn, cardio, peak) less the workouts' own (moderate, vigorous, peak), and
+// steps taken outside workouts. So a day never scores below a workout in it.
+// `workouts` are that day's watch workouts.
+export function dayStrain(day: HealthDay | undefined, workouts: readonly HealthWorkout[] = []) {
   if (!day || (day.zoneMinutesFatBurn == null && day.steps == null)) {
     return null;
   }
+  const sum = (field: (workout: HealthWorkout) => number | null) =>
+    workouts.reduce((total, workout) => total + (field(workout) ?? 0), 0);
+  const outside = (dayMinutes: number | null, workoutMinutes: number) => Math.max(0, (dayMinutes ?? 0) - workoutMinutes);
   const load =
-    (day.zoneMinutesFatBurn ?? 0) +
-    2 * (day.zoneMinutesCardio ?? 0) +
-    3 * (day.zoneMinutesPeak ?? 0) +
-    ((day.steps ?? 0) / 1000) * LOAD_PER_1000_STEPS;
+    sum(workoutLoad) +
+    outside(day.zoneMinutesFatBurn, sum((w) => w.hrModerateMinutes)) +
+    2 * outside(day.zoneMinutesCardio, sum((w) => w.hrVigorousMinutes)) +
+    3 * outside(day.zoneMinutesPeak, sum((w) => w.hrPeakMinutes)) +
+    (outside(day.steps, sum((w) => w.steps)) / 1000) * LOAD_PER_1000_STEPS;
   return strainFromLoad(load);
 }
 
-// Workout strain from time in each heart-rate zone.
-export function workoutStrain(workout: HealthWorkout) {
+// A workout's load from time in each heart-rate zone; null with no zone data.
+function workoutLoad(workout: HealthWorkout) {
   const zones = [workout.hrLightMinutes, workout.hrModerateMinutes, workout.hrVigorousMinutes, workout.hrPeakMinutes];
   if (zones.every((minutes) => minutes == null)) {
     return null;
   }
-  const load =
+  return (
     0.5 * (workout.hrLightMinutes ?? 0) +
     (workout.hrModerateMinutes ?? 0) +
     2 * (workout.hrVigorousMinutes ?? 0) +
-    3 * (workout.hrPeakMinutes ?? 0);
-  return strainFromLoad(load);
+    3 * (workout.hrPeakMinutes ?? 0)
+  );
+}
+
+// Workout strain from time in each heart-rate zone.
+export function workoutStrain(workout: HealthWorkout) {
+  const load = workoutLoad(workout);
+  return load == null ? null : strainFromLoad(load);
 }

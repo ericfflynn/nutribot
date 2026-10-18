@@ -49,13 +49,18 @@ Not used yet: respiratory rate and SpO2 (both synced), which Whoop also consider
 ## Strain (the Activity dial)
 
 ```
-day load     = fat-burn zone min × 1 + cardio zone min × 2 + peak zone min × 3 + steps / 1000 × 2.5
 workout load = light zone min × 0.5 + moderate × 1 + vigorous × 2 + peak × 3
+day load     = sum of the day's workout loads
+             + (fat-burn min - workouts' moderate min) × 1      (each difference floored at 0)
+             + (cardio min - workouts' vigorous min) × 2
+             + (peak min - workouts' peak min) × 3
+             + (steps - workouts' steps) / 1000 × 2.5
 strain       = 21 × (1 - e^(-load / 80))          (one decimal)
 band         = all out ≥ 18, strenuous ≥ 14, moderate ≥ 10, else light
 ```
 
-- **Day inputs:** Fitbit's daily active-zone-minute totals (`zone_minutes_fat_burn`, `_cardio`, `_peak` in `health_daily`) and steps. These cover the whole day, not just logged workouts.
+- **Day = sum of its parts:** the day's load is every watch workout's load plus what the rest of the day added, so a day never scores below a workout in it. Fitbit's daily zone totals have no light zone, so before October 17, 2026 the day was scored from those totals alone and long light-zone workouts (a 2-hour golf round: workout 11.3, day 7.9) mostly vanished from it.
+- **Day inputs:** the day's watch workouts (`health_workouts`, duplicates already merged), plus Fitbit's daily active-zone-minute totals (`zone_minutes_fat_burn`, `_cardio`, `_peak` in `health_daily`) and steps for the time outside them. Fat burn, cardio and peak are treated as the workouts' moderate, vigorous and peak zones.
 - **Workout inputs:** that session's time in Fitbit's light / moderate / vigorous / peak heart-rate zones (`hr_*_minutes` in `health_workouts`). Each workout row on Today shows its own strain.
 - **Curve:** `1 - e^(-load/80)` rises quickly at first, then flattens toward 21, mimicking Whoop's diminishing returns. 21 is effectively unreachable.
 
@@ -66,8 +71,9 @@ Calibration history:
 | Curve constant 100 → **80** | A ~50-minute weights session averaging ~130 bpm scored 9 ("light"); it should read moderate. |
 | Steps 1 → **2.5** per 1,000 | An 11,000-step day with no heart-zone minutes scored about 2. |
 | Light-zone workout minutes added at **0.5×** | Walks rarely leave Fitbit's light zone and scored 0. |
+| Day load built from its workouts plus the rest of the day | A golf day scored 7.9 with an 11.3 golf round in it. |
 
-With these values, on the calibration data: weights sessions scored 7-11, walks 1-7, days with a weights session 12-15, easy walking days 3-6.
+With these values, on the calibration data: weights sessions scored 7-11, walks 1-7, days with a weights session 12-15, easy walking days 3-6. After the sum-of-parts change (checked on late September to mid October 2026): days with a weights session moved by under 1.5 points, days with long walks or golf rose by 3-7 (a 2-hour golf round with 10k steps: 13.8).
 
 Example (synthetic): a day with 30 fat-burn minutes, 20 cardio minutes, 0 peak, 6,000 steps.
 load = 30 + 40 + 0 + 15 = 85 → strain = 21 × (1 - e^(-1.06)) = **13.7, moderate**.
@@ -75,7 +81,7 @@ load = 30 + 40 + 0 + 15 = 85 → strain = 21 × (1 - e^(-1.06)) = **13.7, modera
 ## Known limitations
 
 - **Zones are Fitbit's.** Heart-rate zone boundaries come from Fitbit's own ranges for you (the `daily-heart-rate-zones` thresholds). Lifting that doesn't raise heart rate much scores lower than it feels.
-- **Day strain ignores light-zone time outside workouts**: the daily totals don't include a light zone, so steps stand in for it.
+- **Day strain ignores light-zone time outside workouts**: the daily totals don't include a light zone, so steps stand in for it. Light-zone time inside a recorded workout does count.
 - **Daily zone totals vs workout zones:** Fitbit reports them with different zone names (fat burn / cardio / peak for the day, light / moderate / vigorous / peak per workout); the weights map them roughly onto each other.
 - **Steps are Fitbit-only**, so they're lower than the Google Health app's merged (Fitbit + iPhone) count.
 - **Fixed sleep need** of 8 hours.

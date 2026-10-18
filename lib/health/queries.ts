@@ -35,6 +35,7 @@ export type HealthWorkout = {
   calories: number | null;
   avgHr: number | null;
   distanceMiles: number | null;
+  steps: number | null;
   hrLightMinutes: number | null;
   hrModerateMinutes: number | null;
   hrVigorousMinutes: number | null;
@@ -101,6 +102,7 @@ export async function listHealthWorkouts(userName: string, startDate: string, en
       calories::int as "calories",
       avg_hr::int as "avgHr",
       distance_miles::float8 as "distanceMiles",
+      steps::int as "steps",
       hr_light_minutes::int as "hrLightMinutes",
       hr_moderate_minutes::int as "hrModerateMinutes",
       hr_vigorous_minutes::int as "hrVigorousMinutes",

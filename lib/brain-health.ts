@@ -52,7 +52,7 @@ function describeDay(day: HealthDay, recovery: RecoveryScore | undefined, workou
     ].filter(Boolean);
     parts.push(`sleep ${hm(day.sleepMinutes)} (${detail.join(", ")})`);
   }
-  const strain = dayStrain(day);
+  const strain = dayStrain(day, workouts);
   parts.push(
     recovery ? `recovery ${recovery.score}% ${recovery.band}` : null,
     day.hrvMs != null ? `HRV ${round(day.hrvMs)} ms` : null,
@@ -124,7 +124,7 @@ export function healthTools({ userName, today }: { userName: string; today: stri
           recovery: average(full.map((day) => recoveryByDay.get(day.day)?.score)),
           hrv: average(full.map((day) => day.hrvMs)),
           rhr: average(full.map((day) => day.restingHr)),
-          strain: average(full.map((day) => dayStrain(day))),
+          strain: average(full.map((day) => dayStrain(day, workoutsByDay.get(day.day)))),
           steps: average(full.map((day) => day.steps))
         };
         const summary = [

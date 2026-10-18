@@ -50,15 +50,15 @@ export const INTENSITY_RULES: Record<Intensity, { label: string; recoveryDays: n
   // Heavy or to failure: 5-6 days.
   hard: { label: "Hard", recoveryDays: 5, points: 3 }
 };
-// Volume points each strength group should get in any 7 days: a hard and a
-// medium session, or two medium and a light.
-export const WEEKLY_TARGET_POINTS = 5;
+// Volume points each muscle should get in any 7 days: a hard and a light
+// session, or two medium. A group's target is this times its muscles.
+export const WEEKLY_TARGET_POINTS = 4;
 const WEEK_DAYS = 7;
 
 export function intensityFromRpe(rpe: number | null): Intensity {
   if (rpe == null) return "medium";
-  if (rpe >= 8) return "hard";
-  if (rpe >= 6) return "medium";
+  if (rpe >= 7) return "hard";
+  if (rpe >= 4) return "medium";
   return "light";
 }
 
@@ -84,27 +84,42 @@ function daysBetween(from: string, to: string) {
   return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
 }
 
-// Weekly volume and recovery for one muscle, or a whole group. A session
-// logged as the group counts for every muscle in it; for a group, a session
-// counts once, at its hardest intensity in that group.
-export function loadOf(sessions: readonly TrainedSession[], target: MuscleName, today: string): Load {
-  const isGroup = (MUSCLE_GROUPS as readonly string[]).includes(target);
+// Weekly volume and recovery for one muscle. A session logged as the whole
+// group counts for every muscle in it.
+export function loadOf(sessions: readonly TrainedSession[], muscle: SpecificMuscle, today: string): Load {
   let points = 0;
   let readyIn = 0;
   for (const session of sessions) {
     const ago = daysBetween(session.date, today);
     if (ago < 0) continue;
-    const names = session.muscleGroups.filter((name) =>
-      isGroup ? groupOf(name) === target : name === target || name === groupOf(target)
-    );
-    if (!names.length) continue;
-    const intensity = names
-      .map((name) => intensityOf(session, name))
-      .reduce((a, b) => (INTENSITY_RULES[b].points > INTENSITY_RULES[a].points ? b : a));
-    if (ago < WEEK_DAYS) points += INTENSITY_RULES[intensity].points;
-    readyIn = Math.max(readyIn, INTENSITY_RULES[intensity].recoveryDays - ago);
+    const name = session.muscleGroups.find((item) => item === muscle || item === groupOf(muscle));
+    if (!name) continue;
+    const rules = INTENSITY_RULES[intensityOf(session, name)];
+    if (ago < WEEK_DAYS) points += rules.points;
+    readyIn = Math.max(readyIn, rules.recoveryDays - ago);
   }
   return { points, readyIn };
+}
+
+export type GroupLoad = {
+  group: MuscleGroup;
+  // Sum of its muscles' points, each counted up to the target, so the group
+  // is only full when every muscle is.
+  points: number;
+  target: number;
+  readyIn: number; // days until any of its muscles is ready
+  muscles: ({ muscle: SpecificMuscle } & Load)[];
+};
+
+export function groupLoadOf(sessions: readonly TrainedSession[], group: MuscleGroup, today: string): GroupLoad {
+  const muscles = (MUSCLES[group] as readonly SpecificMuscle[]).map((muscle) => ({ muscle, ...loadOf(sessions, muscle, today) }));
+  return {
+    group,
+    points: muscles.reduce((sum, item) => sum + Math.min(item.points, WEEKLY_TARGET_POINTS), 0),
+    target: muscles.length * WEEKLY_TARGET_POINTS,
+    readyIn: Math.min(...muscles.map((item) => item.readyIn)),
+    muscles
+  };
 }
 
 // The higher-level mix: what kind of training each workout was.

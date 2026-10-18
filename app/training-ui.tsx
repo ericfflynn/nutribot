@@ -17,6 +17,7 @@ import {
   MUSCLES,
   groupOf,
   intensityFromRpe,
+  type GroupLoad,
   type Intensity,
   type MuscleGroup,
   type MuscleIntensity,
@@ -377,6 +378,55 @@ export function WorkoutEditor({
           {busy ? "Saving…" : "Save"}
         </button>
       </div>
+    </div>
+  );
+}
+
+// This week: each group's volume against its target, with recovery. Tapping a
+// group shows its muscles.
+export function WeekVolume({ groups, target }: { groups: GroupLoad[]; target: number }) {
+  const [open, setOpen] = useState<string | null>(null);
+  const status = (readyIn: number) => (
+    <span className={readyIn ? "training-week-status" : "training-week-status ready"}>{readyIn ? `rest ${readyIn}d` : "ready"}</span>
+  );
+  const bar = (points: number, max: number) => (
+    <span className="training-week-bar" role="img" aria-label={`${points} of ${max} points`}>
+      <i style={{ width: `${Math.min(100, (points / max) * 100)}%` }} />
+    </span>
+  );
+  return (
+    <div className="training-week">
+      {groups.map((row) => (
+        <div key={row.group} className="training-week-group">
+          <button
+            type="button"
+            className="training-week-row"
+            aria-expanded={open === row.group}
+            onClick={() => setOpen(open === row.group ? null : row.group)}
+          >
+            <span className="training-week-name">
+              {row.group} <span aria-hidden="true">{open === row.group ? "▾" : "▸"}</span>
+            </span>
+            {bar(row.points, row.target)}
+            <span className="training-week-points">
+              {row.points}/{row.target}
+            </span>
+            {status(row.readyIn)}
+          </button>
+          {open === row.group
+            ? row.muscles.map((item) => (
+                <div key={item.muscle} className="training-week-row training-week-sub">
+                  <span className="training-week-name">{item.muscle}</span>
+                  {bar(item.points, target)}
+                  <span className={item.points < target ? "training-week-points short" : "training-week-points"}>
+                    {item.points}/{target}
+                  </span>
+                  {status(item.readyIn)}
+                </div>
+              ))
+            : null}
+        </div>
+      ))}
     </div>
   );
 }
