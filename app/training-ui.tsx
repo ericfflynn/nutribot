@@ -27,8 +27,14 @@ import {
   type WorkoutType
 } from "@/lib/workouts";
 
-// What kind of workout it was. Stretching has no type of its own: pick Other
-// (or what the watch called it) and add Mobility as the muscle.
+// The editor's type picker, for real fixes ("that was a run"). Labeling
+// doesn't ask: the muscles decide whether a workout counts as strength,
+// mobility or both. A mix of everything is "Mixed / other".
+const TYPE_OPTION_LABELS: Partial<Record<WorkoutType, string>> = {
+  other: "Mixed / other",
+  class: "Class (spin, aerobics)"
+};
+
 function TypeSelect({ value, onChange }: { value: WorkoutType; onChange: (next: WorkoutType) => void }) {
   return (
     <label className="workout-editor-field">
@@ -36,7 +42,7 @@ function TypeSelect({ value, onChange }: { value: WorkoutType; onChange: (next: 
       <select value={value} onChange={(event) => onChange(event.target.value as WorkoutType)}>
         {WORKOUT_TYPES.map((type) => (
           <option key={type} value={type}>
-            {WORKOUT_TYPE_LABELS[type]}
+            {TYPE_OPTION_LABELS[type] ?? WORKOUT_TYPE_LABELS[type]}
           </option>
         ))}
       </select>
@@ -45,8 +51,9 @@ function TypeSelect({ value, onChange }: { value: WorkoutType; onChange: (next: 
 }
 
 // Labels an unlabeled watch workout: describe it in chat (opens with a
-// sentence ready to finish), or pick a type, muscles (optional) and effort
-// right here. `defaultType` is what the watch's type most likely is.
+// sentence ready to finish), or pick muscles (optional) and effort right
+// here. The type is what the watch's type most likely is (`defaultType`);
+// the editor can change it later.
 export function LabelButton({
   prompt,
   workoutId,
@@ -60,7 +67,6 @@ export function LabelButton({
 }) {
   const router = useRouter();
   const [picking, setPicking] = useState(false);
-  const [workoutType, setWorkoutType] = useState<WorkoutType>(defaultType);
   const [muscles, setMuscles] = useState<MuscleName[]>([]);
   const [intensity, setIntensity] = useState<MuscleIntensity>({});
   const [effort, setEffort] = useState("");
@@ -71,7 +77,7 @@ export function LabelButton({
     setBusy(true);
     setError(null);
     const result = await labelWorkoutAction(workoutId, date, {
-      workoutType,
+      workoutType: defaultType,
       muscleGroups: muscles,
       muscleIntensity: intensity,
       rpe: effort === "" ? null : Number(effort)
@@ -111,7 +117,6 @@ export function LabelButton({
   }
   return (
     <div className="workout-editor label-picker">
-      <TypeSelect value={workoutType} onChange={setWorkoutType} />
       <MusclePicker value={muscles} onChange={setMuscles} />
       <label className="workout-editor-field">
         <span>RPE</span>
