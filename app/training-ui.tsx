@@ -16,19 +16,51 @@ import {
   INTENSITY_RULES,
   MUSCLE_GROUPS,
   MUSCLES,
+  WORKOUT_TYPES,
+  WORKOUT_TYPE_LABELS,
   groupOf,
   intensityFromRpe,
   type Intensity,
   type MuscleGroup,
   type MuscleIntensity,
-  type MuscleName
+  type MuscleName,
+  type WorkoutType
 } from "@/lib/workouts";
 
+// What kind of workout it was. Stretching has no type of its own: pick Other
+// (or what the watch called it) and add Mobility as the muscle.
+function TypeSelect({ value, onChange }: { value: WorkoutType; onChange: (next: WorkoutType) => void }) {
+  return (
+    <label className="workout-editor-field">
+      <span>Type</span>
+      <select value={value} onChange={(event) => onChange(event.target.value as WorkoutType)}>
+        {WORKOUT_TYPES.map((type) => (
+          <option key={type} value={type}>
+            {WORKOUT_TYPE_LABELS[type]}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 // Labels an unlabeled watch workout: describe it in chat (opens with a
-// sentence ready to finish), or pick muscles and effort right here.
-export function LabelButton({ prompt, workoutId, date }: { prompt: string; workoutId: string; date: string }) {
+// sentence ready to finish), or pick a type, muscles (optional) and effort
+// right here. `defaultType` is what the watch's type most likely is.
+export function LabelButton({
+  prompt,
+  workoutId,
+  date,
+  defaultType
+}: {
+  prompt: string;
+  workoutId: string;
+  date: string;
+  defaultType: WorkoutType;
+}) {
   const router = useRouter();
   const [picking, setPicking] = useState(false);
+  const [workoutType, setWorkoutType] = useState<WorkoutType>(defaultType);
   const [muscles, setMuscles] = useState<MuscleName[]>([]);
   const [intensity, setIntensity] = useState<MuscleIntensity>({});
   const [effort, setEffort] = useState("");
@@ -39,6 +71,7 @@ export function LabelButton({ prompt, workoutId, date }: { prompt: string; worko
     setBusy(true);
     setError(null);
     const result = await labelWorkoutAction(workoutId, date, {
+      workoutType,
       muscleGroups: muscles,
       muscleIntensity: intensity,
       rpe: effort === "" ? null : Number(effort)
@@ -64,7 +97,7 @@ export function LabelButton({ prompt, workoutId, date }: { prompt: string; worko
     return (
       <span className="label-actions">
         <button type="button" className="pill-button" onClick={() => setPicking(true)}>
-          Pick muscles
+          Label
         </button>
         <button type="button" className="pill-button" onClick={() => openChat(prompt)}>
           Chat
@@ -78,6 +111,7 @@ export function LabelButton({ prompt, workoutId, date }: { prompt: string; worko
   }
   return (
     <div className="workout-editor label-picker">
+      <TypeSelect value={workoutType} onChange={setWorkoutType} />
       <MusclePicker value={muscles} onChange={setMuscles} />
       <label className="workout-editor-field">
         <span>RPE</span>
@@ -97,7 +131,7 @@ export function LabelButton({ prompt, workoutId, date }: { prompt: string; worko
         <button type="button" className="button secondary compact" disabled={busy} onClick={() => setPicking(false)}>
           Cancel
         </button>
-        <button type="button" className="button compact" disabled={busy || !muscles.length} onClick={save}>
+        <button type="button" className="button compact" disabled={busy} onClick={save}>
           {busy ? "Saving…" : "Save"}
         </button>
       </div>
@@ -303,12 +337,14 @@ export function MergeControls({
 export function WorkoutEditor({
   id,
   name,
+  workoutType,
   muscleGroups,
   muscleIntensity,
   rpe
 }: {
   id: string;
   name: string;
+  workoutType: WorkoutType;
   muscleGroups: MuscleName[];
   muscleIntensity: MuscleIntensity;
   rpe: number | null;
@@ -316,6 +352,7 @@ export function WorkoutEditor({
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState(name);
+  const [draftType, setDraftType] = useState<WorkoutType>(workoutType);
   const [groups, setGroups] = useState<MuscleName[]>(muscleGroups);
   const [intensity, setIntensity] = useState<MuscleIntensity>(muscleIntensity);
   const [effort, setEffort] = useState(rpe == null ? "" : String(rpe));
@@ -325,6 +362,7 @@ export function WorkoutEditor({
 
   function reset() {
     setDraftName(name);
+    setDraftType(workoutType);
     setGroups(muscleGroups);
     setIntensity(muscleIntensity);
     setEffort(rpe == null ? "" : String(rpe));
@@ -366,6 +404,7 @@ export function WorkoutEditor({
         <span>Name</span>
         <input value={draftName} onChange={(event) => setDraftName(event.target.value)} />
       </label>
+      <TypeSelect value={draftType} onChange={setDraftType} />
       <MusclePicker value={groups} onChange={setGroups} />
       <label className="workout-editor-field">
         <span>RPE</span>
@@ -401,6 +440,7 @@ export function WorkoutEditor({
             run(() =>
               updateWorkoutSessionAction(id, {
                 name: draftName,
+                workoutType: draftType,
                 muscleGroups: groups,
                 muscleIntensity: intensity,
                 rpe: effort === "" ? null : Number(effort)

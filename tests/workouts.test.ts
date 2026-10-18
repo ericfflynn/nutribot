@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  activityCategoriesOf,
   activityCategoryOf,
   chooseMatch,
   describeMuscles,
@@ -142,4 +143,16 @@ test("ignored watch workouts are never matched", () => {
   const query = { date: TODAY, workoutType: "strength" as const, timeHint: null, loggedAt: `${TODAY}T09:00` };
   assert.equal(chooseMatch(query, [workout]).status, "matched");
   assert.equal(chooseMatch(query, [{ ...workout, ignored: true }]).status, "none");
+});
+
+test("muscles decide the kind of training when the type doesn't", () => {
+  const kinds = activityCategoriesOf;
+  assert.deepEqual(kinds("other", ["Mobility"]), ["mobility"]); // a stretching session
+  assert.deepEqual(kinds("strength", ["Mobility"]), ["mobility"]); // core training that was really stretching
+  assert.deepEqual(kinds("strength", ["Chest", "Mobility"]), ["strength", "mobility"]);
+  assert.deepEqual(kinds("class", ["Cardio"]), ["cardio"]);
+  assert.deepEqual(kinds("other", ["Lower Back"]), ["strength"]);
+  assert.deepEqual(kinds("yoga", ["Mobility"]), ["mobility"]);
+  assert.deepEqual(kinds("pilates", ["Core"]), ["mobility"]);
+  assert.deepEqual(kinds("class", []), ["cardio"]); // no muscles: the type decides
 });

@@ -162,6 +162,26 @@ export function activityCategoryOf(type: WorkoutType): ActivityCategory {
   return "other";
 }
 
+// Every kind of training a workout was, its main one first. The muscles can
+// say more than the type: only Mobility is a mobility session (stretching has
+// no type of its own), only Cardio is cardio, and Mobility or Cardio inside
+// another workout counts for that kind too. An "other" workout with strength
+// muscles is strength.
+export function activityCategoriesOf(type: WorkoutType, muscles: readonly MuscleName[] = []): ActivityCategory[] {
+  const kinds = new Set(muscles.map((name) => (name === "Mobility" ? "mobility" : name === "Cardio" ? "cardio" : "strength")));
+  const byType = activityCategoryOf(type);
+  const main: ActivityCategory =
+    kinds.size && !kinds.has("strength") && !kinds.has(byType as never)
+      ? kinds.has("mobility")
+        ? "mobility"
+        : "cardio"
+      : byType === "other" && kinds.has("strength")
+        ? "strength"
+        : byType;
+  const extra = (["mobility", "cardio"] as const).filter((kind) => kinds.has(kind) && kind !== main);
+  return [main, ...extra];
+}
+
 // Strength days to suggest, each with the muscles it covers.
 const SPLITS: { name: string; muscles: SpecificMuscle[] }[] = [
   { name: "Push day", muscles: ["Upper Chest", "Mid Chest", "Front Delts", "Side Delts", "Triceps"] },
@@ -296,10 +316,15 @@ export function workoutTypeOf(fitbitType: string): WorkoutType {
   return found ?? "other";
 }
 
-// Only strength workouts are worth labeling when nothing is logged for them:
-// runs, rides and classes say what they were already.
-export const STRENGTH_FITBIT_TYPES = ["WEIGHTLIFTING", "WEIGHTS"];
-const LABELABLE_TYPES = new Set(STRENGTH_FITBIT_TYPES);
+// Watch workouts the Unlabeled card asks about: their name doesn't say what
+// was trained (core training and aerobics are often stretching or mobility).
+// Runs, rides, yoga and the like can still be labeled from Recent workouts;
+// walks are mostly auto-detected and never asked about.
+const ASK_ABOUT_TYPES = new Set(["WEIGHTLIFTING", "WEIGHTS", "CORE_TRAINING", "AEROBIC_WORKOUT"]);
+
+export function canLabel(fitbitType: string) {
+  return fitbitType !== "WALKING";
+}
 
 export function fitsType(workoutType: WorkoutType, fitbitType: string) {
   if (workoutType === "other") return fitbitType !== "WALKING";
@@ -437,7 +462,7 @@ export async function listFitbitWorkouts(
 // Strength workouts from the watch that nothing has been logged for.
 export async function listUnlabeledWorkouts(db: Pool, userName: string, startDate: string, endDate: string) {
   const workouts = await listFitbitWorkouts(db, userName, startDate, endDate);
-  return workouts.filter((w) => !w.sessionId && !w.ignored && LABELABLE_TYPES.has(w.type));
+  return workouts.filter((w) => !w.sessionId && !w.ignored && ASK_ABOUT_TYPES.has(w.type));
 }
 
 // Ignore a watch workout nothing is logged for, or stop ignoring one.
@@ -633,12 +658,12 @@ export async function updateWorkoutSession(
   db: Pick<Pool, "query">,
   userName: string,
   id: string,
-  changes: { name: string; muscleGroups: MuscleName[]; muscleIntensity: MuscleIntensity; rpe: number | null }
+  changes: { name: string; workoutType: WorkoutType; muscleGroups: MuscleName[]; muscleIntensity: MuscleIntensity; rpe: number | null }
 ) {
   const { rowCount } = await db.query(
     `
     update public.workout_sessions
-    set name = $3, muscle_groups = $4, rpe = $5, muscle_intensity = $6::jsonb
+    set name = $3, muscle_groups = $4, rpe = $5, muscle_intensity = $6::jsonb, workout_type = $7
     where id = $1 and user_name = $2
     `,
     [
@@ -647,7 +672,8 @@ export async function updateWorkoutSession(
       changes.name,
       changes.muscleGroups,
       changes.rpe,
-      JSON.stringify(cleanIntensity(changes.muscleIntensity, changes.muscleGroups))
+      JSON.stringify(cleanIntensity(changes.muscleIntensity, changes.muscleGroups)),
+      changes.workoutType
     ]
   );
   return (rowCount ?? 0) > 0;

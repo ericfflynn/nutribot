@@ -39,13 +39,16 @@ import { mergeWorkouts, separateWorkout } from "@/lib/health/dedupe";
 import {
   INTENSITIES,
   MUSCLE_NAMES,
+  WORKOUT_TYPES,
+  WORKOUT_TYPE_LABELS,
   deleteWorkoutSession,
   groupsOf,
   normalizeMuscles,
   listFitbitWorkouts,
   saveWorkoutSession,
   setWorkoutIgnored,
-  updateWorkoutSession
+  updateWorkoutSession,
+  type WorkoutType
 } from "@/lib/workouts";
 import {
   addWaterEntry,
@@ -406,12 +409,20 @@ export async function newChatAction(): Promise<{ ok: boolean }> {
 
 const workoutEditSchema = z.object({
   name: z.string().trim().min(1).max(80),
-  muscleGroups: z.array(z.enum(MUSCLE_NAMES)).min(1).transform(normalizeMuscles),
+  workoutType: z.enum(WORKOUT_TYPES),
+  // Optional: "aerobics, nothing more" is a complete label.
+  muscleGroups: z.array(z.enum(MUSCLE_NAMES)).transform(normalizeMuscles),
   muscleIntensity: z.partialRecord(z.enum(MUSCLE_NAMES), z.enum(INTENSITIES)),
   rpe: z.number().min(1).max(10).nullable()
 });
 
-type WorkoutEdit = { name: string; muscleGroups: string[]; muscleIntensity: Record<string, string>; rpe: number | null };
+type WorkoutEdit = {
+  name: string;
+  workoutType: string;
+  muscleGroups: string[];
+  muscleIntensity: Record<string, string>;
+  rpe: number | null;
+};
 
 // Training page: fix a logged workout's label or effort.
 export async function updateWorkoutSessionAction(
@@ -423,7 +434,7 @@ export async function updateWorkoutSessionAction(
   if (!user || !db) return { ok: false, error: "Log in again." };
 
   const parsed = workoutEditSchema.safeParse(changes);
-  if (!parsed.success) return { ok: false, error: "Pick at least one muscle group and an RPE from 1 to 10." };
+  if (!parsed.success) return { ok: false, error: "Give it a name, a type and an RPE from 1 to 10." };
   const updated = await updateWorkoutSession(db, user.name, id, parsed.data);
   if (!updated) return { ok: false, error: "That workout no longer exists." };
   revalidatePath("/training");
@@ -432,9 +443,9 @@ export async function updateWorkoutSessionAction(
 
 const recordKey = z.string().min(1).max(300);
 
-// "Chest + Triceps" from the picked muscles' groups, for a quick label.
-function sessionName(groups: string[]) {
-  return groups.slice(0, 3).join(" + ") || "Strength";
+// "Chest + Triceps" from the picked muscles' groups, or the type's name.
+function sessionName(groups: string[], workoutType: WorkoutType) {
+  return groups.slice(0, 3).join(" + ") || WORKOUT_TYPE_LABELS[workoutType];
 }
 
 // Training page: ignore a watch workout nothing is logged for (an accidental
@@ -469,7 +480,7 @@ export async function labelWorkoutAction(
   if (!user || !db) return { ok: false, error: "Log in again." };
   const parsed = workoutEditSchema.omit({ name: true }).safeParse(input);
   if (!parsed.success || !recordKey.safeParse(fitbitWorkoutId).success || !isValidLocalDate(date)) {
-    return { ok: false, error: "Pick at least one muscle group and an RPE from 1 to 10." };
+    return { ok: false, error: "Pick a type, and an RPE from 1 to 10 if you set one." };
   }
   const workouts = await listFitbitWorkouts(db, user.name, date, date);
   const workout = workouts.find((item) => item.id === fitbitWorkoutId);
@@ -478,8 +489,8 @@ export async function labelWorkoutAction(
   await saveWorkoutSession(db, user.name, {
     date,
     rawText: "Labeled on the Training tab",
-    name: sessionName(groupsOf(parsed.data.muscleGroups)),
-    workoutType: "strength",
+    name: sessionName(groupsOf(parsed.data.muscleGroups), parsed.data.workoutType),
+    workoutType: parsed.data.workoutType,
     muscleGroups: parsed.data.muscleGroups,
     muscleIntensity: parsed.data.muscleIntensity,
     rpe: parsed.data.rpe,

@@ -15,9 +15,9 @@ import {
   weekStatus,
   intensityOf,
   MUSCLES,
-  STRENGTH_FITBIT_TYPES,
   STRENGTH_GROUPS,
-  activityCategoryOf,
+  activityCategoriesOf,
+  canLabel,
   lastByGroup,
   recommendNext,
   WORKOUT_TYPES,
@@ -233,7 +233,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
       fitbitId: workout.id,
       mergedCount: workout.mergedIds.length,
       overlaps,
-      labelPrompt: session || !STRENGTH_FITBIT_TYPES.includes(workout.type)
+      labelPrompt: session || !canLabel(workout.type)
         ? null
         : `My ${workout.name.toLowerCase()} on ${formatDay(workout.day)} at ${formatClock(workout.startedAt)} was `,
       status: null
@@ -273,13 +273,11 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
   const shown = typeFilter ? recent.filter((item) => item.workoutType === typeFilter) : recent;
 
   // The mix: strength, cardio, mobility and sport by day, from the same list
-  // (auto-detected walks are already left out). Stretching or cardio logged
-  // inside another workout (Mobility or Cardio in its muscles) counts too.
-  const tagged = (item: RecentItem, category: string) =>
-    (category === "mobility" && item.session?.muscleGroups.includes("Mobility")) ||
-    (category === "cardio" && item.session?.muscleGroups.includes("Cardio"));
+  // (auto-detected walks are already left out). The muscles can say more than
+  // the type: a stretching session is mobility (activityCategoriesOf).
+  const kindsOf = (item: RecentItem) => activityCategoriesOf(item.workoutType, item.session?.muscleGroups);
   const activityRows: CoverageRow[] = ACTIVITY_CATEGORIES.map((category) => {
-    const items = recent.filter((item) => activityCategoryOf(item.workoutType) === category || tagged(item, category));
+    const items = recent.filter((item) => kindsOf(item).includes(category));
     const dates = new Set(items.map((item) => item.date));
     const last = items.map((item) => item.date).sort().at(-1);
     return {
@@ -291,7 +289,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     };
   });
   const activityTotals = ACTIVITY_CATEGORIES.map((category) => {
-    const items = recent.filter((item) => activityCategoryOf(item.workoutType) === category);
+    const items = recent.filter((item) => kindsOf(item)[0] === category);
     const minutes = items.reduce((sum, item) => sum + (item.minutes ?? 0), 0);
     return { category, count: items.length, minutes };
   }).filter((total) => total.count);
@@ -393,6 +391,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
                 <LabelButton
                   workoutId={workout.id}
                   date={workout.day}
+                  defaultType={workoutTypeOf(workout.type)}
                   prompt={`My ${workout.name.toLowerCase()} on ${formatDay(workout.day)} at ${formatClock(workout.startedAt)} was `}
                 />
               </li>
@@ -458,7 +457,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
                       <span key={chip}>{chip}</span>
                     ))}
                   </div>
-                  {item.labelPrompt && item.fitbitId ? <LabelButton prompt={item.labelPrompt} workoutId={item.fitbitId} date={item.date} /> : null}
+                  {item.labelPrompt && item.fitbitId ? <LabelButton prompt={item.labelPrompt} workoutId={item.fitbitId} date={item.date} defaultType={item.workoutType} /> : null}
                 </div>
               ) : null}
               {item.fitbitId ? (
@@ -468,6 +467,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
                 <WorkoutEditor
                   id={item.session.id}
                   name={item.session.name}
+                  workoutType={item.session.workoutType}
                   muscleGroups={item.session.muscleGroups}
                   muscleIntensity={item.session.muscleIntensity}
                   rpe={item.session.rpe}
