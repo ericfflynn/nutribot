@@ -6,6 +6,7 @@ import {
   activityCategoriesOf,
   activityCategoryOf,
   chooseMatch,
+  currentMuscles,
   describeMuscles,
   intensityOf,
   loadOf,
@@ -54,24 +55,23 @@ test("chips mark muscles with their own intensity", () => {
 test("weekly volume sums the last 7 days; recovery follows the latest hard work", () => {
   const sessions = [
     session("2026-10-10", ["Chest"], 8), // hard, 2 days ago: 3 points, 3 more days to recover
-    session("2026-10-11", ["Upper Chest"], 3), // light, yesterday: 1 point
+    session("2026-10-11", ["Upper Chest"], 3), // light, yesterday: 1 point (an old name for Chest)
     session("2026-10-05", ["Chest"], 8) // 7 days ago: outside the week
   ];
-  assert.deepEqual(loadOf(sessions, "Upper Chest", TODAY), { points: 4, readyIn: 3 });
-  assert.deepEqual(loadOf(sessions, "Mid Chest", TODAY), { points: 3, readyIn: 3 });
+  assert.deepEqual(loadOf(sessions, "Chest", TODAY), { points: 4, readyIn: 3 });
   assert.deepEqual(loadOf(sessions, "Lats", TODAY), { points: 0, readyIn: 0 });
 });
 
 test("each muscle is due, recovering or covered", () => {
   const sessions = [
-    session("2026-10-08", ["Mid Chest"], 8), // 3 points, recovered
-    session("2026-10-11", ["Mid Chest"], 2), // +1: at target
+    session("2026-10-08", ["Chest"], 8), // 3 points, recovered
+    session("2026-10-11", ["Chest"], 2), // +1: at target
     session("2026-10-11", ["Lats"], 8) // hard yesterday: 4 days to go
   ];
   const week = weekStatus(sessions, TODAY);
-  assert.deepEqual(week.covered.map((item) => item.muscle), ["Mid Chest"]);
+  assert.deepEqual(week.covered.map((item) => item.muscle), ["Chest"]);
   assert.deepEqual(week.recovering.map((item) => [item.muscle, item.readyIn]), [["Lats", 4]]);
-  assert.equal(week.due.length, 18); // the other strength muscles, none trained
+  assert.equal(week.due.length, 15); // the other 15 tracked muscles, none trained
 });
 
 test("RPE 1-3 is light, 4-6 medium, 7-10 hard", () => {
@@ -155,4 +155,14 @@ test("muscles decide the kind of training when the type doesn't", () => {
   assert.deepEqual(kinds("yoga", ["Mobility"]), ["mobility"]);
   assert.deepEqual(kinds("pilates", ["Core"]), ["mobility"]);
   assert.deepEqual(kinds("class", []), ["cardio"]); // no muscles: the type decides
+});
+
+test("old names count as today's: Mid Chest is Chest, Traps is Upper Back", () => {
+  const sessions = [session("2026-10-11", ["Traps", "Mid Chest"], 3)];
+  assert.equal(loadOf(sessions, "Upper Back", TODAY).points, 1);
+  assert.equal(loadOf(sessions, "Chest", TODAY).points, 1);
+  assert.deepEqual(currentMuscles(["Upper Chest", "Mid Chest", "Traps"], { "Mid Chest": "hard" }), {
+    muscleGroups: ["Chest", "Upper Back"],
+    muscleIntensity: { Chest: "hard" }
+  });
 });

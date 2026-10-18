@@ -18,6 +18,7 @@ import {
   MUSCLES,
   WORKOUT_TYPES,
   WORKOUT_TYPE_LABELS,
+  currentMuscles,
   groupOf,
   intensityFromRpe,
   type Intensity,
@@ -358,8 +359,10 @@ export function WorkoutEditor({
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState(name);
   const [draftType, setDraftType] = useState<WorkoutType>(workoutType);
-  const [groups, setGroups] = useState<MuscleName[]>(muscleGroups);
-  const [intensity, setIntensity] = useState<MuscleIntensity>(muscleIntensity);
+  // Old names (Mid Chest, Traps) open as what they count as now.
+  const current = currentMuscles(muscleGroups, muscleIntensity);
+  const [groups, setGroups] = useState<MuscleName[]>(current.muscleGroups);
+  const [intensity, setIntensity] = useState<MuscleIntensity>(current.muscleIntensity);
   const [effort, setEffort] = useState(rpe == null ? "" : String(rpe));
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -368,8 +371,8 @@ export function WorkoutEditor({
   function reset() {
     setDraftName(name);
     setDraftType(workoutType);
-    setGroups(muscleGroups);
-    setIntensity(muscleIntensity);
+    setGroups(current.muscleGroups);
+    setIntensity(current.muscleIntensity);
     setEffort(rpe == null ? "" : String(rpe));
     setConfirmDelete(false);
     setError(null);

@@ -156,7 +156,7 @@ function exerciseRow(date: string, workout: Workout): HealthRow {
 }
 
 const PLAN: { muscles: string[]; name: string; type: string }[] = [
-  { name: "Push day", type: "strength", muscles: ["Mid Chest", "Front Delts", "Side Delts", "Triceps"] },
+  { name: "Push day", type: "strength", muscles: ["Chest", "Front Delts", "Side Delts", "Triceps"] },
   { name: "Pull day", type: "strength", muscles: ["Lats", "Upper Back", "Rear Delts", "Biceps"] },
   { name: "Leg day", type: "strength", muscles: ["Quads", "Hamstrings", "Glutes"] },
   { name: "Pilates", type: "pilates", muscles: ["Core"] },

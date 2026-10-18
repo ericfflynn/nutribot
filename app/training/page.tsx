@@ -33,7 +33,7 @@ import {
   type FitbitWorkout,
   type Intensity,
   type MuscleStatus,
-  type SpecificMuscle,
+  type TrackedMuscle,
   type WorkoutSession,
   type WorkoutType,
   workoutTypeOf
@@ -172,7 +172,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
       muscles: (MUSCLES[group] as readonly string[]).map((muscle) => ({
         name: muscle,
         since: sinceOf(
-          namesFor(muscle as SpecificMuscle)
+          namesFor(muscle as TrackedMuscle)
             .map((name) => lastByName.get(name))
             .filter((date): date is string => date != null)
             .sort()

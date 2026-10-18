@@ -37,16 +37,16 @@ Picked group first, then specific muscles (`MUSCLES` in `lib/workouts.ts`):
 
 | Group | Muscles |
 | --- | --- |
-| Chest | Upper Chest, Mid Chest, Lower Chest |
+| Chest | (one muscle, not split) |
 | Back | Lats, Upper Back, Lower Back |
-| Shoulders | Front Delts, Side Delts, Rear Delts, Traps |
+| Shoulders | Front Delts, Side Delts, Rear Delts |
 | Arms | Biceps, Triceps, Forearms |
 | Legs | Quads, Hamstrings, Glutes, Calves |
 | Core | Upper Abs, Lower Abs, Obliques |
 | Cardio | |
 | Mobility | |
 
-`muscle_groups` stores a mix: a group name means the whole group (or unspecified), a muscle name means just that muscle, and a group is never stored alongside its own muscles (`normalizeMuscles`). Sessions logged before October 12, 2026 used Chest, Back, Shoulders, Biceps, Triceps, Legs, Abs and Cardio as groups; each of those is still a valid group or muscle, so old sessions read correctly with no data change. Core was Abs and Obliques until October 17, 2026; "Abs" in older sessions is a legacy name that counts for both Upper Abs and Lower Abs (`LEGACY_MUSCLES`). Runs, rides and walks are Cardio; pilates is Core unless more is said; yoga and stretching are Mobility.
+`muscle_groups` stores a mix: a group name means the whole group (or unspecified), a muscle name means just that muscle, and a group is never stored alongside its own muscles (`normalizeMuscles`). Sessions logged before October 12, 2026 used Chest, Back, Shoulders, Biceps, Triceps, Legs, Abs and Cardio as groups; each of those is still a valid group or muscle, so old sessions read correctly with no data change. Core was Abs and Obliques until October 17, 2026; "Abs" in older sessions is a legacy name that counts for both Upper Abs and Lower Abs (`LEGACY_MUSCLES`). On the same day Chest stopped being split (Upper/Mid/Lower Chest now count as Chest) and Traps moved from Shoulders to count as Upper Back. Legacy names stay valid in stored sessions; the editor opens them as their current names, and the chat only uses current ones. Runs, rides and walks are Cardio; pilates is Core unless more is said; yoga and stretching are Mobility.
 
 In the editor, tapping a group selects the whole group and shows its muscles; picking muscles narrows it, and unpicking the last one goes back to the whole group.
 

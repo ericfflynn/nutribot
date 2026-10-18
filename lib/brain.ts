@@ -28,8 +28,8 @@ import {
 import {
   INTENSITIES,
   INTENSITY_RULES,
+  CURRENT_MUSCLE_NAMES,
   MUSCLE_GROUPS,
-  MUSCLE_NAMES,
   WEEKLY_TARGET_POINTS,
   cleanIntensity,
   MUSCLES,
@@ -216,8 +216,8 @@ Today is ${today}; local time is ${nowLocal.slice(11)}. The person is looking at
 
 ## Workouts
 - muscle_groups holds groups and specific muscles. Groups, each with its muscles: ${MUSCLE_GROUPS.map((group) => (MUSCLES[group].length ? `${group} (${MUSCLES[group].join(", ")})` : group)).join("; ")}.
-- Use a specific muscle when they name it or the exercise clearly targets it ("rear delts", "quads", "lateral raises": Side Delts; "tris": Triceps; "bis": Biceps). Use the group alone when they only say the group ("chest day", "legs") or it's unclear. Never list a group and its own muscles together. A named exercise counts for what it mainly trains (bench press: Mid Chest, Triceps, Front Delts). Push, pull and legs days are Chest/Shoulders/Triceps, Back/Biceps and Legs. Runs, rides and walks are Cardio; pilates is Core unless they say more; yoga and stretching are Mobility.
-- Stretching, mobility or a few extra moves done inside a workout belong to that same draft, not a draft of their own: "mobility, then light abs and pushups" is one workout with Mobility, Upper Abs, Lower Abs, Mid Chest and Front Delts. Crunches and sit-ups are Upper Abs; leg raises are Lower Abs; planks and "abs" in general are Core.
+- Use a specific muscle when they name it or the exercise clearly targets it ("rear delts", "quads", "lateral raises": Side Delts; "tris": Triceps; "bis": Biceps). Use the group alone when they only say the group ("chest day", "legs") or it's unclear. Never list a group and its own muscles together. A named exercise counts for what it mainly trains (bench press: Chest, Triceps, Front Delts; shrugs: Upper Back). Chest is one muscle; older sessions may show Upper/Mid/Lower Chest or Traps, which now count as Chest and Upper Back. Push, pull and legs days are Chest/Shoulders/Triceps, Back/Biceps and Legs. Runs, rides and walks are Cardio; pilates is Core unless they say more; yoga and stretching are Mobility.
+- Stretching, mobility or a few extra moves done inside a workout belong to that same draft, not a draft of their own: "mobility, then light abs and pushups" is one workout with Mobility, Upper Abs, Lower Abs, Chest and Front Delts. Crunches and sit-ups are Upper Abs; leg raises are Lower Abs; planks and "abs" in general are Core.
 - Intensity per muscle is light (mostly stretching and light movement), medium (solid working sets) or hard (heavy or to failure). Each muscle takes its intensity from rpe (1-3 light, 4-6 medium, 7-10 hard) unless muscle_intensity says otherwise. Fill muscle_intensity only for muscles that differ: "light chest, heavy tris" at rpe 8 is muscle_intensity [{Chest, light}].
 - Recovery: light ${INTENSITY_RULES.light.recoveryDays} day, medium 2-3 days, hard 5-6 days. Weekly volume: light ${INTENSITY_RULES.light.points}, medium ${INTENSITY_RULES.medium.points}, hard ${INTENSITY_RULES.hard.points} points per session, aiming for ${WEEKLY_TARGET_POINTS} points per strength group in any 7 days. Use these when they ask what to train next.
 - Watch workouts can be ignored (accidental recordings, shown as "ignored by the owner" in list_workouts) and restored. When they ask, find it with list_workouts and call draft_ignore_workout.
@@ -415,9 +415,9 @@ export async function runBrain(message: string, context: BrainContext): Promise<
       raw_text: z.string().describe("The person's words for this activity."),
       name: z.string().describe('Short session name, e.g. "Chest + Triceps".'),
       workout_type: z.enum(WORKOUT_TYPES),
-      muscle_groups: z.array(z.enum(MUSCLE_NAMES)).min(1),
+      muscle_groups: z.array(z.enum(CURRENT_MUSCLE_NAMES)).min(1),
       muscle_intensity: z
-        .array(z.object({ muscle: z.enum(MUSCLE_NAMES), intensity: z.enum(INTENSITIES) }))
+        .array(z.object({ muscle: z.enum(CURRENT_MUSCLE_NAMES), intensity: z.enum(INTENSITIES) }))
         .describe("Only names from muscle_groups whose intensity differs from what rpe implies; usually empty."),
       rpe: z.number().min(1).max(10).nullable(),
       duration_min: z.number().int().positive().nullable().describe("Only for untracked workouts with a stated duration."),

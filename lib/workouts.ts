@@ -5,16 +5,16 @@ import type { Pool } from "pg";
 
 // Muscles are picked group first, then specific muscles. A session stores a
 // mix of both: a group name means the whole group (or unspecified), a muscle
-// name means just that muscle. Older sessions stored "Biceps", "Triceps" and
-// "Abs" as groups; Biceps and Triceps are muscles of Arms now, and Abs is a
-// legacy name for both Upper and Lower Abs (LEGACY_MUSCLES), so they still read.
+// name means just that muscle. Chest isn't split: it is one muscle. Older
+// sessions use names that changed since (LEGACY_MUSCLES: Abs, Upper/Mid/Lower
+// Chest, Traps); they still read, as what they cover now.
 export const MUSCLE_GROUPS = ["Chest", "Back", "Shoulders", "Arms", "Legs", "Core", "Cardio", "Mobility"] as const;
 export type MuscleGroup = (typeof MUSCLE_GROUPS)[number];
 
 export const MUSCLES = {
-  Chest: ["Upper Chest", "Mid Chest", "Lower Chest"],
+  Chest: [],
   Back: ["Lats", "Upper Back", "Lower Back"],
-  Shoulders: ["Front Delts", "Side Delts", "Rear Delts", "Traps"],
+  Shoulders: ["Front Delts", "Side Delts", "Rear Delts"],
   Arms: ["Biceps", "Triceps", "Forearms"],
   Legs: ["Quads", "Hamstrings", "Glutes", "Calves"],
   Core: ["Upper Abs", "Lower Abs", "Obliques"],
@@ -23,25 +23,43 @@ export const MUSCLES = {
 } as const satisfies Record<MuscleGroup, readonly string[]>;
 
 export type SpecificMuscle = (typeof MUSCLES)[MuscleGroup][number];
+// What weekly volume and recovery are tracked on: each specific muscle, or a
+// strength group that isn't split (Chest) as a whole.
+export type TrackedMuscle = SpecificMuscle | "Chest";
 
-// Names older sessions use that were split later, and what they cover. Not
-// offered for new sessions; still valid when reading or editing old ones.
+// Names older sessions use that changed later, and what they count as now.
+// Not offered for new sessions; still valid when reading or editing old ones.
 export const LEGACY_MUSCLES = {
-  Abs: { group: "Core", covers: ["Upper Abs", "Lower Abs"] }
-} as const satisfies Record<string, { group: MuscleGroup; covers: readonly SpecificMuscle[] }>;
+  Abs: { group: "Core", covers: ["Upper Abs", "Lower Abs"] },
+  "Upper Chest": { group: "Chest", covers: ["Chest"] },
+  "Mid Chest": { group: "Chest", covers: ["Chest"] },
+  "Lower Chest": { group: "Chest", covers: ["Chest"] },
+  Traps: { group: "Back", covers: ["Upper Back"] }
+} as const satisfies Record<string, { group: MuscleGroup; covers: readonly TrackedMuscle[] }>;
 type LegacyMuscle = keyof typeof LEGACY_MUSCLES;
 
 // What a session's muscle_groups holds: group names and specific muscles.
 export type MuscleName = MuscleGroup | SpecificMuscle | LegacyMuscle;
-export const MUSCLE_NAMES = [
+// The names offered for new sessions (the chat and the pickers).
+export const CURRENT_MUSCLE_NAMES = [
   ...MUSCLE_GROUPS,
-  ...MUSCLE_GROUPS.flatMap((group) => MUSCLES[group] as readonly SpecificMuscle[]),
-  ...(Object.keys(LEGACY_MUSCLES) as LegacyMuscle[])
+  ...MUSCLE_GROUPS.flatMap((group) => MUSCLES[group] as readonly SpecificMuscle[])
 ] as [MuscleName, ...MuscleName[]];
+// Every valid stored name, legacy ones included.
+export const MUSCLE_NAMES = [...CURRENT_MUSCLE_NAMES, ...(Object.keys(LEGACY_MUSCLES) as LegacyMuscle[])] as [
+  MuscleName,
+  ...MuscleName[]
+];
+
+// What a strength group's volume is tracked on.
+export function trackedOf(group: MuscleGroup): TrackedMuscle[] {
+  const muscles = MUSCLES[group] as readonly SpecificMuscle[];
+  return muscles.length ? [...muscles] : [group as TrackedMuscle];
+}
 
 // The stored names that mean this muscle specifically: itself and any legacy
 // name covering it.
-export function namesFor(muscle: SpecificMuscle): MuscleName[] {
+export function namesFor(muscle: TrackedMuscle): MuscleName[] {
   const legacy = (Object.keys(LEGACY_MUSCLES) as LegacyMuscle[]).filter((name) =>
     (LEGACY_MUSCLES[name].covers as readonly string[]).includes(muscle)
   );
@@ -50,9 +68,25 @@ export function namesFor(muscle: SpecificMuscle): MuscleName[] {
 
 // The specific muscles a stored name stands for: itself, a legacy name's
 // muscles, or nothing for a group (a group is handled as the whole group).
-export function musclesOf(name: MuscleName): readonly SpecificMuscle[] {
+export function musclesOf(name: MuscleName): readonly TrackedMuscle[] {
   if (name in LEGACY_MUSCLES) return LEGACY_MUSCLES[name as LegacyMuscle].covers;
   return (MUSCLE_GROUPS as readonly string[]).includes(name) ? [] : [name as SpecificMuscle];
+}
+
+// An old session's names and intensities in today's terms, for editing:
+// "Mid Chest" becomes Chest, "Traps" becomes Upper Back.
+export function currentMuscles(names: readonly MuscleName[], intensity: MuscleIntensity) {
+  const nextIntensity: MuscleIntensity = { ...intensity };
+  const next = names.flatMap((name) => {
+    if (!(name in LEGACY_MUSCLES)) return [name];
+    const covers = LEGACY_MUSCLES[name as LegacyMuscle].covers as readonly MuscleName[];
+    const level = intensity[name];
+    delete nextIntensity[name];
+    if (level) for (const covered of covers) nextIntensity[covered] ??= level;
+    return covers;
+  });
+  const muscleGroups = normalizeMuscles(next);
+  return { muscleGroups, muscleIntensity: cleanIntensity(nextIntensity, muscleGroups) };
 }
 
 // The strength groups: the Training tab's coverage grid and "Next up".
@@ -111,7 +145,7 @@ function daysBetween(from: string, to: string) {
 
 // Weekly volume and recovery for one muscle. A session logged as the whole
 // group counts for every muscle in it.
-export function loadOf(sessions: readonly TrainedSession[], muscle: SpecificMuscle, today: string): Load {
+export function loadOf(sessions: readonly TrainedSession[], muscle: TrackedMuscle, today: string): Load {
   let points = 0;
   let readyIn = 0;
   for (const session of sessions) {
@@ -126,14 +160,14 @@ export function loadOf(sessions: readonly TrainedSession[], muscle: SpecificMusc
   return { points, readyIn };
 }
 
-export type MuscleStatus = { muscle: SpecificMuscle; group: MuscleGroup } & Load;
+export type MuscleStatus = { muscle: TrackedMuscle; group: MuscleGroup } & Load;
 
 // Every strength muscle sorted into what to train: due (recovered and short
 // of the weekly target, least volume first), recovering (short but not ready,
 // soonest first) and covered (at target).
 export function weekStatus(sessions: readonly TrainedSession[], today: string) {
   const all: MuscleStatus[] = STRENGTH_GROUPS.flatMap((group) =>
-    (MUSCLES[group] as readonly SpecificMuscle[]).map((muscle) => ({ muscle, group, ...loadOf(sessions, muscle, today) }))
+    trackedOf(group).map((muscle) => ({ muscle, group, ...loadOf(sessions, muscle, today) }))
   );
   const short = all.filter((item) => item.points < WEEKLY_TARGET_POINTS);
   return {
@@ -183,13 +217,13 @@ export function activityCategoriesOf(type: WorkoutType, muscles: readonly Muscle
 }
 
 // Strength days to suggest, each with the muscles it covers.
-const SPLITS: { name: string; muscles: SpecificMuscle[] }[] = [
-  { name: "Push day", muscles: ["Upper Chest", "Mid Chest", "Front Delts", "Side Delts", "Triceps"] },
+const SPLITS: { name: string; muscles: TrackedMuscle[] }[] = [
+  { name: "Push day", muscles: ["Chest", "Front Delts", "Side Delts", "Triceps"] },
   { name: "Pull day", muscles: ["Lats", "Upper Back", "Rear Delts", "Biceps"] },
   { name: "Leg day", muscles: ["Quads", "Hamstrings", "Glutes", "Calves"] }
 ];
 // Core is added to whichever day comes next, not a day of its own.
-const CORE: SpecificMuscle[] = ["Upper Abs", "Lower Abs", "Obliques"];
+const CORE: TrackedMuscle[] = ["Upper Abs", "Lower Abs", "Obliques"];
 
 // Days counted for a muscle never logged, and the cap on any gap.
 const NEVER_DAYS = 30;
@@ -200,7 +234,7 @@ export type NextUp = {
   // Why there's no split: every muscle at target, or the short ones still recovering.
   rest: "covered" | "recovering" | null;
   // Ready muscles furthest below the weekly target, at most 3.
-  neglected: { muscle: SpecificMuscle; since: number | null; points: number }[];
+  neglected: { muscle: TrackedMuscle; since: number | null; points: number }[];
   addCore: boolean; // core is ready and short of its weekly volume
 };
 
@@ -208,14 +242,14 @@ export type NextUp = {
 // that have recovered. Longer gaps break ties. `lastByName` maps group and
 // muscle names to the last date trained; `sessions` must cover the last week.
 export function recommendNext(lastByName: Map<string, string>, sessions: readonly TrainedSession[], today: string): NextUp {
-  const sinceOf = (muscle: SpecificMuscle) => {
+  const sinceOf = (muscle: TrackedMuscle) => {
     const values = [...namesFor(muscle), groupOf(muscle)]
       .map((name) => lastByName.get(name))
       .filter((date): date is string => date != null)
       .map((date) => daysBetween(date, today));
     return values.length ? Math.min(...values) : null;
   };
-  const stateOf = (muscle: SpecificMuscle) => {
+  const stateOf = (muscle: TrackedMuscle) => {
     const load = loadOf(sessions, muscle, today);
     const since = sinceOf(muscle);
     const short = Math.max(0, WEEKLY_TARGET_POINTS - load.points);
