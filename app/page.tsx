@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { addWaterAction, deleteCheckinAction } from "./actions";
+import { addWaterAction, deleteCheckinAction, undoWaterAction } from "./actions";
 import { CheckinSummary } from "./checkin-card";
 import { Sparkline } from "./charts";
 import { DayStrip, type StripDay } from "./day-strip";
@@ -227,6 +227,14 @@ function WaterRow({ ounces, goalOz, date }: { ounces: number; goalOz: number; da
           <strong>{integer.format(ounces)}</strong> / {goalOz} oz
         </span>
         <small>{left > 0 ? `${integer.format(left)} oz to go` : "Goal reached"}</small>
+        {ounces > 0 ? (
+          <form action={undoWaterAction}>
+            <input type="hidden" name="entryDate" value={date} />
+            <button type="submit" className="text-button water-undo">
+              Undo last
+            </button>
+          </form>
+        ) : null}
       </div>
       <form className="water-buttons" action={addWaterAction}>
         <input type="hidden" name="entryDate" value={date} />

@@ -9,6 +9,11 @@ import { isPossibleDuplicate, type WorkoutRecord } from "@/lib/health/dedupe-rul
 import {
   ACTIVITY_CATEGORIES,
   ACTIVITY_LABELS,
+  INTENSITIES,
+  INTENSITY_RULES,
+  WEEKLY_TARGET_POINTS,
+  intensityOf,
+  loadOf,
   MUSCLES,
   MUSCLE_GROUPS,
   STRENGTH_FITBIT_TYPES,
@@ -19,13 +24,13 @@ import {
   WORKOUT_TYPES,
   WORKOUT_TYPE_LABELS,
   describeMuscles,
-  groupsOf,
+  groupOf,
   lastTrainedByName,
   listFitbitWorkouts,
   listUnlabeledWorkouts,
   listWorkoutSessions,
   type FitbitWorkout,
-  type MuscleGroup,
+  type Intensity,
   type WorkoutSession,
   type WorkoutType,
   workoutTypeOf
@@ -56,14 +61,13 @@ function daysBetween(from: string, to: string) {
   return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
 }
 
-// Coverage cell shade from the day's hardest session for that group.
-function intensityClass(rpe: number | null | undefined) {
-  if (rpe === undefined) return "";
-  if (rpe == null) return "level-2";
-  if (rpe >= 8) return "level-3";
-  if (rpe >= 6) return "level-2";
-  return "level-1";
+// Coverage cell shade: level-1 light, level-2 medium, level-3 hard.
+function intensityClass(intensity: Intensity | undefined) {
+  return intensity ? `level-${INTENSITIES.indexOf(intensity) + 1}` : "";
 }
+
+const harder = (a: Intensity | undefined, b: Intensity) =>
+  a && INTENSITY_RULES[a].points >= INTENSITY_RULES[b].points ? a : b;
 
 type RecentItem = {
   key: string;
@@ -132,22 +136,18 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
   const healthById = new Map<string, HealthWorkout>(healthWorkouts.map((workout) => [workout.id, workout]));
   const fitbitById = new Map<string, FitbitWorkout>(fitbit.map((workout) => [workout.id, workout]));
 
-  // Coverage: the hardest RPE per day per group (null when trained without an RPE).
-  const coverage = new Map<string, number | null>();
-  const mark = (date: string, group: MuscleGroup, rpe: number | null) => {
-    const key = `${date}|${group}`;
-    const current = coverage.get(key);
-    coverage.set(key, current == null ? rpe : rpe == null ? current : Math.max(current, rpe));
-  };
-  // Specific muscles, keyed the same way, for the expanded rows.
-  const muscleCoverage = new Map<string, number | null>();
+  // Coverage: the hardest intensity per day per group, and per specific
+  // muscle for the expanded rows, keyed "date|name".
+  const coverage = new Map<string, Intensity>();
+  const muscleCoverage = new Map<string, Intensity>();
   for (const session of sessions) {
-    for (const group of groupsOf(session.muscleGroups)) mark(session.date, group, session.rpe);
     for (const name of session.muscleGroups) {
+      const intensity = intensityOf(session, name);
+      const groupKey = `${session.date}|${groupOf(name)}`;
+      coverage.set(groupKey, harder(coverage.get(groupKey), intensity));
       if ((MUSCLE_GROUPS as readonly string[]).includes(name)) continue;
       const key = `${session.date}|${name}`;
-      const current = muscleCoverage.get(key);
-      muscleCoverage.set(key, current == null ? session.rpe : session.rpe == null ? current : Math.max(current, session.rpe));
+      muscleCoverage.set(key, harder(muscleCoverage.get(key), intensity));
     }
   }
 
@@ -160,22 +160,22 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
       since,
       missing: since == null || since >= MISSING_AFTER_DAYS,
       levels: days.map((day) => {
-        const key = `${day}|${group}`;
-        return coverage.has(key) ? intensityClass(coverage.get(key)) : "";
+        return intensityClass(coverage.get(`${day}|${group}`));
       }),
       muscles: (MUSCLES[group] as readonly string[]).map((muscle) => ({
         name: muscle,
         since: sinceOf(lastByName.get(muscle)),
         missing: false,
         levels: days.map((day) => {
-          const key = `${day}|${muscle}`;
-          return muscleCoverage.has(key) ? intensityClass(muscleCoverage.get(key)) : "";
+          return intensityClass(muscleCoverage.get(`${day}|${muscle}`));
         }),
         muscles: []
       }))
     };
   });
-  const nextUp = recommendNext(lastByName, today);
+  const nextUp = recommendNext(lastByName, sessions, today);
+  // This week: each strength group's volume against the target, and recovery.
+  const week = STRENGTH_GROUPS.map((group) => ({ group, ...loadOf(sessions, group, today) }));
 
   // Recent workouts: every Fitbit workout except unlabeled walks, plus sessions
   // that aren't linked to one (pending or untracked).
@@ -205,7 +205,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
         .filter(Boolean)
         .join(" · "),
       strain,
-      chips: session ? describeMuscles(session.muscleGroups) : [],
+      chips: session ? describeMuscles(session.muscleGroups, session.muscleIntensity) : [],
       minutes: workout.activeMinutes,
       workoutType: session?.workoutType ?? workoutTypeOf(workout.type),
       session,
@@ -234,7 +234,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
         .filter(Boolean)
         .join(" · "),
       strain: null,
-      chips: describeMuscles(session.muscleGroups),
+      chips: describeMuscles(session.muscleGroups, session.muscleIntensity),
       minutes: session.durationMin,
       workoutType: session.workoutType,
       session,
@@ -252,9 +252,13 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
   const shown = typeFilter ? recent.filter((item) => item.workoutType === typeFilter) : recent;
 
   // The mix: strength, cardio, mobility and sport by day, from the same list
-  // (auto-detected walks are already left out).
+  // (auto-detected walks are already left out). Stretching or cardio logged
+  // inside another workout (Mobility or Cardio in its muscles) counts too.
+  const tagged = (item: RecentItem, category: string) =>
+    (category === "mobility" && item.session?.muscleGroups.includes("Mobility")) ||
+    (category === "cardio" && item.session?.muscleGroups.includes("Cardio"));
   const activityRows: CoverageRow[] = ACTIVITY_CATEGORIES.map((category) => {
-    const items = recent.filter((item) => activityCategoryOf(item.workoutType) === category);
+    const items = recent.filter((item) => activityCategoryOf(item.workoutType) === category || tagged(item, category));
     const dates = new Set(items.map((item) => item.date));
     const last = items.map((item) => item.date).sort().at(-1);
     return {
@@ -285,14 +289,51 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
 
       <section className="card training-missing" aria-label="Next up">
         <span className="training-missing-label">Next up</span>
-        <strong>{nextUp.split ? `${nextUp.split}${nextUp.addCore ? " + core" : ""}` : "You're covered"}</strong>
+        <strong>
+          {nextUp.split
+            ? `${nextUp.split}${nextUp.addCore ? " + core" : ""}`
+            : nextUp.rest === "recovering"
+              ? `Recover${nextUp.addCore ? ", or core" : ""}`
+              : "You're covered"}
+        </strong>
         <span className="training-missing-note">
           {nextUp.split
             ? nextUp.neglected
-                .map((item) => `${item.muscle} ${item.since == null ? "not logged yet" : `${item.since} days`}`)
+                .map(
+                  (item) =>
+                    `${item.muscle} ${item.points}/${WEEKLY_TARGET_POINTS}${item.since == null ? ", not logged yet" : item.since >= 7 ? `, ${item.since} days` : ""}`
+                )
                 .join(" · ")
-            : "Every strength group was hit in the last few days. A rest day, cardio or mobility fits."}
+            : nextUp.rest === "recovering"
+              ? "What's short this week is still recovering. A rest day, cardio or mobility fits."
+              : "Every strength group has its weekly volume. A rest day, cardio or mobility fits."}
         </span>
+      </section>
+
+      <section className="card" aria-label="This week">
+        <div className="card-heading">
+          <h2 className="card-title">This week</h2>
+          <span className="card-aside">Last 7 days</span>
+        </div>
+        <div className="training-week">
+          {week.map((row) => (
+            <div key={row.group} className="training-week-row">
+              <span>{row.group}</span>
+              <span className="training-week-bar" aria-label={`${row.points} of ${WEEKLY_TARGET_POINTS} volume points`}>
+                {Array.from({ length: Math.max(WEEKLY_TARGET_POINTS, row.points) }, (_, index) => (
+                  <i key={index} className={index < row.points ? "filled" : ""} />
+                ))}
+              </span>
+              <span className={row.readyIn ? "training-week-status" : "training-week-status ready"}>
+                {row.points}/{WEEKLY_TARGET_POINTS} · {row.readyIn ? `rest ${row.readyIn}d` : "ready"}
+              </span>
+            </div>
+          ))}
+          <p className="training-week-note">
+            Light {INTENSITY_RULES.light.points}, medium {INTENSITY_RULES.medium.points}, hard {INTENSITY_RULES.hard.points} points a
+            session. Recovery: light 1 day, medium 2–3, hard 5–6.
+          </p>
+        </div>
       </section>
 
       <section className="card" aria-label="Activity">
@@ -343,10 +384,10 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
         />
         <div className="coverage-legend" aria-hidden="true">
           <span>
-            <i className="coverage-cell level-1" /> Easy
+            <i className="coverage-cell level-1" /> Light
           </span>
           <span>
-            <i className="coverage-cell level-2" /> Moderate
+            <i className="coverage-cell level-2" /> Medium
           </span>
           <span>
             <i className="coverage-cell level-3" /> Hard
@@ -403,6 +444,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
                   id={item.session.id}
                   name={item.session.name}
                   muscleGroups={item.session.muscleGroups}
+                  muscleIntensity={item.session.muscleIntensity}
                   rpe={item.session.rpe}
                 />
               ) : null}

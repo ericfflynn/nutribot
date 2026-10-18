@@ -34,6 +34,79 @@ export const MUSCLE_NAMES = [
 // Cardio and Mobility are tracked as activities instead (ACTIVITY_CATEGORIES).
 export const STRENGTH_GROUPS: MuscleGroup[] = ["Chest", "Back", "Shoulders", "Arms", "Legs", "Core"];
 
+// How hard each muscle was worked. A session can set it per muscle ("light
+// chest, heavy tris"); a muscle without its own intensity takes the session's
+// RPE. Each intensity has a recovery gap and counts toward weekly volume.
+export const INTENSITIES = ["light", "medium", "hard"] as const;
+export type Intensity = (typeof INTENSITIES)[number];
+// Keys are names from the session's muscle_groups.
+export type MuscleIntensity = Partial<Record<MuscleName, Intensity>>;
+
+export const INTENSITY_RULES: Record<Intensity, { label: string; recoveryDays: number; points: number }> = {
+  // Mostly stretching and light movement: fine the next day.
+  light: { label: "Light", recoveryDays: 1, points: 1 },
+  // Solid working sets: 2-3 days.
+  medium: { label: "Medium", recoveryDays: 2, points: 2 },
+  // Heavy or to failure: 5-6 days.
+  hard: { label: "Hard", recoveryDays: 5, points: 3 }
+};
+// Volume points each strength group should get in any 7 days: a hard and a
+// medium session, or two medium and a light.
+export const WEEKLY_TARGET_POINTS = 5;
+const WEEK_DAYS = 7;
+
+export function intensityFromRpe(rpe: number | null): Intensity {
+  if (rpe == null) return "medium";
+  if (rpe >= 8) return "hard";
+  if (rpe >= 6) return "medium";
+  return "light";
+}
+
+// A muscle's intensity in a session: its own, its group's, or the RPE's.
+export function intensityOf(session: { muscleIntensity: MuscleIntensity; rpe: number | null }, name: MuscleName): Intensity {
+  return session.muscleIntensity[name] ?? session.muscleIntensity[groupOf(name)] ?? intensityFromRpe(session.rpe);
+}
+
+// Keeps only intensities for names the session actually lists.
+export function cleanIntensity(intensity: MuscleIntensity, names: readonly MuscleName[]): MuscleIntensity {
+  return Object.fromEntries(Object.entries(intensity).filter(([name]) => names.includes(name as MuscleName)));
+}
+
+// What the recovery and volume rules need from a logged session.
+export type TrainedSession = { date: string; muscleGroups: MuscleName[]; muscleIntensity: MuscleIntensity; rpe: number | null };
+
+export type Load = {
+  points: number; // volume points in the last 7 days, today included
+  readyIn: number; // days until recovered; 0 is ready
+};
+
+function daysBetween(from: string, to: string) {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+}
+
+// Weekly volume and recovery for one muscle, or a whole group. A session
+// logged as the group counts for every muscle in it; for a group, a session
+// counts once, at its hardest intensity in that group.
+export function loadOf(sessions: readonly TrainedSession[], target: MuscleName, today: string): Load {
+  const isGroup = (MUSCLE_GROUPS as readonly string[]).includes(target);
+  let points = 0;
+  let readyIn = 0;
+  for (const session of sessions) {
+    const ago = daysBetween(session.date, today);
+    if (ago < 0) continue;
+    const names = session.muscleGroups.filter((name) =>
+      isGroup ? groupOf(name) === target : name === target || name === groupOf(target)
+    );
+    if (!names.length) continue;
+    const intensity = names
+      .map((name) => intensityOf(session, name))
+      .reduce((a, b) => (INTENSITY_RULES[b].points > INTENSITY_RULES[a].points ? b : a));
+    if (ago < WEEK_DAYS) points += INTENSITY_RULES[intensity].points;
+    readyIn = Math.max(readyIn, INTENSITY_RULES[intensity].recoveryDays - ago);
+  }
+  return { points, readyIn };
+}
+
 // The higher-level mix: what kind of training each workout was.
 export const ACTIVITY_CATEGORIES = ["strength", "cardio", "mobility", "sport"] as const;
 export type ActivityCategory = (typeof ACTIVITY_CATEGORIES)[number] | "other";
@@ -62,41 +135,56 @@ const SPLITS: { name: string; muscles: SpecificMuscle[] }[] = [
 // Core is added to whichever day comes next, not a day of its own.
 const CORE: SpecificMuscle[] = ["Abs", "Obliques"];
 
-// Days counted for a muscle never logged, and the cap on any gap, so one
-// ancient gap doesn't swamp the average.
+// Days counted for a muscle never logged, and the cap on any gap.
 const NEVER_DAYS = 30;
-// Everything trained within this many days: nothing is neglected.
-const RECENT_DAYS = 3;
 
 export type NextUp = {
-  split: string | null; // null when everything was hit recently
-  neglected: { muscle: SpecificMuscle; since: number | null }[]; // most neglected first, at most 3
-  addCore: boolean; // core hasn't been trained in a week or more
+  // null when nothing ready is short of its weekly volume.
+  split: string | null;
+  // Why there's no split: every muscle at target, or the short ones still recovering.
+  rest: "covered" | "recovering" | null;
+  // Ready muscles furthest below the weekly target, at most 3.
+  neglected: { muscle: SpecificMuscle; since: number | null; points: number }[];
+  addCore: boolean; // core is ready and short of its weekly volume
 };
 
-// What to train next: the split whose muscles have gone longest without
-// work. A session logged as a whole group ("Legs") counts for every muscle
-// in it. `lastByName` maps group and muscle names to the last date trained.
-export function recommendNext(lastByName: Map<string, string>, today: string): NextUp {
-  const days = (date: string | undefined) =>
-    date ? Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${date}T00:00:00Z`)) / 86_400_000) : null;
+// What to train next: the split with the most volume missing from muscles
+// that have recovered. Longer gaps break ties. `lastByName` maps group and
+// muscle names to the last date trained; `sessions` must cover the last week.
+export function recommendNext(lastByName: Map<string, string>, sessions: readonly TrainedSession[], today: string): NextUp {
   const sinceOf = (muscle: SpecificMuscle) => {
-    const values = [days(lastByName.get(muscle)), days(lastByName.get(groupOf(muscle)))].filter((value): value is number => value != null);
+    const values = [lastByName.get(muscle), lastByName.get(groupOf(muscle))]
+      .filter((date): date is string => date != null)
+      .map((date) => daysBetween(date, today));
     return values.length ? Math.min(...values) : null;
   };
+  const stateOf = (muscle: SpecificMuscle) => {
+    const load = loadOf(sessions, muscle, today);
+    const since = sinceOf(muscle);
+    const short = Math.max(0, WEEKLY_TARGET_POINTS - load.points);
+    return { muscle, since, points: load.points, ready: load.readyIn === 0, short };
+  };
   const scored = SPLITS.map((split) => {
-    const muscles = split.muscles.map((muscle) => ({ muscle, since: sinceOf(muscle) }));
-    const gap = (since: number | null) => Math.min(NEVER_DAYS, since ?? NEVER_DAYS);
-    return { split, muscles, score: muscles.reduce((sum, item) => sum + gap(item.since), 0) / muscles.length };
+    const muscles = split.muscles.map(stateOf);
+    const gap = (since: number | null) => Math.min(NEVER_DAYS, since ?? NEVER_DAYS) / (NEVER_DAYS * 10);
+    const score =
+      muscles.reduce((sum, item) => sum + (item.ready && item.short ? item.short / WEEKLY_TARGET_POINTS + gap(item.since) : 0), 0) /
+      muscles.length;
+    return { split, muscles, score };
   });
+  const core = CORE.map(stateOf);
+  const addCore = core.some((item) => item.ready && item.short > 0);
   const best = scored.reduce((a, b) => (b.score > a.score ? b : a));
-  const addCore = CORE.every((muscle) => (sinceOf(muscle) ?? Infinity) >= 7);
-  if (best.muscles.every((item) => item.since != null && item.since <= RECENT_DAYS)) return { split: null, neglected: [], addCore };
-  const neglected = [...best.muscles]
-    .sort((a, b) => (b.since ?? Infinity) - (a.since ?? Infinity))
-    .filter((item) => item.since == null || item.since > RECENT_DAYS)
-    .slice(0, 3);
-  return { split: best.split.name, neglected, addCore };
+  if (best.score === 0) {
+    const anyShort = scored.some((item) => item.muscles.some((muscle) => muscle.short > 0));
+    return { split: null, rest: anyShort ? "recovering" : "covered", neglected: [], addCore };
+  }
+  const neglected = best.muscles
+    .filter((item) => item.ready && item.short > 0)
+    .sort((a, b) => a.points - b.points || (b.since ?? Infinity) - (a.since ?? Infinity))
+    .slice(0, 3)
+    .map(({ muscle, since, points }) => ({ muscle, since, points }));
+  return { split: best.split.name, rest: null, neglected, addCore };
 }
 
 export function groupOf(name: MuscleName): MuscleGroup {
@@ -119,11 +207,15 @@ export function normalizeMuscles(names: readonly MuscleName[]): MuscleName[] {
   );
 }
 
-// Chips for a session: "Shoulders: Side Delts, Rear Delts", or "Legs" for the whole group.
-export function describeMuscles(names: readonly MuscleName[]): string[] {
+// Chips for a session: "Shoulders: Side Delts, Rear Delts", or "Legs" for the
+// whole group. Muscles with their own intensity say so: "Chest (light)".
+export function describeMuscles(names: readonly MuscleName[], intensity: MuscleIntensity = {}): string[] {
+  const tag = (name: MuscleName) => (intensity[name] ? ` (${intensity[name]})` : "");
   return groupsOf(names).map((group) => {
     const specific = names.filter((name) => name !== group && groupOf(name) === group);
-    return specific.length && !names.includes(group) ? `${group}: ${specific.join(", ")}` : group;
+    return specific.length && !names.includes(group)
+      ? `${group}: ${specific.map((name) => `${name}${tag(name)}`).join(", ")}`
+      : `${group}${tag(group)}`;
   });
 }
 
@@ -312,6 +404,7 @@ export type WorkoutSessionInput = {
   name: string;
   workoutType: WorkoutType;
   muscleGroups: MuscleName[];
+  muscleIntensity: MuscleIntensity;
   rpe: number | null;
   durationMin: number | null;
   notes: string;
@@ -327,9 +420,10 @@ export async function saveWorkoutSession(db: Pick<Pool, "query">, userName: stri
     `
     insert into public.workout_sessions (
       user_name, entry_date, name, workout_type, muscle_groups, rpe, duration_min,
-      match_status, health_record_key, linked_by, time_hint_start, time_hint_end, raw_text, notes
+      match_status, health_record_key, linked_by, time_hint_start, time_hint_end, raw_text, notes,
+      muscle_intensity
     )
-    values ($1, $2::date, $3, $4, $5, $6, $7, $8, $9, $10, $11::time, $12::time, $13, $14)
+    values ($1, $2::date, $3, $4, $5, $6, $7, $8, $9, $10, $11::time, $12::time, $13, $14, $15::jsonb)
     returning id::text
     `,
     [
@@ -346,7 +440,8 @@ export async function saveWorkoutSession(db: Pick<Pool, "query">, userName: stri
       input.timeHint?.start ?? null,
       input.timeHint?.end ?? null,
       input.rawText,
-      input.notes || null
+      input.notes || null,
+      JSON.stringify(cleanIntensity(input.muscleIntensity, input.muscleGroups))
     ]
   );
   return rows[0].id;
@@ -415,6 +510,7 @@ export type WorkoutSession = {
   name: string;
   workoutType: WorkoutType;
   muscleGroups: MuscleName[];
+  muscleIntensity: MuscleIntensity;
   rpe: number | null;
   durationMin: number | null;
   matchStatus: "linked" | "pending" | "untracked";
@@ -436,6 +532,7 @@ export async function listWorkoutSessions(
       name as "name",
       workout_type as "workoutType",
       muscle_groups as "muscleGroups",
+      muscle_intensity as "muscleIntensity",
       rpe::float8 as "rpe",
       duration_min as "durationMin",
       match_status as "matchStatus",
@@ -482,15 +579,22 @@ export async function updateWorkoutSession(
   db: Pick<Pool, "query">,
   userName: string,
   id: string,
-  changes: { name: string; muscleGroups: MuscleName[]; rpe: number | null }
+  changes: { name: string; muscleGroups: MuscleName[]; muscleIntensity: MuscleIntensity; rpe: number | null }
 ) {
   const { rowCount } = await db.query(
     `
     update public.workout_sessions
-    set name = $3, muscle_groups = $4, rpe = $5
+    set name = $3, muscle_groups = $4, rpe = $5, muscle_intensity = $6::jsonb
     where id = $1 and user_name = $2
     `,
-    [id, userName, changes.name, changes.muscleGroups, changes.rpe]
+    [
+      id,
+      userName,
+      changes.name,
+      changes.muscleGroups,
+      changes.rpe,
+      JSON.stringify(cleanIntensity(changes.muscleIntensity, changes.muscleGroups))
+    ]
   );
   return (rowCount ?? 0) > 0;
 }

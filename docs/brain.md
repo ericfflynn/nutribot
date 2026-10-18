@@ -42,7 +42,7 @@ Model: `claude-sonnet-5-5` at low effort, overridable with `CLAUDE_MODEL`. A tur
 
 ## Memory
 
-Claude remembers nothing between requests. Each turn it sees only what the route sends: the current conversation's last 10 messages, its unsaved drafts, and today's date and time. **New chat** (`newChatAction`) starts a fresh conversation; the old one stays in the database but isn't shown or sent. Long-term memory is the logged data itself, which Claude reads through its list tools and `get_goals`.
+Claude remembers nothing between requests. Each turn it sees only what the route sends: the current conversation's last 10 messages, its unsaved drafts, and today's date and time. **New chat** (`newChatAction`) starts a fresh conversation, and so does a new day: when the latest conversation's last message is from before today (local), `currentConversation` starts another. Old conversations stay in the database but aren't shown or sent. Long-term memory is the logged data itself, which Claude reads through its list tools and `get_goals`.
 
 ## Tools
 
@@ -81,6 +81,7 @@ WorkoutDraft = {
   name,                        // "Chest + Triceps"
   workout_type: "strength" | "run" | "walk" | "ride" | "sport" | "pilates" | "yoga" | "class" | "other",
   muscle_groups: MuscleName[], // groups ("Shoulders") and specific muscles ("Rear Delts"); see training-plan.md
+  muscle_intensity: { [name]: "light" | "medium" | "hard" }, // only names that differ from the RPE
   rpe: number | null,          // 1–10; "easy" 3–4, "hard" 8, "all-out" 9–10
   duration_min: number | null, // only for untracked workouts
   time_hint: { start: "HH:MM", end: "HH:MM" } | null,
@@ -114,7 +115,7 @@ Tested against the Fitbit history (June–October 2026): with the type filter, 4
 
 `supabase/schema.sql` has the definitions.
 
-- `chat_conversations`: one row per conversation; the latest is current.
+- `chat_conversations`: one row per conversation; the latest is current unless its last message is from an earlier day.
 - `chat_messages`: the messages, each in a conversation. Assistant rows carry their drafts in `drafts` (JSONB).
 - `workout_sessions`: one row per logged workout. `match_status` is `linked` (with `health_record_key`), `pending` or `untracked`. A unique index stops one Fitbit workout from being linked twice.
 - `macro_entries.meal_type`: set for meals saved from chat.

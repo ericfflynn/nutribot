@@ -25,8 +25,12 @@ import {
   type MealType
 } from "./supabase";
 import {
+  INTENSITIES,
+  INTENSITY_RULES,
   MUSCLE_GROUPS,
   MUSCLE_NAMES,
+  WEEKLY_TARGET_POINTS,
+  cleanIntensity,
   MUSCLES,
   WORKOUT_TYPES,
   describeMuscles,
@@ -36,6 +40,7 @@ import {
   listWorkoutSessions,
   type FitbitWorkout,
   type MatchResult,
+  type MuscleIntensity,
   type MuscleName,
   type TimeHint,
   type WorkoutSession,
@@ -74,6 +79,8 @@ export type WorkoutDraft = {
   name: string;
   workout_type: WorkoutType;
   muscle_groups: MuscleName[];
+  // Only muscles that differ from the RPE; missing on drafts made before it existed.
+  muscle_intensity?: MuscleIntensity;
   rpe: number | null;
   duration_min: number | null;
   time_hint: TimeHint | null;
@@ -134,7 +141,7 @@ function describeWorkout(w: FitbitWorkout) {
 
 function describeSession(s: WorkoutSession) {
   const rpe = s.rpe != null ? `, RPE ${s.rpe}` : "";
-  const groups = s.muscleGroups.length ? ` [${describeMuscles(s.muscleGroups).join("; ")}]` : "";
+  const groups = s.muscleGroups.length ? ` [${describeMuscles(s.muscleGroups, s.muscleIntensity).join("; ")}]` : "";
   return `logged as "${s.name}" (${s.workoutType})${groups}${rpe}`;
 }
 
@@ -196,6 +203,9 @@ Today is ${today}; local time is ${nowLocal.slice(11)}. The person is looking at
 ## Workouts
 - muscle_groups holds groups and specific muscles. Groups, each with its muscles: ${MUSCLE_GROUPS.map((group) => (MUSCLES[group].length ? `${group} (${MUSCLES[group].join(", ")})` : group)).join("; ")}.
 - Use a specific muscle when they name it or the exercise clearly targets it ("rear delts", "quads", "lateral raises": Side Delts; "tris": Triceps; "bis": Biceps). Use the group alone when they only say the group ("chest day", "legs") or it's unclear. Never list a group and its own muscles together. A named exercise counts for what it mainly trains (bench press: Mid Chest, Triceps, Front Delts). Push, pull and legs days are Chest/Shoulders/Triceps, Back/Biceps and Legs. Runs, rides and walks are Cardio; pilates is Core unless they say more; yoga and stretching are Mobility.
+- Stretching, mobility or a few extra moves done inside a workout belong to that same draft, not a draft of their own: "mobility, then light abs and pushups" is one workout with Mobility, Abs, Mid Chest and Front Delts.
+- Intensity per muscle is light (mostly stretching and light movement), medium (solid working sets) or hard (heavy or to failure). Each muscle takes its intensity from rpe (5 or less light, 6-7 medium, 8+ hard) unless muscle_intensity says otherwise. Fill muscle_intensity only for muscles that differ: "light chest, heavy tris" at rpe 8 is muscle_intensity [{Chest, light}].
+- Recovery: light ${INTENSITY_RULES.light.recoveryDays} day, medium 2-3 days, hard 5-6 days. Weekly volume: light ${INTENSITY_RULES.light.points}, medium ${INTENSITY_RULES.medium.points}, hard ${INTENSITY_RULES.hard.points} points per session, aiming for ${WEEKLY_TARGET_POINTS} points per strength group in any 7 days. Use these when they ask what to train next.
 - workout_type: strength for lifting, run, walk, ride, sport (tennis, golf), pilates, yoga, class (spin, aerobics, other classes), or other.
 - rpe converts intensity words: easy or light 3-4, moderate or solid 6, hard 8, brutal or all-out 9-10. Use a number they give as is. With no sense of intensity, rpe is null and you ask how hard it was. That is the only question to ask about a workout; never ask for exercises, sets or duration.
 - The watch records most workouts, and the app matches each draft to the right one. Help it with time_hint when they say when: morning 05:00-12:00, afternoon 12:00-17:00, evening or after work 17:00-22:00, or a specific time ±1 hour. Leave time_hint null for "just now" or no time.
@@ -244,6 +254,7 @@ function promptFor(message: string, history: Turn[], openDrafts: Draft[]) {
             raw_text: draft.raw_text,
             name: draft.name,
             muscle_groups: draft.muscle_groups,
+            muscle_intensity: draft.muscle_intensity ?? {},
             rpe: draft.rpe,
             fitbit: draft.match.match ? describeWorkout(draft.match.match) : null
           }
@@ -389,6 +400,9 @@ export async function runBrain(message: string, context: BrainContext): Promise<
       name: z.string().describe('Short session name, e.g. "Chest + Triceps".'),
       workout_type: z.enum(WORKOUT_TYPES),
       muscle_groups: z.array(z.enum(MUSCLE_NAMES)).min(1),
+      muscle_intensity: z
+        .array(z.object({ muscle: z.enum(MUSCLE_NAMES), intensity: z.enum(INTENSITIES) }))
+        .describe("Only names from muscle_groups whose intensity differs from what rpe implies; usually empty."),
       rpe: z.number().min(1).max(10).nullable(),
       duration_min: z.number().int().positive().nullable().describe("Only for untracked workouts with a stated duration."),
       time_hint: z.object({ start: hhmm, end: hhmm }).nullable().describe("Local window when it happened, if stated."),
@@ -442,6 +456,7 @@ export async function runBrain(message: string, context: BrainContext): Promise<
         }
       }
 
+      const muscleGroups = normalizeMuscles(args.muscle_groups);
       drafts.set(target.id!, {
         type: "workout",
         id: target.id!,
@@ -449,7 +464,11 @@ export async function runBrain(message: string, context: BrainContext): Promise<
         raw_text: args.raw_text,
         name: args.name,
         workout_type: args.workout_type,
-        muscle_groups: normalizeMuscles(args.muscle_groups),
+        muscle_groups: muscleGroups,
+        muscle_intensity: cleanIntensity(
+          Object.fromEntries(args.muscle_intensity.map((item) => [item.muscle, item.intensity])),
+          muscleGroups
+        ),
         rpe: args.rpe,
         duration_min: args.untracked ? args.duration_min : null,
         time_hint: args.time_hint,

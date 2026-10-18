@@ -37,6 +37,7 @@ import { REMINDER_KINDS } from "@/lib/reminder-rules";
 import { z } from "zod";
 import { mergeWorkouts, separateWorkout } from "@/lib/health/dedupe";
 import {
+  INTENSITIES,
   MUSCLE_NAMES,
   deleteWorkoutSession,
   groupsOf,
@@ -47,6 +48,7 @@ import {
 } from "@/lib/workouts";
 import {
   addWaterEntry,
+  removeLastWaterEntry,
   deleteMacroEntry,
   getMacroEntry,
   getPool,
@@ -208,6 +210,16 @@ export async function addWaterAction(formData: FormData) {
   revalidatePath("/");
 }
 
+// "Undo" on Today's water row: removes that day's latest entry.
+export async function undoWaterAction(formData: FormData) {
+  const user = await getSessionUser();
+  if (!user) {
+    redirect("/");
+  }
+  await removeLastWaterEntry(user.name, getFormDate(formData));
+  revalidatePath("/");
+}
+
 // Manual "Refresh" on Today: the same light sync the scheduled jobs run.
 export async function refreshHealthAction() {
   const user = await getSessionUser();
@@ -313,6 +325,7 @@ export async function saveDraftAction(
           name: stored.name,
           workoutType: stored.workout_type,
           muscleGroups: stored.muscle_groups,
+          muscleIntensity: stored.muscle_intensity ?? {},
           rpe: stored.rpe,
           durationMin: stored.duration_min,
           notes: stored.notes,
@@ -370,13 +383,16 @@ export async function newChatAction(): Promise<{ ok: boolean }> {
 const workoutEditSchema = z.object({
   name: z.string().trim().min(1).max(80),
   muscleGroups: z.array(z.enum(MUSCLE_NAMES)).min(1).transform(normalizeMuscles),
+  muscleIntensity: z.partialRecord(z.enum(MUSCLE_NAMES), z.enum(INTENSITIES)),
   rpe: z.number().min(1).max(10).nullable()
 });
+
+type WorkoutEdit = { name: string; muscleGroups: string[]; muscleIntensity: Record<string, string>; rpe: number | null };
 
 // Training page: fix a logged workout's label or effort.
 export async function updateWorkoutSessionAction(
   id: string,
-  changes: { name: string; muscleGroups: string[]; rpe: number | null }
+  changes: WorkoutEdit
 ): Promise<{ ok: boolean; error?: string }> {
   const user = await getSessionUser();
   const db = getPool();
@@ -401,7 +417,7 @@ function sessionName(groups: string[]) {
 export async function labelWorkoutAction(
   fitbitWorkoutId: string,
   date: string,
-  input: { muscleGroups: string[]; rpe: number | null }
+  input: Omit<WorkoutEdit, "name">
 ): Promise<{ ok: boolean; error?: string }> {
   const user = await getSessionUser();
   const db = getPool();
@@ -420,6 +436,7 @@ export async function labelWorkoutAction(
     name: sessionName(groupsOf(parsed.data.muscleGroups)),
     workoutType: "strength",
     muscleGroups: parsed.data.muscleGroups,
+    muscleIntensity: parsed.data.muscleIntensity,
     rpe: parsed.data.rpe,
     durationMin: null,
     notes: "",

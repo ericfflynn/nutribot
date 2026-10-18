@@ -119,10 +119,10 @@ Tested against the real Fitbit history (June–October 2026): after the type fil
 | `health_daily`, `health_workouts` | Views over `health_records` with plain columns and local times; `health_workouts` has one row per workout, duplicates folded |
 | `health_workout_records`, `health_workout_merges` | Every raw watch recording, and which ones are duplicates of which (auto or by hand) |
 | `macro_entries` | Saved meals: items, macro totals, confidence, meal type |
-| `workout_sessions` | Saved workouts: muscle groups, RPE, link to a Fitbit workout (`linked`, `pending` or `untracked`) |
+| `workout_sessions` | Saved workouts: muscle groups, RPE, per-muscle intensity, link to a Fitbit workout (`linked`, `pending` or `untracked`) |
 | `journal_entries`, `habits`, `habit_logs` | Journal entries (mood, optional stress, tags) and tracked habits with their logs |
 | `reminders`, `reminder_sends`, `push_subscriptions` | Configured reminders, what was sent each day, and the phones that get them |
-| `chat_conversations`, `chat_messages` | Conversations (New chat starts one), each message, and the drafts shown with it |
+| `chat_conversations`, `chat_messages` | Conversations (New chat or a new day starts one), each message, and the drafts shown with it |
 | `user_macro_goals`, `water_entries` | Goals and water |
 
 Everything is in [`supabase/schema.sql`](supabase/schema.sql), written to be safe to rerun.

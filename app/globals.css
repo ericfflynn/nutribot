@@ -1988,6 +1988,12 @@ button {
   font-weight: 600;
 }
 
+.water-undo {
+  justify-self: start;
+  font-size: 12px;
+  padding: 2px 0 0;
+}
+
 .water-buttons {
   display: flex;
   gap: 6px;
@@ -2897,16 +2903,17 @@ button.fab {
   background: var(--bg);
 }
 
+/* Light, medium, hard: one hue in clearly separated lightness steps */
 .coverage-cell.level-1 {
-  background: #f7c9b3;
+  background: #fcdcc4;
 }
 
 .coverage-cell.level-2 {
-  background: #f0a27f;
+  background: #f28a4c;
 }
 
 .coverage-cell.level-3 {
-  background: var(--strain);
+  background: #a8360f;
 }
 
 .coverage-legend {
@@ -3179,6 +3186,109 @@ button.fab {
   background: #fdebe3;
   color: #a8441a;
   font-weight: 600;
+}
+
+/* Per-muscle intensity: a light / medium / hard segment per picked name */
+.intensity-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.intensity-row small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.intensity-options {
+  display: flex;
+  flex-shrink: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.intensity-option {
+  min-width: 58px;
+  height: 28px;
+  padding: 0 8px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.intensity-option + .intensity-option {
+  border-left: 1px solid var(--line);
+}
+
+.intensity-option.on {
+  font-weight: 600;
+}
+
+.intensity-option.level-1.on {
+  background: #fcdcc4;
+  color: #7a3410;
+}
+
+.intensity-option.level-2.on {
+  background: #f28a4c;
+  color: #3d1400;
+}
+
+.intensity-option.level-3.on {
+  background: #a8360f;
+  color: #ffffff;
+}
+
+/* This week: volume against the weekly target, and recovery */
+.training-week {
+  display: grid;
+  gap: 8px;
+}
+
+.training-week-row {
+  display: grid;
+  grid-template-columns: 76px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.training-week-bar {
+  display: flex;
+  gap: 3px;
+}
+
+.training-week-bar i {
+  flex: 1;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--bg);
+}
+
+.training-week-bar i.filled {
+  background: var(--strain);
+}
+
+.training-week-status {
+  min-width: 96px;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.training-week-status.ready {
+  color: var(--good);
+  font-weight: 600;
+}
+
+.training-week-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .workout-editor-error {

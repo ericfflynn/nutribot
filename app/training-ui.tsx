@@ -10,7 +10,18 @@ import {
   updateWorkoutSessionAction
 } from "./actions";
 import { openChat } from "./chat-sheet";
-import { MUSCLE_GROUPS, MUSCLES, groupOf, type MuscleGroup, type MuscleName } from "@/lib/workouts";
+import {
+  INTENSITIES,
+  INTENSITY_RULES,
+  MUSCLE_GROUPS,
+  MUSCLES,
+  groupOf,
+  intensityFromRpe,
+  type Intensity,
+  type MuscleGroup,
+  type MuscleIntensity,
+  type MuscleName
+} from "@/lib/workouts";
 
 // Labels an unlabeled watch workout: describe it in chat (opens with a
 // sentence ready to finish), or pick muscles and effort right here.
@@ -18,6 +29,7 @@ export function LabelButton({ prompt, workoutId, date }: { prompt: string; worko
   const router = useRouter();
   const [picking, setPicking] = useState(false);
   const [muscles, setMuscles] = useState<MuscleName[]>([]);
+  const [intensity, setIntensity] = useState<MuscleIntensity>({});
   const [effort, setEffort] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +37,11 @@ export function LabelButton({ prompt, workoutId, date }: { prompt: string; worko
   async function save() {
     setBusy(true);
     setError(null);
-    const result = await labelWorkoutAction(workoutId, date, { muscleGroups: muscles, rpe: effort === "" ? null : Number(effort) });
+    const result = await labelWorkoutAction(workoutId, date, {
+      muscleGroups: muscles,
+      muscleIntensity: intensity,
+      rpe: effort === "" ? null : Number(effort)
+    });
     setBusy(false);
     if (!result.ok) {
       setError(result.error ?? "Couldn't save that.");
@@ -61,6 +77,7 @@ export function LabelButton({ prompt, workoutId, date }: { prompt: string; worko
           ))}
         </select>
       </label>
+      <IntensityPicker names={muscles} rpe={effort === "" ? null : Number(effort)} value={intensity} onChange={setIntensity} />
       {error ? <p className="workout-editor-error">{error}</p> : null}
       <div className="workout-editor-actions">
         <span className="workout-editor-spacer" />
@@ -141,6 +158,61 @@ export function MusclePicker({ value, onChange }: { value: MuscleName[]; onChang
   );
 }
 
+// Light, medium or hard for each picked group or muscle. The highlighted one
+// is what counts; until one is tapped it follows the RPE. Tapping the picked
+// one again goes back to the RPE.
+export function IntensityPicker({
+  names,
+  rpe,
+  value,
+  onChange
+}: {
+  names: MuscleName[];
+  rpe: number | null;
+  value: MuscleIntensity;
+  onChange: (next: MuscleIntensity) => void;
+}) {
+  if (!names.length) return null;
+  const fromRpe = intensityFromRpe(rpe);
+
+  function pick(name: MuscleName, intensity: Intensity) {
+    const next = { ...value };
+    if (next[name] === intensity) delete next[name];
+    else next[name] = intensity;
+    onChange(next);
+  }
+
+  return (
+    <fieldset className="workout-editor-groups">
+      <legend>Intensity</legend>
+      {names.map((name) => {
+        const current = value[name] ?? fromRpe;
+        return (
+          <div key={name} className="intensity-row">
+            <span>
+              {name}
+              {value[name] ? null : <small> from RPE</small>}
+            </span>
+            <div className="intensity-options" role="group" aria-label={`${name} intensity`}>
+              {INTENSITIES.map((intensity) => (
+                <button
+                  key={intensity}
+                  type="button"
+                  className={`intensity-option level-${INTENSITIES.indexOf(intensity) + 1}${current === intensity ? " on" : ""}`}
+                  aria-pressed={current === intensity}
+                  onClick={() => pick(name, intensity)}
+                >
+                  {INTENSITY_RULES[intensity].label}
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </fieldset>
+  );
+}
+
 // Duplicate watch recordings: split a combined workout, or merge one that
 // overlaps another.
 export function MergeControls({
@@ -198,17 +270,20 @@ export function WorkoutEditor({
   id,
   name,
   muscleGroups,
+  muscleIntensity,
   rpe
 }: {
   id: string;
   name: string;
   muscleGroups: MuscleName[];
+  muscleIntensity: MuscleIntensity;
   rpe: number | null;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState(name);
   const [groups, setGroups] = useState<MuscleName[]>(muscleGroups);
+  const [intensity, setIntensity] = useState<MuscleIntensity>(muscleIntensity);
   const [effort, setEffort] = useState(rpe == null ? "" : String(rpe));
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -217,6 +292,7 @@ export function WorkoutEditor({
   function reset() {
     setDraftName(name);
     setGroups(muscleGroups);
+    setIntensity(muscleIntensity);
     setEffort(rpe == null ? "" : String(rpe));
     setConfirmDelete(false);
     setError(null);
@@ -268,6 +344,7 @@ export function WorkoutEditor({
           ))}
         </select>
       </label>
+      <IntensityPicker names={groups} rpe={effort === "" ? null : Number(effort)} value={intensity} onChange={setIntensity} />
       {error ? <p className="workout-editor-error">{error}</p> : null}
       <div className="workout-editor-actions">
         <button
@@ -291,6 +368,7 @@ export function WorkoutEditor({
               updateWorkoutSessionAction(id, {
                 name: draftName,
                 muscleGroups: groups,
+                muscleIntensity: intensity,
                 rpe: effort === "" ? null : Number(effort)
               })
             )

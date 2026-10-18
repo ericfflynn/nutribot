@@ -4,6 +4,7 @@
 // the draft so it can't be saved twice.
 import type { Pool } from "pg";
 import type { BrainReply, Draft, Turn } from "./brain";
+import { todayLocalDate } from "./dates";
 
 export type ChatMessage = {
   id: string;
@@ -25,18 +26,27 @@ export async function newConversation(db: Pool, userName: string) {
   return rows[0].id;
 }
 
-// The latest conversation, started on first use.
+// The latest conversation, started on first use. Each day starts fresh: a
+// conversation whose last message was before today (local) is left behind.
 export async function currentConversation(db: Pool, userName: string) {
-  const { rows } = await db.query<{ id: string }>(
+  const { rows } = await db.query<{ id: string; stale: boolean }>(
     `
-    select id::text from public.chat_conversations
-    where user_name = $1
-    order by created_at desc
+    select
+      c.id::text as "id",
+      coalesce(
+        (select max(m.created_at) from public.chat_messages m where m.conversation_id = c.id)
+          at time zone $2 < $3::date,
+        false
+      ) as "stale"
+    from public.chat_conversations c
+    where c.user_name = $1
+    order by c.created_at desc
     limit 1
     `,
-    [userName]
+    [userName, process.env.APP_TIME_ZONE || "America/New_York", todayLocalDate()]
   );
-  return rows[0]?.id ?? newConversation(db, userName);
+  const latest = rows[0];
+  return latest && !latest.stale ? latest.id : newConversation(db, userName);
 }
 
 export async function listMessages(

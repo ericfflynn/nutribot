@@ -157,7 +157,7 @@ function WorkoutCard({ draft, today, superseded, onSave, onDiscard }: { draft: W
       </div>
       <p className="draft-title">{draft.name}</p>
       <div className="draft-chips">
-        {describeMuscles(draft.muscle_groups).map((group) => (
+        {describeMuscles(draft.muscle_groups, draft.muscle_intensity).map((group) => (
           <span key={group}>{group}</span>
         ))}
       </div>

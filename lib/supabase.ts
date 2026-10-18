@@ -328,6 +328,22 @@ export async function addWaterEntry(userName: string, entryDate: string, ounces:
   );
 }
 
+// Takes back the day's most recent water entry (a mis-tap or an overcount).
+export async function removeLastWaterEntry(userName: string, entryDate: string) {
+  await requirePool().query(
+    `
+    delete from public.water_entries
+    where id = (
+      select id from public.water_entries
+      where user_name = $1 and entry_date = $2::date
+      order by created_at desc
+      limit 1
+    )
+    `,
+    [userName, entryDate]
+  );
+}
+
 // The user's daily targets, or the defaults until they save some.
 export async function getUserGoals(userName: string, db: Queryable = requirePool()): Promise<Goals> {
   const { rows } = await db.query(

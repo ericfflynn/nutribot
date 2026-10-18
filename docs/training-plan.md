@@ -21,6 +21,7 @@ One row per logged workout, whether Fitbit saw it or not. Definition in `supabas
 | `workout_type` | `strength`, `run`, `walk`, `ride`, `sport`, `pilates`, `yoga`, `class` (spin, aerobics, other classes), `other`. Pilates and yoga became their own types on October 12, 2026; earlier ones stay `class`. |
 | `muscle_groups` | Group names and specific muscles, from the list below. |
 | `rpe` | Overall effort, 1–10, from words ("hard" is 8) or a number. |
+| `muscle_intensity` | JSONB, `{"Chest": "light"}`: intensity for names in `muscle_groups` that differ from the RPE. Added October 17, 2026; older sessions are `{}`. |
 | `duration_min` | Only for untracked workouts; tracked ones use Fitbit's duration. |
 | `match_status` | `linked`, `pending` (waiting for the watch to sync) or `untracked` (watch not worn). |
 | `health_record_key` | The linked `health_workouts.id`. Unique per user. |
@@ -49,13 +50,26 @@ Picked group first, then specific muscles (`MUSCLES` in `lib/workouts.ts`):
 
 In the editor, tapping a group selects the whole group and shows its muscles; picking muscles narrows it, and unpicking the last one goes back to the whole group.
 
+## Intensity, recovery and weekly volume
+
+Each trained group or muscle is **light** (mostly stretching and light movement), **medium** (solid working sets) or **hard** (heavy or to failure). A name in `muscle_intensity` uses its own; otherwise its group's; otherwise the session RPE's (5 or less light, 6–7 medium, 8+ hard, none medium). So "light chest and heavy tris" is one session, and extra moves worked into a workout ("light pushups after mobility") are just more muscles on it, not a separate tag. Stretching or mobility done inside a workout goes on that workout as Mobility rather than a session of its own.
+
+| Intensity | Recovery | Volume points |
+| --- | --- | --- |
+| Light | 1 day (fine the next day) | 1 |
+| Medium | 2–3 days (ready after 2) | 2 |
+| Hard | 5–6 days (ready after 5) | 3 |
+
+Weekly target: 5 points per strength group in any 7 days (today included): a hard and a medium session, or two medium and a light. `INTENSITY_RULES` and `WEEKLY_TARGET_POINTS` in `lib/workouts.ts`; `loadOf` computes a muscle's or group's points and days until recovered. A session logged as a whole group counts for each of its muscles; for a group, a session counts once at its hardest intensity there.
+
 ## What the Training tab reads
 
-- **Next up:** the strength day to do next (`recommendNext`): push, pull or legs, whichever's muscles have gone longest without work (a whole-group session counts for all its muscles; gaps capped at 30 days), with the three most neglected muscles, and "+ core" when core is a week or more out. "You're covered" when everything was hit in the last 3 days.
-- **Activity:** a 14-day grid of strength, cardio (run, walk, ride, class), mobility (pilates, yoga) and sport, from logged sessions and watch workouts (auto-detected walks left out), with counts per kind.
+- **Next up:** the strength day to do next (`recommendNext`): push, pull or legs, whichever has the most weekly volume missing from muscles that have recovered (longer gaps break ties, capped at 30 days), with the three ready muscles furthest below target, and "+ core" when core is ready and short. "Recover" when everything short is still recovering, "You're covered" when every split muscle has its weekly volume.
+- **This week:** each strength group's volume points over the last 7 days against the target, and "ready" or days of rest left.
+- **Activity:** a 14-day grid of strength, cardio (run, walk, ride, class), mobility (pilates, yoga) and sport, from logged sessions and watch workouts (auto-detected walks left out), with counts per kind. A session tagged Mobility or Cardio also counts for that kind on its day.
 - **Days since each muscle group was trained:** the latest session per group; a specific muscle counts for its group.
-- **14-day strength coverage grid:** sessions per day for the six strength groups (Cardio and Mobility live in Activity), shaded by RPE. Tapping a group expands a row per specific muscle; sessions logged as the whole group shade only the group row. The old "sessions per muscle group" card was dropped as redundant. This replaces "hard sets per muscle group", which needs per-set data.
-- **Recent workouts:** Fitbit workouts (unlabeled walks left out) joined to their sessions for duration, heart rate and strain, plus sessions with no Fitbit link. Chips show muscles by group ("Shoulders: Side Delts, Rear Delts"). A filter row picks one workout type, with counts per type. Each logged one opens to edit its name, muscles and RPE, or to delete it; deleting makes its Fitbit workout unlabeled again. Combined and overlapping watch recordings can be separated or merged ([workout-dedupe.md](workout-dedupe.md)).
+- **14-day strength coverage grid:** sessions per day for the six strength groups (Cardio and Mobility live in Activity), shaded light, medium or hard (the hardest that day). Tapping a group expands a row per specific muscle; sessions logged as the whole group shade only the group row. The old "sessions per muscle group" card was dropped as redundant. This replaces "hard sets per muscle group", which needs per-set data.
+- **Recent workouts:** Fitbit workouts (unlabeled walks left out) joined to their sessions for duration, heart rate and strain, plus sessions with no Fitbit link. Chips show muscles by group ("Shoulders: Side Delts, Rear Delts"). A filter row picks one workout type, with counts per type. Each logged one opens to edit its name, muscles, RPE and per-muscle intensity, or to delete it; deleting makes its Fitbit workout unlabeled again. Combined and overlapping watch recordings can be separated or merged ([workout-dedupe.md](workout-dedupe.md)).
 - **Unlabeled workouts:** watch strength workouts (WEIGHTLIFTING, WEIGHTS) from the last 7 days with no session. Each can be labeled with **Pick muscles** (muscle picker and RPE, saved straight away) or **Chat** (opens chat with a sentence to finish). Runs, rides and classes aren't asked about. `listUnlabeledWorkouts` in `lib/workouts.ts`.
 - Groups not trained in 7 or more days show in red in the coverage grid.
 

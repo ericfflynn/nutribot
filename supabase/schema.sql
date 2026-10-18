@@ -364,6 +364,11 @@ alter table public.workout_sessions
   add constraint workout_sessions_workout_type_check
   check (workout_type in ('strength', 'run', 'walk', 'ride', 'sport', 'class', 'pilates', 'yoga', 'other'));
 
+-- Per-muscle intensity: {"Chest": "light", "Triceps": "hard"}. Keys are names
+-- from muscle_groups; a muscle without one takes its intensity from rpe.
+alter table public.workout_sessions
+  add column if not exists muscle_intensity jsonb not null default '{}'::jsonb;
+
 create index if not exists workout_sessions_user_date_idx
   on public.workout_sessions (user_name, entry_date desc);
 
