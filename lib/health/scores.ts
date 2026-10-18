@@ -108,21 +108,36 @@ export function dayStrain(day: HealthDay | undefined, workouts: readonly HealthW
   return strainFromLoad(load);
 }
 
-// A workout's load from time in each heart-rate zone; null with no zone data.
+// Session-RPE load (RPE × minutes) per unit of heart-rate load. At 0.2 an
+// RPE 6 session matches its heart-rate load on the owner's data (heart-rate
+// load runs about 1.2 × minutes whatever the effort), so harder sessions
+// score above their heart rate and easier ones below.
+const RPE_LOAD_SCALE = 0.2;
+// Share of a logged workout's load that comes from perceived effort.
+const RPE_WEIGHT = 0.5;
+
+// A workout's load: time in each heart-rate zone, blended with perceived
+// effort (RPE × minutes) when the workout was logged with an RPE. Heart rate
+// alone misses lifting that feels hard without raising it much. Null with no
+// zone data.
 function workoutLoad(workout: HealthWorkout) {
   const zones = [workout.hrLightMinutes, workout.hrModerateMinutes, workout.hrVigorousMinutes, workout.hrPeakMinutes];
   if (zones.every((minutes) => minutes == null)) {
     return null;
   }
-  return (
+  const heartRate =
     0.5 * (workout.hrLightMinutes ?? 0) +
     (workout.hrModerateMinutes ?? 0) +
     2 * (workout.hrVigorousMinutes ?? 0) +
-    3 * (workout.hrPeakMinutes ?? 0)
-  );
+    3 * (workout.hrPeakMinutes ?? 0);
+  if (workout.rpe == null || workout.activeMinutes == null) {
+    return heartRate;
+  }
+  const effort = RPE_LOAD_SCALE * workout.rpe * workout.activeMinutes;
+  return (1 - RPE_WEIGHT) * heartRate + RPE_WEIGHT * effort;
 }
 
-// Workout strain from time in each heart-rate zone.
+// Workout strain from heart-rate zones and, when logged, perceived effort.
 export function workoutStrain(workout: HealthWorkout) {
   const load = workoutLoad(workout);
   return load == null ? null : strainFromLoad(load);

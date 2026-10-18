@@ -1,5 +1,5 @@
 import { AppShell, Login } from "../shared-ui";
-import { CoverageGrid, LabelButton, MergeControls, WeekVolume, WorkoutEditor, type CoverageRow } from "../training-ui";
+import { CoverageGrid, LabelButton, MergeControls, WorkoutEditor, type CoverageRow } from "../training-ui";
 import { getSessionUser } from "@/lib/auth";
 import { addDays, rollingDateWindow, todayLocalDate } from "@/lib/dates";
 import { listHealthWorkouts, type HealthWorkout } from "@/lib/health/queries";
@@ -12,10 +12,9 @@ import {
   INTENSITIES,
   INTENSITY_RULES,
   WEEKLY_TARGET_POINTS,
-  groupLoadOf,
+  weekStatus,
   intensityOf,
   MUSCLES,
-  MUSCLE_GROUPS,
   STRENGTH_FITBIT_TYPES,
   STRENGTH_GROUPS,
   activityCategoryOf,
@@ -25,12 +24,16 @@ import {
   WORKOUT_TYPE_LABELS,
   describeMuscles,
   groupOf,
+  musclesOf,
+  namesFor,
   lastTrainedByName,
   listFitbitWorkouts,
   listUnlabeledWorkouts,
   listWorkoutSessions,
   type FitbitWorkout,
   type Intensity,
+  type MuscleStatus,
+  type SpecificMuscle,
   type WorkoutSession,
   type WorkoutType,
   workoutTypeOf
@@ -145,9 +148,10 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
       const intensity = intensityOf(session, name);
       const groupKey = `${session.date}|${groupOf(name)}`;
       coverage.set(groupKey, harder(coverage.get(groupKey), intensity));
-      if ((MUSCLE_GROUPS as readonly string[]).includes(name)) continue;
-      const key = `${session.date}|${name}`;
-      muscleCoverage.set(key, harder(muscleCoverage.get(key), intensity));
+      for (const muscle of musclesOf(name)) {
+        const key = `${session.date}|${muscle}`;
+        muscleCoverage.set(key, harder(muscleCoverage.get(key), intensity));
+      }
     }
   }
 
@@ -164,7 +168,13 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
       }),
       muscles: (MUSCLES[group] as readonly string[]).map((muscle) => ({
         name: muscle,
-        since: sinceOf(lastByName.get(muscle)),
+        since: sinceOf(
+          namesFor(muscle as SpecificMuscle)
+            .map((name) => lastByName.get(name))
+            .filter((date): date is string => date != null)
+            .sort()
+            .at(-1)
+        ),
         missing: false,
         levels: days.map((day) => {
           return intensityClass(muscleCoverage.get(`${day}|${muscle}`));
@@ -174,8 +184,13 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     };
   });
   const nextUp = recommendNext(lastByName, sessions, today);
-  // This week: each strength group's volume against its target, and recovery.
-  const week = STRENGTH_GROUPS.map((group) => groupLoadOf(sessions, group, today));
+  // This week: every strength muscle as due, recovering or covered.
+  const week = weekStatus(sessions, today);
+  const weekBuckets: { key: string; label: string; items: MuscleStatus[]; note: (item: MuscleStatus) => string }[] = [
+    { key: "due", label: "Due", items: week.due, note: (item) => `${item.points}/${WEEKLY_TARGET_POINTS}` },
+    { key: "recovering", label: "Recovering", items: week.recovering, note: (item) => `${item.readyIn}d` },
+    { key: "covered", label: "Covered", items: week.covered, note: () => "" }
+  ];
 
   // Recent workouts: every Fitbit workout except unlabeled walks, plus sessions
   // that aren't linked to one (pending or untracked).
@@ -315,7 +330,25 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
           <h2 className="card-title">This week</h2>
           <span className="card-aside">Last 7 days</span>
         </div>
-        <WeekVolume groups={week} target={WEEKLY_TARGET_POINTS} />
+        <div className="training-week">
+          {weekBuckets.map((bucket) =>
+            bucket.items.length ? (
+              <div key={bucket.key} className={`training-week-bucket ${bucket.key}`}>
+                <span className="training-week-label">
+                  {bucket.label} <small>{bucket.items.length}</small>
+                </span>
+                <div className="training-week-chips">
+                  {bucket.items.map((item) => (
+                    <span key={item.muscle}>
+                      {item.muscle}
+                      {bucket.note(item) ? <small> {bucket.note(item)}</small> : null}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null
+          )}
+        </div>
         <p className="training-week-note">
           {WEEKLY_TARGET_POINTS} points per muscle a week: light {INTENSITY_RULES.light.points}, medium{" "}
           {INTENSITY_RULES.medium.points}, hard {INTENSITY_RULES.hard.points}. Recovery: light 1 day, medium 2–3, hard 5–6.

@@ -3245,81 +3245,57 @@ button.fab {
 /* This week: volume against the weekly target, and recovery */
 .training-week {
   display: grid;
-  gap: 4px;
+  gap: 12px;
 }
 
-.training-week-group {
+.training-week-bucket {
   display: grid;
-  gap: 2px;
+  gap: 6px;
 }
 
-.training-week-row {
-  display: grid;
-  grid-template-columns: 96px 1fr 40px 52px;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 5px 0;
-  background: none;
-  color: var(--ink);
-  font-size: 14px;
-  text-align: left;
+.training-week-label {
+  font-size: 13px;
+  font-weight: 600;
 }
 
-.training-week-sub {
-  padding: 2px 0;
-  font-size: 12px;
-}
-
-.training-week-sub .training-week-name {
-  padding-left: 10px;
+.training-week-label small {
   color: var(--muted);
+  font-weight: 500;
 }
 
-.training-week-name {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.training-week-bar {
-  display: block;
-  height: 10px;
-  border-radius: 5px;
-  background: var(--bg);
-  overflow: hidden;
-}
-
-.training-week-sub .training-week-bar {
-  height: 6px;
-}
-
-.training-week-bar i {
-  display: block;
-  height: 100%;
-  background: var(--strain);
-}
-
-.training-week-points {
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-.training-week-points.short {
+.training-week-bucket.due .training-week-label {
   color: var(--strain-ink);
-  font-weight: 600;
 }
 
-.training-week-status {
-  color: var(--muted);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-.training-week-status.ready {
+.training-week-bucket.covered .training-week-label {
   color: var(--good);
-  font-weight: 600;
+}
+
+.training-week-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.training-week-chips span {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--bg);
+  font-size: 13px;
+}
+
+.training-week-chips small {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.training-week-bucket.due .training-week-chips span {
+  background: #fdebe3;
+  color: #7a3410;
+}
+
+.training-week-bucket.covered .training-week-chips span {
+  color: var(--muted);
 }
 
 .training-week-note {

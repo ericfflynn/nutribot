@@ -36,6 +36,8 @@ export type HealthWorkout = {
   avgHr: number | null;
   distanceMiles: number | null;
   steps: number | null;
+  // RPE of the logged session linked to it, if any.
+  rpe: number | null;
   hrLightMinutes: number | null;
   hrModerateMinutes: number | null;
   hrVigorousMinutes: number | null;
@@ -94,22 +96,25 @@ export async function listHealthWorkouts(userName: string, startDate: string, en
   const { rows } = await requirePool().query(
     `
     select
-      id as "id",
-      day::text as "day",
-      to_char(started_at, 'YYYY-MM-DD"T"HH24:MI') as "startedAt",
-      coalesce(name, type) as "name",
-      active_minutes::int as "activeMinutes",
-      calories::int as "calories",
-      avg_hr::int as "avgHr",
-      distance_miles::float8 as "distanceMiles",
-      steps::int as "steps",
-      hr_light_minutes::int as "hrLightMinutes",
-      hr_moderate_minutes::int as "hrModerateMinutes",
-      hr_vigorous_minutes::int as "hrVigorousMinutes",
-      hr_peak_minutes::int as "hrPeakMinutes"
-    from public.health_workouts
-    where user_name = $1 and day >= $2::date and day <= $3::date
-    order by started_at desc
+      w.id as "id",
+      w.day::text as "day",
+      to_char(w.started_at, 'YYYY-MM-DD"T"HH24:MI') as "startedAt",
+      coalesce(w.name, w.type) as "name",
+      w.active_minutes::int as "activeMinutes",
+      w.calories::int as "calories",
+      w.avg_hr::int as "avgHr",
+      w.distance_miles::float8 as "distanceMiles",
+      w.steps::int as "steps",
+      s.rpe::float8 as "rpe",
+      w.hr_light_minutes::int as "hrLightMinutes",
+      w.hr_moderate_minutes::int as "hrModerateMinutes",
+      w.hr_vigorous_minutes::int as "hrVigorousMinutes",
+      w.hr_peak_minutes::int as "hrPeakMinutes"
+    from public.health_workouts w
+    left join public.workout_sessions s
+      on s.user_name = w.user_name and s.health_record_key = w.id
+    where w.user_name = $1 and w.day >= $2::date and w.day <= $3::date
+    order by w.started_at desc
     `,
     [userName, startDate, endDate]
   );

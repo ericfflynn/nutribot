@@ -42,11 +42,11 @@ Picked group first, then specific muscles (`MUSCLES` in `lib/workouts.ts`):
 | Shoulders | Front Delts, Side Delts, Rear Delts, Traps |
 | Arms | Biceps, Triceps, Forearms |
 | Legs | Quads, Hamstrings, Glutes, Calves |
-| Core | Abs, Obliques |
+| Core | Upper Abs, Lower Abs, Obliques |
 | Cardio | |
 | Mobility | |
 
-`muscle_groups` stores a mix: a group name means the whole group (or unspecified), a muscle name means just that muscle, and a group is never stored alongside its own muscles (`normalizeMuscles`). Sessions logged before October 12, 2026 used Chest, Back, Shoulders, Biceps, Triceps, Legs, Abs and Cardio as groups; each of those is still a valid group or muscle, so old sessions read correctly with no data change. Runs, rides and walks are Cardio; pilates is Core unless more is said; yoga and stretching are Mobility.
+`muscle_groups` stores a mix: a group name means the whole group (or unspecified), a muscle name means just that muscle, and a group is never stored alongside its own muscles (`normalizeMuscles`). Sessions logged before October 12, 2026 used Chest, Back, Shoulders, Biceps, Triceps, Legs, Abs and Cardio as groups; each of those is still a valid group or muscle, so old sessions read correctly with no data change. Core was Abs and Obliques until October 17, 2026; "Abs" in older sessions is a legacy name that counts for both Upper Abs and Lower Abs (`LEGACY_MUSCLES`). Runs, rides and walks are Cardio; pilates is Core unless more is said; yoga and stretching are Mobility.
 
 In the editor, tapping a group selects the whole group and shows its muscles; picking muscles narrows it, and unpicking the last one goes back to the whole group.
 
@@ -60,12 +60,12 @@ Each trained group or muscle is **light** (mostly stretching and light movement)
 | Medium | 2–3 days (ready after 2) | 2 |
 | Hard | 5–6 days (ready after 5) | 3 |
 
-Weekly target: 4 points per muscle in any 7 days (today included): a hard and a light session, or two medium. A session logged as a whole group counts for each of its muscles. A group's total is the sum of its muscles' points, each counted up to 4, against 4 × its muscle count (Chest 12, Legs 16), so a group is only full when every muscle is. `INTENSITY_RULES` and `WEEKLY_TARGET_POINTS` in `lib/workouts.ts`; `loadOf` gives a muscle's points and days until recovered, `groupLoadOf` a group's.
+Weekly target: 4 points per muscle in any 7 days (today included): a hard and a light session, or two medium. A session logged as a whole group counts for each of its muscles. `INTENSITY_RULES` and `WEEKLY_TARGET_POINTS` in `lib/workouts.ts`; `loadOf` gives a muscle's points and days until recovered, `weekStatus` sorts every strength muscle into due, recovering or covered.
 
 ## What the Training tab reads
 
 - **Next up:** the strength day to do next (`recommendNext`): push, pull or legs, whichever has the most weekly volume missing from muscles that have recovered (longer gaps break ties, capped at 30 days), with the three ready muscles furthest below target, and "+ core" when core is ready and short. "Recover" when everything short is still recovering, "You're covered" when every split muscle has its weekly volume.
-- **This week:** each strength group's volume over the last 7 days against its target, and "ready" (some muscle in it has recovered) or days of rest left. Tapping a group shows each muscle's points, short ones highlighted.
+- **This week:** every strength muscle in one of three buckets: **Due** (recovered and under 4 points, least first, with its points), **Recovering** (under 4 but not ready, with days left) and **Covered** (4 or more). Progress bars were tried and dropped: on a rolling week they rarely look full.
 - **Activity:** a 14-day grid of strength, cardio (run, walk, ride, class), mobility (pilates, yoga) and sport, from logged sessions and watch workouts (auto-detected walks left out), with counts per kind. A session tagged Mobility or Cardio also counts for that kind on its day.
 - **Days since each muscle group was trained:** the latest session per group; a specific muscle counts for its group.
 - **14-day strength coverage grid:** sessions per day for the six strength groups (Cardio and Mobility live in Activity), shaded light, medium or hard (the hardest that day). Tapping a group expands a row per specific muscle; sessions logged as the whole group shade only the group row. The old "sessions per muscle group" card was dropped as redundant. This replaces "hard sets per muscle group", which needs per-set data.

@@ -6,14 +6,21 @@ import {
   activityCategoryOf,
   describeMuscles,
   intensityOf,
-  groupLoadOf,
   loadOf,
   normalizeMuscles,
   recommendNext,
-  type TrainedSession
+  type TrainedSession,
+  weekStatus
 } from "../lib/workouts";
 
 const TODAY = "2026-10-12";
+
+test("legacy Abs counts for Upper and Lower Abs, not Obliques", () => {
+  const sessions = [session("2026-10-11", ["Abs"], 5)];
+  assert.equal(loadOf(sessions, "Upper Abs", TODAY).points, 2);
+  assert.equal(loadOf(sessions, "Lower Abs", TODAY).points, 2);
+  assert.equal(loadOf(sessions, "Obliques", TODAY).points, 0);
+});
 
 test("legacy names still read: Biceps and Abs are muscles of Arms and Core", () => {
   assert.deepEqual(describeMuscles(["Back", "Biceps", "Abs"]), ["Back", "Arms: Biceps", "Core: Abs"]);
@@ -53,19 +60,16 @@ test("weekly volume sums the last 7 days; recovery follows the latest hard work"
   assert.deepEqual(loadOf(sessions, "Lats", TODAY), { points: 0, readyIn: 0 });
 });
 
-test("a group's volume is the sum of its muscles, each capped at the target", () => {
+test("each muscle is due, recovering or covered", () => {
   const sessions = [
-    session("2026-10-10", ["Upper Chest", "Mid Chest"], 8), // 3 each
-    session("2026-10-11", ["Mid Chest"], 8), // Mid Chest 6, counted as 4
-    session("2026-10-11", ["Arms"], 2) // light, counts for all three arm muscles
+    session("2026-10-08", ["Mid Chest"], 8), // 3 points, recovered
+    session("2026-10-11", ["Mid Chest"], 2), // +1: at target
+    session("2026-10-11", ["Lats"], 8) // hard yesterday: 4 days to go
   ];
-  const chest = groupLoadOf(sessions, "Chest", TODAY);
-  assert.equal(chest.points, 7);
-  assert.equal(chest.target, 12);
-  assert.equal(chest.readyIn, 0); // Lower Chest is untouched
-  const arms = groupLoadOf(sessions, "Arms", TODAY);
-  assert.equal(arms.points, 3);
-  assert.deepEqual(arms.muscles.map((item) => item.points), [1, 1, 1]);
+  const week = weekStatus(sessions, TODAY);
+  assert.deepEqual(week.covered.map((item) => item.muscle), ["Mid Chest"]);
+  assert.deepEqual(week.recovering.map((item) => [item.muscle, item.readyIn]), [["Lats", 4]]);
+  assert.equal(week.due.length, 18); // the other strength muscles, none trained
 });
 
 test("RPE 1-3 is light, 4-6 medium, 7-10 hard", () => {

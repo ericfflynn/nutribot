@@ -49,7 +49,9 @@ Not used yet: respiratory rate and SpO2 (both synced), which Whoop also consider
 ## Strain (the Activity dial)
 
 ```
-workout load = light zone min × 0.5 + moderate × 1 + vigorous × 2 + peak × 3
+heart load   = light zone min × 0.5 + moderate × 1 + vigorous × 2 + peak × 3
+effort load  = 0.2 × RPE × active minutes          (session RPE; only for workouts logged with an RPE)
+workout load = 0.5 × heart load + 0.5 × effort load (heart load alone without an RPE)
 day load     = sum of the day's workout loads
              + (fat-burn min - workouts' moderate min) × 1      (each difference floored at 0)
              + (cardio min - workouts' vigorous min) × 2
@@ -59,6 +61,7 @@ strain       = 21 × (1 - e^(-load / 80))          (one decimal)
 band         = all out ≥ 18, strenuous ≥ 14, moderate ≥ 10, else light
 ```
 
+- **Heart rate plus perceived effort:** heart load alone runs about 1.2 × minutes for the owner's lifting, pilates and yoga whatever the RPE, so a hard session and an easy one of the same length scored the same. Session RPE (Foster's RPE × minutes, a standard training-load measure) adds the effort. The 0.2 scale makes an RPE 6 ("solid") session match its heart load on the owner's data (24 logged sessions, Sep–Oct 2026); harder sessions score above it, easier ones below. Watch workouts with nothing logged, or logged without an RPE, use heart load only. Muscle volume (light / medium / hard per muscle) is tracked on the Training tab, not in strain.
 - **Day = sum of its parts:** the day's load is every watch workout's load plus what the rest of the day added, so a day never scores below a workout in it. Fitbit's daily zone totals have no light zone, so before October 17, 2026 the day was scored from those totals alone and long light-zone workouts (a 2-hour golf round: workout 11.3, day 7.9) mostly vanished from it.
 - **Day inputs:** the day's watch workouts (`health_workouts`, duplicates already merged), plus Fitbit's daily active-zone-minute totals (`zone_minutes_fat_burn`, `_cardio`, `_peak` in `health_daily`) and steps for the time outside them. Fat burn, cardio and peak are treated as the workouts' moderate, vigorous and peak zones.
 - **Workout inputs:** that session's time in Fitbit's light / moderate / vigorous / peak heart-rate zones (`hr_*_minutes` in `health_workouts`). Each workout row on Today shows its own strain.
@@ -72,6 +75,7 @@ Calibration history:
 | Steps 1 → **2.5** per 1,000 | An 11,000-step day with no heart-zone minutes scored about 2. |
 | Light-zone workout minutes added at **0.5×** | Walks rarely leave Fitbit's light zone and scored 0. |
 | Day load built from its workouts plus the rest of the day | A golf day scored 7.9 with an 11.3 golf round in it. |
+| Workout load blends heart load 50/50 with 0.2 × RPE × minutes | Heart load ignored effort: RPE 6 and RPE 8 sessions of equal length scored the same. RPE 8 weights sessions rose 1-2 points; a low-heart-rate RPE 6 session went 5.6 → 7.9. |
 
 With these values, on the calibration data: weights sessions scored 7-11, walks 1-7, days with a weights session 12-15, easy walking days 3-6. After the sum-of-parts change (checked on late September to mid October 2026): days with a weights session moved by under 1.5 points, days with long walks or golf rose by 3-7 (a 2-hour golf round with 10k steps: 13.8).
 
@@ -99,6 +103,8 @@ All constants live at the top of the relevant function in `lib/health/scores.ts`
 | `STRAIN_SCALE` (80) | Lower = strain rises faster |
 | `LOAD_PER_1000_STEPS` (2.5) | How much walking counts |
 | Zone weights (0.5 / 1 / 2 / 3) | How much intensity is rewarded |
+| `RPE_LOAD_SCALE` (0.2) | The RPE at which effort matches heart rate (0.2 ≈ RPE 6) |
+| `RPE_WEIGHT` (0.5) | How much of a logged workout's load comes from RPE |
 
 To check a change against real data before shipping it, compute scores for recent days with a short script (read-only) and compare against how those days felt.
 
