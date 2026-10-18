@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   activityCategoryOf,
+  chooseMatch,
   describeMuscles,
   intensityOf,
   loadOf,
@@ -121,4 +122,24 @@ test("workout types roll up into strength, cardio, mobility and sport", () => {
   assert.equal(activityCategoryOf("yoga"), "mobility");
   assert.equal(activityCategoryOf("pilates"), "mobility");
   assert.equal(activityCategoryOf("sport"), "sport");
+});
+
+test("ignored watch workouts are never matched", () => {
+  const workout = {
+    id: "w1",
+    day: TODAY,
+    startedAt: `${TODAY}T07:00`,
+    endedAt: `${TODAY}T07:01`,
+    type: "WEIGHTS",
+    name: "Weights",
+    activeMinutes: 1,
+    avgHr: 90,
+    calories: 5,
+    sessionId: null,
+    mergedIds: [],
+    ignored: false
+  };
+  const query = { date: TODAY, workoutType: "strength" as const, timeHint: null, loggedAt: `${TODAY}T09:00` };
+  assert.equal(chooseMatch(query, [workout]).status, "matched");
+  assert.equal(chooseMatch(query, [{ ...workout, ignored: true }]).status, "none");
 });

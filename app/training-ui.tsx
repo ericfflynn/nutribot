@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   deleteWorkoutSessionAction,
+  ignoreWorkoutAction,
   labelWorkoutAction,
   mergeWorkoutsAction,
   separateWorkoutAction,
@@ -51,6 +52,14 @@ export function LabelButton({ prompt, workoutId, date }: { prompt: string; worko
     router.refresh();
   }
 
+  async function ignore() {
+    setBusy(true);
+    const result = await ignoreWorkoutAction(workoutId, date, true);
+    setBusy(false);
+    if (result.ok) router.refresh();
+    else setError(result.error ?? "Couldn't ignore that.");
+  }
+
   if (!picking) {
     return (
       <span className="label-actions">
@@ -60,6 +69,10 @@ export function LabelButton({ prompt, workoutId, date }: { prompt: string; worko
         <button type="button" className="pill-button" onClick={() => openChat(prompt)}>
           Chat
         </button>
+        <button type="button" className="text-button label-ignore" disabled={busy} onClick={ignore}>
+          Ignore
+        </button>
+        {error ? <span className="workout-editor-error">{error}</span> : null}
       </span>
     );
   }
@@ -210,6 +223,27 @@ export function IntensityPicker({
         );
       })}
     </fieldset>
+  );
+}
+
+// An ignored watch workout, listed under "Show ignored": put it back.
+export function RestoreButton({ workoutId, date }: { workoutId: string; date: string }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  return (
+    <button
+      type="button"
+      className="text-button"
+      disabled={busy}
+      onClick={async () => {
+        setBusy(true);
+        const result = await ignoreWorkoutAction(workoutId, date, false);
+        setBusy(false);
+        if (result.ok) router.refresh();
+      }}
+    >
+      Restore
+    </button>
   );
 }
 

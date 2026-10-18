@@ -1,5 +1,5 @@
 import { AppShell, Login } from "../shared-ui";
-import { CoverageGrid, LabelButton, MergeControls, WorkoutEditor, type CoverageRow } from "../training-ui";
+import { CoverageGrid, LabelButton, MergeControls, RestoreButton, WorkoutEditor, type CoverageRow } from "../training-ui";
 import { getSessionUser } from "@/lib/auth";
 import { addDays, rollingDateWindow, todayLocalDate } from "@/lib/dates";
 import { listHealthWorkouts, type HealthWorkout } from "@/lib/health/queries";
@@ -109,8 +109,9 @@ function asRecord(workout: FitbitWorkout): WorkoutRecord {
   };
 }
 
-export default async function TrainingPage({ searchParams }: { searchParams: Promise<{ type?: string }> }) {
-  const { type: typeParam } = await searchParams;
+export default async function TrainingPage({ searchParams }: { searchParams: Promise<{ type?: string; ignored?: string }> }) {
+  const { type: typeParam, ignored: ignoredParam } = await searchParams;
+  const showIgnored = ignoredParam === "1";
   const typeFilter = (WORKOUT_TYPES as readonly string[]).includes(typeParam ?? "") ? (typeParam as WorkoutType) : null;
   const user = await getSessionUser();
   if (!user) {
@@ -195,14 +196,17 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
   // Recent workouts: every Fitbit workout except unlabeled walks, plus sessions
   // that aren't linked to one (pending or untracked).
   const recent: RecentItem[] = [];
+  // Ignored watch workouts stay out of everything below; "Show" lists them.
+  const ignoredWorkouts = fitbit.filter((workout) => workout.ignored);
   for (const workout of fitbit) {
+    if (workout.ignored) continue;
     const session = workout.sessionId ? (sessions.find((item) => item.id === workout.sessionId) ?? null) : null;
     if (!session && workout.type === "WALKING") continue;
     const health = healthById.get(workout.id);
     const strain = health ? workoutStrain(health) : null;
     // Other watch workouts that overlap this one without being folded into it.
     const overlaps = fitbit
-      .filter((other) => other.id !== workout.id)
+      .filter((other) => other.id !== workout.id && !other.ignored)
       .filter((other) => isPossibleDuplicate(asRecord(workout), asRecord(other)))
       .map((other) => ({ id: other.id, label: `${other.name.toLowerCase()} at ${formatClock(other.startedAt)}` }));
     recent.push({
@@ -474,6 +478,28 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
             No {typeFilter ? `${WORKOUT_TYPE_LABELS[typeFilter].toLowerCase()} ` : ""}workouts in the last {WINDOW_DAYS} days.
           </p>
         )}
+        {ignoredWorkouts.length ? (
+          <p className="footnote training-ignored-toggle">
+            {ignoredWorkouts.length} ignored watch workout{ignoredWorkouts.length === 1 ? "" : "s"} ·{" "}
+            <a href={showIgnored ? "/training" : "/training?ignored=1#ignored"}>{showIgnored ? "Hide" : "Show"}</a>
+          </p>
+        ) : null}
+        {showIgnored && ignoredWorkouts.length ? (
+          <ul className="card training-unlabeled" id="ignored">
+            {ignoredWorkouts.map((workout) => (
+              <li key={workout.id}>
+                <span>
+                  <strong>{workout.name}</strong>
+                  <small>
+                    {formatDay(workout.day)} · {formatClock(workout.startedAt)}
+                    {workout.activeMinutes != null ? ` · ${workout.activeMinutes} min` : ""}
+                  </small>
+                </span>
+                <RestoreButton workoutId={workout.id} date={workout.day} />
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </section>
     </AppShell>
   );

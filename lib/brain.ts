@@ -510,10 +510,11 @@ export async function runBrain(message: string, context: BrainContext): Promise<
       ]);
       const sessionById = new Map(sessions.map((s) => [s.id, s]));
       const rows = workouts
-        .filter((w) => !args.unlabeled_only || !w.sessionId)
+        .filter((w) => !args.unlabeled_only || (!w.sessionId && !w.ignored))
         .map((w) => {
           const session = w.sessionId ? sessionById.get(w.sessionId) : undefined;
-          return { day: w.day, line: `${w.day} ${describeWorkout(w)}${session ? `, ${describeSession(session)}` : ", not logged"}` };
+          const status = session ? `, ${describeSession(session)}` : w.ignored ? ", ignored by the owner" : ", not logged";
+          return { day: w.day, line: `${w.day} ${describeWorkout(w)}${status}` };
         });
       // Logged sessions with no watch workout yet, or none at all.
       for (const s of sessions) {

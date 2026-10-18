@@ -317,6 +317,7 @@ export type FitbitWorkout = {
   avgHr: number | null;
   calories: number | null;
   sessionId: string | null; // the workout_session already linked to it
+  ignored: boolean; // the owner chose to ignore it (workout_ignores)
   // Duplicate recordings folded into this one (lib/health/dedupe.ts).
   mergedIds: string[];
 };
@@ -367,7 +368,7 @@ function overlaps(workout: FitbitWorkout, hint: TimeHint) {
 export function chooseMatch(query: MatchQuery, workouts: FitbitWorkout[]): MatchResult {
   const exclude = new Set(query.exclude ?? []);
   const fitting = workouts
-    .filter((w) => w.day === query.date && !w.sessionId && !exclude.has(w.id) && fitsType(query.workoutType, w.type))
+    .filter((w) => w.day === query.date && !w.sessionId && !w.ignored && !exclude.has(w.id) && fitsType(query.workoutType, w.type))
     .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   if (!fitting.length) {
     return { status: "none", match: null, alternatives: [] };
@@ -418,10 +419,13 @@ export async function listFitbitWorkouts(
       w.avg_hr::int as "avgHr",
       w.calories::int as "calories",
       s.id::text as "sessionId",
-      w.merged_ids as "mergedIds"
+      w.merged_ids as "mergedIds",
+      i.health_record_key is not null as "ignored"
     from public.health_workouts w
     left join public.workout_sessions s
       on s.user_name = w.user_name and s.health_record_key = w.id
+    left join public.workout_ignores i
+      on i.user_name = w.user_name and i.health_record_key = w.id
     where w.user_name = $1 and w.day >= $2::date and w.day <= $3::date
     order by w.started_at desc
     `,
@@ -433,7 +437,19 @@ export async function listFitbitWorkouts(
 // Strength workouts from the watch that nothing has been logged for.
 export async function listUnlabeledWorkouts(db: Pool, userName: string, startDate: string, endDate: string) {
   const workouts = await listFitbitWorkouts(db, userName, startDate, endDate);
-  return workouts.filter((w) => !w.sessionId && LABELABLE_TYPES.has(w.type));
+  return workouts.filter((w) => !w.sessionId && !w.ignored && LABELABLE_TYPES.has(w.type));
+}
+
+// Ignore a watch workout nothing is logged for, or stop ignoring one.
+export async function setWorkoutIgnored(db: Pick<Pool, "query">, userName: string, healthRecordKey: string, ignored: boolean) {
+  if (ignored) {
+    await db.query(
+      `insert into public.workout_ignores (user_name, health_record_key) values ($1, $2) on conflict do nothing`,
+      [userName, healthRecordKey]
+    );
+  } else {
+    await db.query(`delete from public.workout_ignores where user_name = $1 and health_record_key = $2`, [userName, healthRecordKey]);
+  }
 }
 
 export type WorkoutSessionInput = {

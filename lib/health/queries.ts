@@ -38,6 +38,8 @@ export type HealthWorkout = {
   steps: number | null;
   // RPE of the logged session linked to it, if any.
   rpe: number | null;
+  // Ignored by the owner: hidden from the timeline, still in day strain.
+  ignored: boolean;
   hrLightMinutes: number | null;
   hrModerateMinutes: number | null;
   hrVigorousMinutes: number | null;
@@ -106,6 +108,9 @@ export async function listHealthWorkouts(userName: string, startDate: string, en
       w.distance_miles::float8 as "distanceMiles",
       w.steps::int as "steps",
       s.rpe::float8 as "rpe",
+      exists (
+        select 1 from public.workout_ignores i where i.user_name = w.user_name and i.health_record_key = w.id
+      ) as "ignored",
       w.hr_light_minutes::int as "hrLightMinutes",
       w.hr_moderate_minutes::int as "hrModerateMinutes",
       w.hr_vigorous_minutes::int as "hrVigorousMinutes",

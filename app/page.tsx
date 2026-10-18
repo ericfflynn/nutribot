@@ -706,7 +706,7 @@ export default async function Home({ searchParams }: PageProps) {
   for (const entry of journal) {
     timed.push(journalEvent(entry, date));
   }
-  for (const workout of workouts) {
+  for (const workout of workouts.filter((item) => !item.ignored)) {
     const workoutLoad = workoutStrain(workout);
     timed.push({
       key: `workout-${workout.id}`,

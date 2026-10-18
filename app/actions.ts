@@ -44,6 +44,7 @@ import {
   normalizeMuscles,
   listFitbitWorkouts,
   saveWorkoutSession,
+  setWorkoutIgnored,
   updateWorkoutSession
 } from "@/lib/workouts";
 import {
@@ -411,6 +412,27 @@ const recordKey = z.string().min(1).max(300);
 // "Chest + Triceps" from the picked muscles' groups, for a quick label.
 function sessionName(groups: string[]) {
   return groups.slice(0, 3).join(" + ") || "Strength";
+}
+
+// Training page: ignore a watch workout nothing is logged for (an accidental
+// recording), or restore one.
+export async function ignoreWorkoutAction(
+  fitbitWorkoutId: string,
+  date: string,
+  ignored: boolean
+): Promise<{ ok: boolean; error?: string }> {
+  const user = await getSessionUser();
+  const db = getPool();
+  if (!user || !db) return { ok: false, error: "Log in again." };
+  if (!recordKey.safeParse(fitbitWorkoutId).success || !isValidLocalDate(date)) return { ok: false, error: "Unknown workout." };
+  const workouts = await listFitbitWorkouts(db, user.name, date, date);
+  const workout = workouts.find((item) => item.id === fitbitWorkoutId);
+  if (!workout) return { ok: false, error: "That watch workout no longer exists." };
+  if (ignored && workout.sessionId) return { ok: false, error: "That workout is logged; delete the log first." };
+  await setWorkoutIgnored(db, user.name, workout.id, ignored);
+  revalidatePath("/");
+  revalidatePath("/training");
+  return { ok: true };
 }
 
 // Training page: label a watch workout by picking muscles, without the chat.

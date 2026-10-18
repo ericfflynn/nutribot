@@ -3878,7 +3878,15 @@ details[open] .journal-preview {
 
 .label-actions {
   display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
+}
+
+.label-ignore {
+  color: var(--muted);
+  font-size: 14px;
+  padding: 0 4px;
 }
 
 .training-unlabeled li:has(.label-picker),

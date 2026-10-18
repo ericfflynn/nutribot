@@ -376,6 +376,18 @@ create index if not exists workout_sessions_user_date_idx
 create unique index if not exists workout_sessions_health_record_idx
   on public.workout_sessions (user_name, health_record_key) where health_record_key is not null;
 
+-- Watch workouts the owner chose to ignore (an accidental 1-minute recording):
+-- left out of matching, Unlabeled, Recent workouts and the Today timeline.
+-- Day strain still counts them.
+create table if not exists public.workout_ignores (
+  user_name text not null,
+  health_record_key text not null,
+  created_at timestamptz not null default now(),
+  primary key (user_name, health_record_key)
+);
+
+alter table public.workout_ignores enable row level security;
+
 -- The chat thread: one continuous thread per user. Assistant rows carry the
 -- drafts shown with that reply, and whether each was saved.
 create table if not exists public.chat_messages (
