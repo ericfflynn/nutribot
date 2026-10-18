@@ -35,6 +35,30 @@ The Journal card on the Habits tab loads 90 days, shows tags grouped by category
 
 The morning prompt leans toward sleep and soreness; the evening one toward the day, stress and habits.
 
+### Planned: key:value tags (agreed October 17, 2026, not built)
+
+Free tags drifted (28 entries, 28 different tags, many repeating data the app already has). They become structured `key:value` pairs so trends can be read per key ("every `work:` day") and per value ("`work:deadline` days").
+
+| Key | Starter values |
+| --- | --- |
+| `work` | deadline, meetings, focused, busy, slow, off |
+| `social` (friends) | friends, party, hosting, game night |
+| `relationship` | date, quality time, conflict, apart |
+| `family` | visit, call, conflict |
+| `health` | sick, headache, doctor, plus one-off symptoms |
+| `leisure` | reading, tv, outdoors, gaming, golf |
+| `stressor` | money, errands, plans, news |
+
+- Keys are fixed; chat never invents one. Values come from the list or the owner's earlier values for that key; a one-off value is fine but always sits under a key (`health:canker sore`).
+- No numbers: a tag is a key and a word.
+- Tags stay neutral. How the day felt comes from the journal's mood and stress ratings, so trends read "mood on `family:visit` days".
+- No tags for what other data already covers: workouts, sleep, drinks. Soreness and pain move to the body log below.
+- The existing entries get mapped into the new keys; the "sore X" tags become body log entries.
+
+### Planned: body log for soreness and pain (agreed October 17, 2026, not built)
+
+One simple log, logged through chat (a card to Save, like everything else): a body part, **sore** or **pain**, and **mild** or **bad**, on a date. Soreness uses the Training muscle names; pain uses plain body parts (wrist, lower back) for recurring problems and injuries. The point is looking back: "wrist pain 6 times since August, mostly after push days". Later, and deliberately not designed yet: soreness and pain feed recovery and Next up on the Training tab.
+
 ## Habits
 
 Habits are rows, not code, so new ones are added by telling the chat "start tracking caffeine."
