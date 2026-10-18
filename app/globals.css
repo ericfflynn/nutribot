@@ -906,6 +906,19 @@ button {
   animation: spin 0.7s linear infinite;
 }
 
+.auto-sync {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.auto-sync .spinner {
+  width: 13px;
+  height: 13px;
+}
+
 .spinner.dark {
   border-color: rgba(23, 32, 26, 0.25);
   border-top-color: var(--ink);
@@ -1855,8 +1868,16 @@ button {
 
 .kcal-figure {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: 8px;
+}
+
+.kcal-figure .kcal-workouts {
+  flex-basis: 100%;
+  color: var(--strain-ink);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .kcal-figure strong {

@@ -45,3 +45,39 @@ export function gramsFromPercentGoals(goals: Goals) {
     fat_g: Math.round((goals.calories * (goals.fatPct / 100)) / 9)
   };
 }
+
+// Workouts raise the day's calorie target by what they burned beyond resting:
+// the watch's workout calories are total burn, so the minutes' resting burn
+// comes off. The macro split stays the same, so gram targets grow with it.
+// Ignored workouts (accidental recordings) don't count.
+const FALLBACK_RESTING_KCAL_PER_MIN = 1.25;
+const RESTING_BASELINE_DAYS = 30;
+
+// The median resting burn per minute ((total - active) / 1440) over full days
+// before `date`, from Fitbit's daily totals.
+export function restingKcalPerMinute(
+  days: readonly { day: string; totalKcal: number | null; activeKcal: number | null }[],
+  date: string
+) {
+  const rates = days
+    .filter((day) => day.day < date && day.totalKcal != null && day.activeKcal != null && day.totalKcal > day.activeKcal)
+    .slice(-RESTING_BASELINE_DAYS)
+    .map((day) => (day.totalKcal! - day.activeKcal!) / 1440)
+    .sort((a, b) => a - b);
+  return rates.length ? rates[Math.floor(rates.length / 2)] : FALLBACK_RESTING_KCAL_PER_MIN;
+}
+
+export function workoutCalories(
+  workouts: readonly { calories: number | null; activeMinutes: number | null; ignored: boolean }[],
+  restingPerMinute: number
+) {
+  return Math.round(
+    workouts
+      .filter((workout) => !workout.ignored)
+      .reduce((sum, workout) => sum + Math.max(0, (workout.calories ?? 0) - restingPerMinute * (workout.activeMinutes ?? 0)), 0)
+  );
+}
+
+export function withWorkoutCalories(goals: Goals, extra: number): Goals {
+  return { ...goals, calories: goals.calories + extra };
+}

@@ -9,7 +9,7 @@ import { EntryCard } from "./entry-card";
 import { AppShell, GoalsForm, Login } from "./shared-ui";
 import { getSessionUser } from "@/lib/auth";
 import { addDays, isValidLocalDate, rollingDateWindow, todayLocalDate } from "@/lib/dates";
-import { gramsFromPercentGoals } from "@/lib/goals";
+import { gramsFromPercentGoals, restingKcalPerMinute, withWorkoutCalories, workoutCalories } from "@/lib/goals";
 import { listJournalEntries, recordedRatings, type JournalEntry } from "@/lib/journal";
 import {
   getLatestHealthSyncRun,
@@ -619,8 +619,11 @@ export default async function Home({ searchParams }: PageProps) {
   // Nutrition
   const dayEntries = entries.filter((entry) => entry.entry_date === date);
   const eaten = summarizeEntries(dayEntries);
-  const gramGoals = gramsFromPercentGoals(goals);
-  const caloriesLeft = Math.round(goals.calories - eaten.calories);
+  // The target grows by what the day's workouts burned beyond resting.
+  const workoutKcal = workoutCalories(workouts, restingKcalPerMinute(healthDays, date));
+  const dayGoals = withWorkoutCalories(goals, workoutKcal);
+  const gramGoals = gramsFromPercentGoals(dayGoals);
+  const caloriesLeft = Math.round(dayGoals.calories - eaten.calories);
   const callout = nutritionCallout(dayEntries, caloriesLeft, Math.round(gramGoals.protein_g - eaten.protein_g), isToday);
   const macros = [
     { key: "protein", label: "Protein", value: eaten.protein_g, goal: gramGoals.protein_g },
@@ -805,7 +808,12 @@ export default async function Home({ searchParams }: PageProps) {
         </div>
         <div className="kcal-figure">
           <strong>{integer.format(eaten.calories)}</strong>
-          <span>of {integer.format(goals.calories)} kcal</span>
+          <span>of {integer.format(dayGoals.calories)} kcal</span>
+          {workoutKcal ? (
+            <small className="kcal-workouts">
+              {integer.format(goals.calories)} + {integer.format(workoutKcal)} from workouts
+            </small>
+          ) : null}
         </div>
         <div className="macro-bars">
           {macros.map((macro) => (

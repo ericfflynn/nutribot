@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { discardDraftAction, newChatAction, saveDraftAction } from "./actions";
-import type { Draft, MealDraft, WorkoutDraft } from "@/lib/brain";
+import type { Draft, IgnoreDraft, MealDraft, WorkoutDraft } from "@/lib/brain";
 import type { HabitDraft, HabitsDraft, JournalDraft } from "@/lib/brain-checkin";
 import type { FeedbackDraft } from "@/lib/feedback";
 import { describeGoal, formatHabitAmount, scaleGuideLines } from "@/lib/habits";
@@ -318,6 +318,15 @@ function HabitCard({ draft, ...handlers }: { draft: HabitDraft } & DraftHandlers
   );
 }
 
+function IgnoreCard({ draft, ...handlers }: { draft: IgnoreDraft } & DraftHandlers) {
+  return (
+    <CheckinCard draft={draft} kind={draft.ignored ? "ignore watch workout" : "restore watch workout"} {...handlers}>
+      <p className="draft-title">{draft.label}</p>
+      <p className="draft-edit-note">{draft.date}</p>
+    </CheckinCard>
+  );
+}
+
 function FeedbackCard({ draft, ...handlers }: { draft: FeedbackDraft } & DraftHandlers) {
   return (
     <CheckinCard
@@ -492,6 +501,8 @@ export function ChatThread({
                   return <HabitCard key={draft.id} draft={draft} {...handlers} />;
                 case "feedback":
                   return <FeedbackCard key={draft.id} draft={draft} {...handlers} />;
+                case "ignore":
+                  return <IgnoreCard key={draft.id} draft={draft} {...handlers} />;
               }
             })}
           </div>

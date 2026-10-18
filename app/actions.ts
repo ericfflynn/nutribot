@@ -227,28 +227,46 @@ export async function refreshHealthAction() {
   if (!user) {
     redirect("/");
   }
-  const db = getPool();
-  if (!db || user.name !== process.env.GOOGLE_HEALTH_USER) {
-    return;
-  }
-
   // Don't stack syncs from repeated taps.
+  await syncRecentHealth(user.name, "2 minutes", true);
+  revalidatePath("/");
+}
+
+// The light sync, for the Fitbit owner only, unless a run started within
+// `skipWithin` (a Postgres interval; with runningOnly, only a run still going
+// counts). Returns whether it ran.
+async function syncRecentHealth(userName: string, skipWithin: string, runningOnly: boolean) {
+  const db = getPool();
+  if (!db || userName !== process.env.GOOGLE_HEALTH_USER) return false;
   const { rows } = await db.query(
     `
     select 1 from public.health_sync_runs
-    where user_name = $1 and status = 'running' and started_at > now() - interval '2 minutes'
+    where user_name = $1 and started_at > now() - $2::interval
+      and (status = 'running' or (not $3 and status = 'succeeded'))
     limit 1
     `,
-    [user.name]
+    [userName, skipWithin, runningOnly]
   );
-  if (!rows.length) {
-    try {
-      await runHealthSync(db, { trigger: "manual", userName: user.name, types: HEALTH_DATA_TYPES, recentDays: 3 });
-    } catch {
-      // The failure is recorded in health_sync_runs and shown on Today.
-    }
+  if (rows.length) return false;
+  try {
+    await runHealthSync(db, { trigger: "manual", userName, types: HEALTH_DATA_TYPES, recentDays: 3 });
+  } catch {
+    // The failure is recorded in health_sync_runs and shown on Today.
   }
-  revalidatePath("/");
+  return true;
+}
+
+// Opening the app (or coming back to it): the light sync, unless one started
+// in the last 15 minutes.
+export async function autoSyncHealthAction(): Promise<{ synced: boolean }> {
+  const user = await getSessionUser();
+  if (!user) return { synced: false };
+  const synced = await syncRecentHealth(user.name, "15 minutes", false);
+  if (synced) {
+    revalidatePath("/");
+    revalidatePath("/training");
+  }
+  return { synced };
 }
 
 export type DraftActionResult = { ok: true; draft: Draft } | { ok: false; error: string };
@@ -305,6 +323,11 @@ export async function saveDraftAction(
       } else if (stored.type === "feedback") {
         savedId = await saveFeedback(client, user.name, stored, stored.feedback_id);
         saved = { ...stored, saved_id: savedId };
+      } else if (stored.type === "ignore") {
+        await setWorkoutIgnored(client, user.name, stored.workout_id, stored.ignored);
+        savedId = stored.workout_id;
+        saved = { ...stored, saved_id: savedId };
+        revalidatePath("/training");
       } else if (stored.type === "habit") {
         savedId = await saveHabit(client, user.name, stored.habit, stored.habit_id);
         saved = { ...stored, saved_id: savedId };

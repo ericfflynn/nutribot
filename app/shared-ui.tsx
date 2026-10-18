@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { loginAction, logoutAction, saveGoalsAction } from "./actions";
 import type { Goals } from "@/lib/goals";
 import { ChatSheet } from "./chat-sheet";
+import { HealthAutoSync } from "./refresh-button";
 import { getAllowedUsers, type SessionUser } from "@/lib/auth";
 import { todayLocalDate } from "@/lib/dates";
 
@@ -114,6 +115,7 @@ export type TabKey = (typeof TABS)[number]["key"];
 
 // iOS-style shell: large title, content, and a bottom tab bar.
 export function AppShell({
+  user,
   date,
   active,
   title,
@@ -135,6 +137,7 @@ export function AppShell({
           <h1>{title}</h1>
         </div>
         <div className="app-titlebar-actions">
+          {user.name === process.env.GOOGLE_HEALTH_USER ? <HealthAutoSync /> : null}
           {headerAction}
           <form action={logoutAction}>
             <button className="text-button" type="submit">

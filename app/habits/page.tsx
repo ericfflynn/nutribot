@@ -13,6 +13,8 @@ import { listReminders, remindersSentOn, vapidPublicKey } from "@/lib/reminders"
 import { getPool } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
+// Room for the health sync that opening the app may run (autoSyncHealthAction).
+export const maxDuration = 60;
 
 const WINDOW_DAYS = 14;
 // Journal entries loaded for tag filters and patterns.

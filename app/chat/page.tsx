@@ -5,6 +5,8 @@ import { getSessionUser } from "@/lib/auth";
 import { todayLocalDate } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
+// Room for the health sync that opening the app may run (autoSyncHealthAction).
+export const maxDuration = 60;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

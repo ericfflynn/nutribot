@@ -14,7 +14,8 @@ import { addDays, isValidLocalDate, localDateTime } from "./dates";
 import { HEALTH_DATA_TYPES } from "./health/google";
 import { runHealthSync } from "./health/sync";
 import { normalizeGeneratedMacroEstimate, type ParsedMacros } from "./macros";
-import { gramsFromPercentGoals } from "./goals";
+import { gramsFromPercentGoals, restingKcalPerMinute, withWorkoutCalories, workoutCalories } from "./goals";
+import { listHealthDays, listHealthWorkouts } from "./health/queries";
 import {
   getMacroEntry,
   getUserGoals,
@@ -94,7 +95,20 @@ export type WorkoutDraft = {
   discarded?: boolean;
 };
 
-export type Draft = MealDraft | WorkoutDraft | CheckinDraft | FeedbackDraft;
+// Ignore a watch workout (an accidental recording) or restore an ignored one.
+export type IgnoreDraft = {
+  type: "ignore";
+  id: string;
+  date: string;
+  workout_id: string;
+  // "Weights 07:02–07:03, 1 min", for the card.
+  label: string;
+  ignored: boolean;
+  saved_id: string | null;
+  discarded?: boolean;
+};
+
+export type Draft = MealDraft | WorkoutDraft | IgnoreDraft | CheckinDraft | FeedbackDraft;
 
 export type Turn = { role: "user" | "assistant"; text: string };
 
@@ -118,7 +132,7 @@ export type BrainContext = {
 };
 
 const SERVER = "nutribot";
-const TOOLS = ["draft_meal", "draft_workout", "list_workouts", "list_meals", "get_goals", ...CHECKIN_TOOLS, ...HEALTH_TOOLS, ...FEEDBACK_TOOLS];
+const TOOLS = ["draft_meal", "draft_workout", "draft_ignore_workout", "list_workouts", "list_meals", "get_goals", ...CHECKIN_TOOLS, ...HEALTH_TOOLS, ...FEEDBACK_TOOLS];
 
 const localDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("Local date, YYYY-MM-DD.");
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
@@ -206,6 +220,7 @@ Today is ${today}; local time is ${nowLocal.slice(11)}. The person is looking at
 - Stretching, mobility or a few extra moves done inside a workout belong to that same draft, not a draft of their own: "mobility, then light abs and pushups" is one workout with Mobility, Upper Abs, Lower Abs, Mid Chest and Front Delts. Crunches and sit-ups are Upper Abs; leg raises are Lower Abs; planks and "abs" in general are Core.
 - Intensity per muscle is light (mostly stretching and light movement), medium (solid working sets) or hard (heavy or to failure). Each muscle takes its intensity from rpe (1-3 light, 4-6 medium, 7-10 hard) unless muscle_intensity says otherwise. Fill muscle_intensity only for muscles that differ: "light chest, heavy tris" at rpe 8 is muscle_intensity [{Chest, light}].
 - Recovery: light ${INTENSITY_RULES.light.recoveryDays} day, medium 2-3 days, hard 5-6 days. Weekly volume: light ${INTENSITY_RULES.light.points}, medium ${INTENSITY_RULES.medium.points}, hard ${INTENSITY_RULES.hard.points} points per session, aiming for ${WEEKLY_TARGET_POINTS} points per strength group in any 7 days. Use these when they ask what to train next.
+- Watch workouts can be ignored (accidental recordings, shown as "ignored by the owner" in list_workouts) and restored. When they ask, find it with list_workouts and call draft_ignore_workout.
 - workout_type: strength for lifting, run, walk, ride, sport (tennis, golf), pilates, yoga, class (spin, aerobics, other classes), or other.
 - rpe converts intensity words: easy or light 3, moderate or solid 5-6, hard 8, brutal or all-out 9-10. Use a number they give as is. With no sense of intensity, rpe is null and you ask how hard it was. That is the only question to ask about a workout; never ask for exercises, sets or duration.
 - The watch records most workouts, and the app matches each draft to the right one. Help it with time_hint when they say when: morning 05:00-12:00, afternoon 12:00-17:00, evening or after work 17:00-22:00, or a specific time ±1 hour. Leave time_hint null for "just now" or no time.
@@ -234,7 +249,7 @@ function promptFor(message: string, history: Turn[], openDrafts: Draft[]) {
   }
   if (openDrafts.length) {
     const summary = openDrafts.map((draft) =>
-      draft.type === "journal" || draft.type === "habits" || draft.type === "habit" || draft.type === "feedback"
+      draft.type === "journal" || draft.type === "habits" || draft.type === "habit" || draft.type === "feedback" || draft.type === "ignore"
         ? draft
         : draft.type === "meal"
         ? {
@@ -492,6 +507,35 @@ export async function runBrain(message: string, context: BrainContext): Promise<
     }
   );
 
+  const draftIgnoreWorkout = tool(
+    "draft_ignore_workout",
+    "Create a draft that ignores a watch workout (an accidental recording, kept out of matching and lists) or restores an ignored one. Find it with list_workouts first.",
+    {
+      date: localDate,
+      fitbit_workout_id: z.string().describe("The watch workout's id from list_workouts."),
+      ignored: z.boolean().describe("true to ignore it, false to restore it."),
+      replaces: z.string().optional().describe("Id of an open draft this revises.")
+    },
+    async (args) => {
+      const target = resolveDraftId(args.replaces);
+      if ("error" in target) return errorText(target.error!);
+      const workout = (await listFitbitWorkouts(db, userName, args.date, args.date)).find((w) => w.id === args.fitbit_workout_id);
+      if (!workout) return errorText(`No watch workout ${args.fitbit_workout_id} on ${args.date}.`);
+      if (workout.ignored === args.ignored) return errorText(`That workout is already ${args.ignored ? "ignored" : "not ignored"}.`);
+      if (args.ignored && workout.sessionId) return errorText("That workout is logged; delete the log on the Training tab first.");
+      drafts.set(target.id!, {
+        type: "ignore",
+        id: target.id!,
+        date: args.date,
+        workout_id: workout.id,
+        label: describeWorkout(workout).replace(/ \(id .*\)$/, ""),
+        ignored: args.ignored,
+        saved_id: null
+      });
+      return text({ draft_id: target.id, workout: describeWorkout(workout), action: args.ignored ? "ignore" : "restore" });
+    }
+  );
+
   const listWorkouts = tool(
     "list_workouts",
     "List workouts in a date range (at most 31 days), newest first: each watch workout with what it was logged as, if anything, plus logged workouts with no watch workout.",
@@ -559,23 +603,27 @@ export async function runBrain(message: string, context: BrainContext): Promise<
 
   const getGoals = tool(
     "get_goals",
-    "Daily targets (calories, macros in grams and percent, water) and one day's saved totals against them. Open drafts aren't counted.",
+    "Daily targets (calories, macros in grams and percent, water) and one day's saved totals against them. The calorie target is the base goal plus what that day's watch workouts burned beyond resting; macro grams scale with it. Open drafts aren't counted.",
     { date: localDate.optional() },
     async (args) => {
       const day = checkDate(args.date);
       if ("error" in day) return errorText(day.error!);
-      const [goals, entries, waterOz] = await Promise.all([
+      const [baseGoals, entries, waterOz, healthDays, workouts] = await Promise.all([
         getUserGoals(userName, db),
         searchMacroEntries(db, userName, { startDate: day.date!, endDate: day.date!, words: [], limit: 100 }),
-        getWaterOunces(userName, day.date!, db)
+        getWaterOunces(userName, day.date!, db),
+        listHealthDays(userName, addDays(day.date!, -31), day.date!),
+        listHealthWorkouts(userName, day.date!, day.date!)
       ]);
+      const workoutKcal = workoutCalories(workouts, restingKcalPerMinute(healthDays, day.date!));
+      const goals = withWorkoutCalories(baseGoals, workoutKcal);
       const grams = gramsFromPercentGoals(goals);
       const eaten = summarizeEntries(entries);
       const row = (target: number, done: number) => ({ target, done: Math.round(done), left: Math.round(target - done) });
       return text({
         date: day.date,
         meals_saved: entries.length,
-        calories: row(goals.calories, eaten.calories),
+        calories: { ...row(goals.calories, eaten.calories), base_target: baseGoals.calories, from_workouts: workoutKcal },
         protein_g: { ...row(grams.protein_g, eaten.protein_g), pct_of_calories: goals.proteinPct },
         carbs_g: { ...row(grams.carbs_g, eaten.carbs_g), pct_of_calories: goals.carbsPct },
         fat_g: { ...row(grams.fat_g, eaten.fat_g), pct_of_calories: goals.fatPct },
@@ -596,6 +644,7 @@ export async function runBrain(message: string, context: BrainContext): Promise<
         tools: [
           draftMeal,
           draftWorkout,
+          draftIgnoreWorkout,
           listWorkouts,
           listMeals,
           getGoals,
