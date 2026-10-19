@@ -359,7 +359,7 @@ export function WorkoutEditor({
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState(name);
   const [draftType, setDraftType] = useState<WorkoutType>(workoutType);
-  // Old names (Mid Chest, Traps) open as what they count as now.
+  // Old names (Mid Chest, Abs) open as what they count as now.
   const current = currentMuscles(muscleGroups, muscleIntensity);
   const [groups, setGroups] = useState<MuscleName[]>(current.muscleGroups);
   const [intensity, setIntensity] = useState<MuscleIntensity>(current.muscleIntensity);

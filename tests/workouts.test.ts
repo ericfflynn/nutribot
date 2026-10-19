@@ -8,6 +8,7 @@ import {
   chooseMatch,
   currentMuscles,
   describeMuscles,
+  groupDayIntensity,
   intensityOf,
   loadOf,
   normalizeMuscles,
@@ -71,7 +72,7 @@ test("each muscle is due, recovering or covered", () => {
   const week = weekStatus(sessions, TODAY);
   assert.deepEqual(week.covered.map((item) => item.muscle), ["Chest"]);
   assert.deepEqual(week.recovering.map((item) => [item.muscle, item.readyIn]), [["Lats", 4]]);
-  assert.equal(week.due.length, 15); // the other 15 tracked muscles, none trained
+  assert.equal(week.due.length, 16); // the other 16 tracked muscles, none trained
 });
 
 test("RPE 1-3 is light, 4-6 medium, 7-10 hard", () => {
@@ -157,12 +158,30 @@ test("muscles decide the kind of training when the type doesn't", () => {
   assert.deepEqual(kinds("class", []), ["cardio"]); // no muscles: the type decides
 });
 
-test("old names count as today's: Mid Chest is Chest, Traps is Upper Back", () => {
-  const sessions = [session("2026-10-11", ["Traps", "Mid Chest"], 3)];
-  assert.equal(loadOf(sessions, "Upper Back", TODAY).points, 1);
+test("old names count as today's: Mid Chest is Chest", () => {
+  const sessions = [session("2026-10-11", ["Mid Chest"], 3)];
   assert.equal(loadOf(sessions, "Chest", TODAY).points, 1);
-  assert.deepEqual(currentMuscles(["Upper Chest", "Mid Chest", "Traps"], { "Mid Chest": "hard" }), {
-    muscleGroups: ["Chest", "Upper Back"],
+  assert.deepEqual(currentMuscles(["Upper Chest", "Mid Chest", "Lats"], { "Mid Chest": "hard" }), {
+    muscleGroups: ["Chest", "Lats"],
     muscleIntensity: { Chest: "hard" }
   });
+});
+
+test("Traps are their own muscle, apart from Upper Back", () => {
+  const sessions = [session("2026-10-11", ["Traps"], 8)];
+  assert.equal(loadOf(sessions, "Traps", TODAY).points, 3);
+  assert.equal(loadOf(sessions, "Upper Back", TODAY).points, 0);
+  assert.equal(loadOf([session("2026-10-11", ["Back"], 8)], "Traps", TODAY).points, 3);
+});
+
+test("a group's day averages its muscles: one medium delt is a light shoulder day", () => {
+  assert.equal(groupDayIntensity([session(TODAY, ["Side Delts"], 5)], "Shoulders"), "light");
+  assert.equal(groupDayIntensity([session(TODAY, ["Side Delts", "Rear Delts"], 8)], "Shoulders"), "medium");
+  assert.equal(groupDayIntensity([session(TODAY, ["Shoulders"], 5)], "Shoulders"), "medium");
+  assert.equal(groupDayIntensity([session(TODAY, ["Shoulders"], 8)], "Shoulders"), "hard");
+  assert.equal(groupDayIntensity([session(TODAY, ["Chest"], 8)], "Chest"), "hard");
+  assert.equal(groupDayIntensity([session(TODAY, ["Chest"], 8)], "Shoulders"), undefined);
+  // Two sessions the same day: each muscle takes its hardest.
+  const day = [session(TODAY, ["Front Delts"], 8), session(TODAY, ["Front Delts", "Side Delts"], 5)];
+  assert.equal(groupDayIntensity(day, "Shoulders"), "medium");
 });

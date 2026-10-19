@@ -23,7 +23,7 @@ import {
   WORKOUT_TYPES,
   WORKOUT_TYPE_LABELS,
   describeMuscles,
-  groupOf,
+  groupDayIntensity,
   musclesOf,
   namesFor,
   lastTrainedByName,
@@ -142,15 +142,21 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
   const healthById = new Map<string, HealthWorkout>(healthWorkouts.map((workout) => [workout.id, workout]));
   const fitbitById = new Map<string, FitbitWorkout>(fitbit.map((workout) => [workout.id, workout]));
 
-  // Coverage: the hardest intensity per day per group, and per specific
-  // muscle for the expanded rows, keyed "date|name".
+  // Coverage: each group's day is how much of the group was worked
+  // (groupDayIntensity); each specific muscle's is the hardest it got, for
+  // the expanded rows. Keyed "date|name".
   const coverage = new Map<string, Intensity>();
+  for (const day of days) {
+    const daySessions = sessions.filter((session) => session.date === day);
+    for (const group of STRENGTH_GROUPS) {
+      const intensity = groupDayIntensity(daySessions, group);
+      if (intensity) coverage.set(`${day}|${group}`, intensity);
+    }
+  }
   const muscleCoverage = new Map<string, Intensity>();
   for (const session of sessions) {
     for (const name of session.muscleGroups) {
       const intensity = intensityOf(session, name);
-      const groupKey = `${session.date}|${groupOf(name)}`;
-      coverage.set(groupKey, harder(coverage.get(groupKey), intensity));
       for (const muscle of musclesOf(name)) {
         const key = `${session.date}|${muscle}`;
         muscleCoverage.set(key, harder(muscleCoverage.get(key), intensity));
@@ -417,6 +423,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
             <i className="coverage-cell level-3" /> Hard
           </span>
         </div>
+        <p className="training-week-note">A group's shade averages its muscles; tap a group to see each one.</p>
       </section>
 
       <section className="group" aria-label="Recent workouts">

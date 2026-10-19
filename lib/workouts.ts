@@ -7,13 +7,13 @@ import type { Pool } from "pg";
 // mix of both: a group name means the whole group (or unspecified), a muscle
 // name means just that muscle. Chest isn't split: it is one muscle. Older
 // sessions use names that changed since (LEGACY_MUSCLES: Abs, Upper/Mid/Lower
-// Chest, Traps); they still read, as what they cover now.
+// Chest); they still read, as what they cover now.
 export const MUSCLE_GROUPS = ["Chest", "Back", "Shoulders", "Arms", "Legs", "Core", "Cardio", "Mobility"] as const;
 export type MuscleGroup = (typeof MUSCLE_GROUPS)[number];
 
 export const MUSCLES = {
   Chest: [],
-  Back: ["Lats", "Upper Back", "Lower Back"],
+  Back: ["Lats", "Upper Back", "Traps", "Lower Back"],
   Shoulders: ["Front Delts", "Side Delts", "Rear Delts"],
   Arms: ["Biceps", "Triceps", "Forearms"],
   Legs: ["Quads", "Hamstrings", "Glutes", "Calves"],
@@ -33,8 +33,7 @@ export const LEGACY_MUSCLES = {
   Abs: { group: "Core", covers: ["Upper Abs", "Lower Abs"] },
   "Upper Chest": { group: "Chest", covers: ["Chest"] },
   "Mid Chest": { group: "Chest", covers: ["Chest"] },
-  "Lower Chest": { group: "Chest", covers: ["Chest"] },
-  Traps: { group: "Back", covers: ["Upper Back"] }
+  "Lower Chest": { group: "Chest", covers: ["Chest"] }
 } as const satisfies Record<string, { group: MuscleGroup; covers: readonly TrackedMuscle[] }>;
 type LegacyMuscle = keyof typeof LEGACY_MUSCLES;
 
@@ -74,7 +73,7 @@ export function musclesOf(name: MuscleName): readonly TrackedMuscle[] {
 }
 
 // An old session's names and intensities in today's terms, for editing:
-// "Mid Chest" becomes Chest, "Traps" becomes Upper Back.
+// "Mid Chest" becomes Chest, "Abs" becomes Upper Abs and Lower Abs.
 export function currentMuscles(names: readonly MuscleName[], intensity: MuscleIntensity) {
   const nextIntensity: MuscleIntensity = { ...intensity };
   const next = names.flatMap((name) => {
@@ -160,6 +159,27 @@ export function loadOf(sessions: readonly TrainedSession[], muscle: TrackedMuscl
   return { points, readyIn };
 }
 
+// How much of a group one day's sessions worked, for the coverage grid's group
+// row: each muscle's points (the hardest that day; a whole-group session counts
+// for all of them), averaged over the group's muscles and rounded back to an
+// intensity. One medium Side Delts set is a light day for Shoulders; the whole
+// group at medium is medium. Undefined when nothing in the group was trained.
+export function groupDayIntensity(daySessions: readonly TrainedSession[], group: MuscleGroup): Intensity | undefined {
+  const muscles = trackedOf(group);
+  let total = 0;
+  for (const muscle of muscles) {
+    let best = 0;
+    for (const session of daySessions) {
+      const name = session.muscleGroups.find((item) => item === group || musclesOf(item).includes(muscle));
+      if (name) best = Math.max(best, INTENSITY_RULES[intensityOf(session, name)].points);
+    }
+    total += best;
+  }
+  if (!total) return undefined;
+  const average = total / muscles.length;
+  return [...INTENSITIES].reverse().find((intensity) => average >= INTENSITY_RULES[intensity].points - 0.5) ?? "light";
+}
+
 export type MuscleStatus = { muscle: TrackedMuscle; group: MuscleGroup } & Load;
 
 // Every strength muscle sorted into what to train: due (recovered and short
@@ -219,7 +239,7 @@ export function activityCategoriesOf(type: WorkoutType, muscles: readonly Muscle
 // Strength days to suggest, each with the muscles it covers.
 const SPLITS: { name: string; muscles: TrackedMuscle[] }[] = [
   { name: "Push day", muscles: ["Chest", "Front Delts", "Side Delts", "Triceps"] },
-  { name: "Pull day", muscles: ["Lats", "Upper Back", "Rear Delts", "Biceps"] },
+  { name: "Pull day", muscles: ["Lats", "Upper Back", "Traps", "Rear Delts", "Biceps"] },
   { name: "Leg day", muscles: ["Quads", "Hamstrings", "Glutes", "Calves"] }
 ];
 // Core is added to whichever day comes next, not a day of its own.
