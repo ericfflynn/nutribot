@@ -304,6 +304,31 @@ export function activityCategoriesOf(type: WorkoutType, muscles: readonly Muscle
   return [main, ...extra];
 }
 
+// A good week's split: sessions of each kind in any 7 days. Sport counts but
+// has no target. A workout counts for every kind it includes, so stretching
+// logged on a strength session is also a mobility session.
+export const SPLIT_TARGETS: Partial<Record<ActivityCategory, number>> = { strength: 4, cardio: 2, mobility: 2 };
+export const SPLIT_KINDS = ["strength", "cardio", "mobility", "sport"] as const;
+
+export type SplitEntry = { kind: (typeof SPLIT_KINDS)[number]; count: number; target: number | null };
+
+// Each kind's sessions against its target, from each workout's kinds
+// (activityCategoriesOf).
+export function splitOf(workouts: readonly (readonly ActivityCategory[])[]): SplitEntry[] {
+  return SPLIT_KINDS.map((kind) => ({
+    kind,
+    count: workouts.filter((kinds) => kinds.includes(kind)).length,
+    target: SPLIT_TARGETS[kind] ?? null
+  }));
+}
+
+// The kinds still short of their target, furthest short first.
+export function splitShort(split: readonly SplitEntry[]) {
+  return split
+    .filter((entry): entry is SplitEntry & { target: number } => entry.target != null && entry.count < entry.target)
+    .sort((a, b) => b.target - b.count - (a.target - a.count));
+}
+
 // Strength days to suggest, each with the muscles it covers.
 const SPLITS: { name: string; muscles: TrackedMuscle[] }[] = [
   { name: "Push day", muscles: ["Chest", "Front Delts", "Side Delts", "Triceps"] },

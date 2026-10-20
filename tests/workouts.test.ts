@@ -15,6 +15,8 @@ import {
   type SorenessReport,
   normalizeMuscles,
   recommendNext,
+  splitOf,
+  splitShort,
   type TrainedSession,
   weekStatus
 } from "../lib/workouts";
@@ -217,4 +219,27 @@ test("Next up leaves out sore muscles", () => {
   const allSore = ["Chest", "Front Delts", "Side Delts", "Triceps"].map((muscle) => sore(TODAY, muscle, "bad"));
   const next = recommendNext(new Map(), [], TODAY, allSore);
   assert.notEqual(next.split, "Push day");
+});
+
+test("the split counts a workout for every kind it includes, against 4/2/2", () => {
+  const split = splitOf([
+    activityCategoriesOf("strength", ["Chest", "Mobility"]), // strength + mobility
+    activityCategoriesOf("strength", ["Legs"]),
+    activityCategoriesOf("run", ["Cardio"]),
+    activityCategoriesOf("sport")
+  ]);
+  assert.deepEqual(
+    split.map((entry) => [entry.kind, entry.count, entry.target]),
+    [
+      ["strength", 2, 4],
+      ["cardio", 1, 2],
+      ["mobility", 1, 2],
+      ["sport", 1, null]
+    ]
+  );
+  // Strength is 2 short, cardio and mobility 1 each; sport never is.
+  assert.deepEqual(
+    splitShort(split).map((entry) => entry.kind),
+    ["strength", "cardio", "mobility"]
+  );
 });

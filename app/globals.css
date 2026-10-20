@@ -4190,100 +4190,63 @@ details[open] .journal-preview {
   flex-wrap: wrap;
 }
 
-/* Training: the week's workouts by kind, a grey pie by count. Each kind has
-   a fixed shade, darkest for strength; white gaps separate the slices. */
-.workout-mix {
+/* Training: the week's split under the strength grid, in its columns. A pip
+   per session the target asks for, dark when done; no colors per kind. */
+.week-split {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
 }
 
-.workout-mix-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.workout-mix-head .training-grid-title {
+.week-split .training-grid-title {
   margin: 0;
 }
 
-.workout-mix-body {
+.week-split-row {
   display: grid;
-  grid-template-columns: 96px minmax(0, 1fr);
+  grid-template-columns: 92px minmax(0, 1fr) 42px;
   align-items: center;
-  gap: 20px;
-}
-
-.workout-pie {
-  display: block;
-  width: 96px;
-  height: 96px;
-}
-
-.workout-pie path,
-.workout-pie circle {
-  stroke: var(--surface);
-  stroke-width: 2;
-  stroke-linejoin: round;
-}
-
-.workout-mix-legend {
-  display: grid;
   gap: 6px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  font-size: 14px;
 }
 
-.workout-mix-legend li {
-  display: grid;
-  grid-template-columns: 10px minmax(0, 1fr) auto 40px;
+.week-split-pips {
+  display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 5px;
 }
 
-.workout-mix-legend i {
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
+.week-split-pips i {
+  flex: 0 0 28px;
+  height: 14px;
+  border-radius: 5px;
+  background: var(--bg);
 }
 
-.workout-mix-legend strong {
-  font-variant-numeric: tabular-nums;
-}
-
-.workout-mix-value {
-  color: var(--muted);
-  font-size: 13px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.mix-strength {
-  fill: #3a3a3c;
+.week-split-pips i.on {
   background: #3a3a3c;
 }
 
-.mix-cardio {
-  fill: #6e6e73;
-  background: #6e6e73;
+.week-split-pips small {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
-.mix-mobility {
-  fill: #9a9aa0;
-  background: #9a9aa0;
+/* The newest week's split, a line under Next up. */
+.training-split-line {
+  display: flex;
+  gap: 6px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
 }
 
-.mix-sport {
-  fill: #c2c2c8;
-  background: #c2c2c8;
+.training-split-line span {
+  color: var(--ink);
+  font-weight: 600;
 }
 
-.mix-other {
-  fill: #dcdce1;
-  background: #dcdce1;
+.training-split-line.done span {
+  color: var(--good);
 }

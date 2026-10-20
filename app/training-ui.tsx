@@ -477,66 +477,39 @@ export type WeekPage = {
   range: string;
   days: { date: string; letter: string }[];
   strength: CoverageRow[];
-  mix: WeekMix[];
+  split: SplitRow[];
 };
 
-// One kind of training in a week: how many workouts, and their minutes.
-export type WeekMix = { kind: string; label: string; count: number; minutes: number };
+// One kind of training in a week: sessions, and the target (null for sport).
+export type SplitRow = { kind: string; label: string; count: number; target: number | null };
 
-function formatMixMinutes(total: number) {
-  const hours = Math.floor(total / 60);
-  if (!hours) return `${total} min`;
-  return total % 60 ? `${hours} h ${total % 60} min` : `${hours} h`;
-}
 
-// A slice of the pie as an SVG path, angles in turns from 12 o'clock.
-function slicePath(from: number, to: number, radius: number) {
-  const point = (turn: number) => {
-    const angle = turn * 2 * Math.PI;
-    return `${(radius * Math.sin(angle)).toFixed(2)} ${(-radius * Math.cos(angle)).toFixed(2)}`;
-  };
-  return `M0 0 L${point(from)} A${radius} ${radius} 0 ${to - from > 0.5 ? 1 : 0} 1 ${point(to)} Z`;
-}
-
-// The week's workouts by kind, by count: a grey pie (a fixed shade per kind,
-// white gaps between slices) with a legend that carries the numbers.
-function WorkoutMix({ mix }: { mix: WeekMix[] }) {
-  const count = mix.reduce((sum, entry) => sum + entry.count, 0);
-  const minutes = mix.reduce((sum, entry) => sum + entry.minutes, 0);
-  let turn = 0;
-  // Each kind keeps its shade from week to week.
-  const slices = mix.map((entry) => {
-    const from = turn;
-    turn += entry.count / count;
-    return { ...entry, from, to: turn, shade: `mix-${entry.kind}` };
-  });
+// The week's split: sessions of each kind against its target, as pips (one
+// per session the target asks for, filled when done) in the grid's columns.
+// Sport has no target and shows only its count.
+function WeekSplit({ split }: { split: SplitRow[] }) {
   return (
-    <div className="workout-mix">
-      <div className="workout-mix-head">
-        <h3 className="training-grid-title">Workouts</h3>
-        <span className="card-aside">{count ? `${count} · ${formatMixMinutes(minutes)}` : "None"}</span>
-      </div>
-      {count ? (
-        <div className="workout-mix-body">
-          <svg viewBox="-50 -50 100 100" className="workout-pie" role="img" aria-label={slices.map((slice) => `${slice.label} ${slice.count}`).join(", ")}>
-            {slices.length === 1 ? (
-              <circle r={48} className={slices[0].shade} />
-            ) : (
-              slices.map((slice) => <path key={slice.kind} d={slicePath(slice.from, slice.to, 48)} className={slice.shade} />)
-            )}
-          </svg>
-          <ul className="workout-mix-legend">
-            {slices.map((slice) => (
-              <li key={slice.kind}>
-                <i className={slice.shade} aria-hidden="true" />
-                <span>{slice.label}</span>
-                <strong>{slice.count}</strong>
-                <span className="workout-mix-value">{Math.round((slice.count / count) * 100)}%</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
+    <div className="week-split">
+      <h3 className="training-grid-title">Split</h3>
+      {split.map((entry) => {
+        const done = entry.target != null && entry.count >= entry.target;
+        return (
+          <div key={entry.kind} className="week-split-row">
+            <span className="coverage-name">{entry.label}</span>
+            <span className="week-split-pips" aria-hidden="true">
+              {entry.target != null
+                ? Array.from({ length: entry.target }, (_, index) => (
+                    <i key={index} className={index < entry.count ? "on" : ""} />
+                  ))
+                : null}
+              {entry.target != null && entry.count > entry.target ? <small>+{entry.count - entry.target}</small> : null}
+            </span>
+            <span className={done ? "coverage-points done" : "coverage-points"}>
+              {entry.target != null ? `${entry.count}/${entry.target}` : entry.count}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -617,7 +590,7 @@ export function WeekPages({ pages }: { pages: WeekPage[] }) {
               <i className="coverage-cell level-3" /> Hard
             </span>
           </div>
-          <WorkoutMix mix={page.mix} />
+          <WeekSplit split={page.split} />
         </div>
       ))}
     </div>
