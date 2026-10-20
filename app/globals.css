@@ -4190,63 +4190,34 @@ details[open] .journal-preview {
   flex-wrap: wrap;
 }
 
-/* Training: the week's split under the strength grid, in its columns. A pip
-   per session the target asks for, dark when done; no colors per kind. */
-.week-split {
+/* Training: this week's split under Next up, a tile per kind with a target.
+   The count turns red while it's short. */
+.split-tiles {
   display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
 }
 
-.week-split .training-grid-title {
-  margin: 0;
-}
-
-.week-split-row {
-  display: grid;
-  grid-template-columns: 92px minmax(0, 1fr) 42px;
-  align-items: center;
-  gap: 6px;
-}
-
-.week-split-pips {
+.split-tile {
   display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.week-split-pips i {
-  flex: 0 0 28px;
-  height: 14px;
-  border-radius: 5px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 12px;
   background: var(--bg);
 }
 
-.week-split-pips i.on {
-  background: #3a3a3c;
-}
-
-.week-split-pips small {
-  color: var(--muted);
-  font-size: 12px;
+.split-tile strong {
+  font-size: 22px;
+  letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
 }
 
-/* The newest week's split, a line under Next up. */
-.training-split-line {
-  display: flex;
-  gap: 6px;
-  margin: 0;
+.split-tile strong.short {
+  color: var(--bad);
+}
+
+.split-tile span {
   color: var(--muted);
-  font-size: 14px;
-}
-
-.training-split-line span {
-  color: var(--ink);
-  font-weight: 600;
-}
-
-.training-split-line.done span {
-  color: var(--good);
+  font-size: 13px;
 }

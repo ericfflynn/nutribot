@@ -322,13 +322,6 @@ export function splitOf(workouts: readonly (readonly ActivityCategory[])[]): Spl
   }));
 }
 
-// The kinds still short of their target, furthest short first.
-export function splitShort(split: readonly SplitEntry[]) {
-  return split
-    .filter((entry): entry is SplitEntry & { target: number } => entry.target != null && entry.count < entry.target)
-    .sort((a, b) => b.target - b.count - (a.target - a.count));
-}
-
 // Strength days to suggest, each with the muscles it covers.
 const SPLITS: { name: string; muscles: TrackedMuscle[] }[] = [
   { name: "Push day", muscles: ["Chest", "Front Delts", "Side Delts", "Triceps"] },

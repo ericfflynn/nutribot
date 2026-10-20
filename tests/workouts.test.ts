@@ -16,7 +16,6 @@ import {
   normalizeMuscles,
   recommendNext,
   splitOf,
-  splitShort,
   type TrainedSession,
   weekStatus
 } from "../lib/workouts";
@@ -236,10 +235,5 @@ test("the split counts a workout for every kind it includes, against 4/2/2", () 
       ["mobility", 1, 2],
       ["sport", 1, null]
     ]
-  );
-  // Strength is 2 short, cardio and mobility 1 each; sport never is.
-  assert.deepEqual(
-    splitShort(split).map((entry) => entry.kind),
-    ["strength", "cardio", "mobility"]
   );
 });

@@ -477,42 +477,8 @@ export type WeekPage = {
   range: string;
   days: { date: string; letter: string }[];
   strength: CoverageRow[];
-  split: SplitRow[];
 };
 
-// One kind of training in a week: sessions, and the target (null for sport).
-export type SplitRow = { kind: string; label: string; count: number; target: number | null };
-
-
-// The week's split: sessions of each kind against its target, as pips (one
-// per session the target asks for, filled when done) in the grid's columns.
-// Sport has no target and shows only its count.
-function WeekSplit({ split }: { split: SplitRow[] }) {
-  return (
-    <div className="week-split">
-      <h3 className="training-grid-title">Split</h3>
-      {split.map((entry) => {
-        const done = entry.target != null && entry.count >= entry.target;
-        return (
-          <div key={entry.kind} className="week-split-row">
-            <span className="coverage-name">{entry.label}</span>
-            <span className="week-split-pips" aria-hidden="true">
-              {entry.target != null
-                ? Array.from({ length: entry.target }, (_, index) => (
-                    <i key={index} className={index < entry.count ? "on" : ""} />
-                  ))
-                : null}
-              {entry.target != null && entry.count > entry.target ? <small>+{entry.count - entry.target}</small> : null}
-            </span>
-            <span className={done ? "coverage-points done" : "coverage-points"}>
-              {entry.target != null ? `${entry.count}/${entry.target}` : entry.count}
-            </span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 // The week grid. Tapping a group with muscles shows a row per muscle;
 // sessions logged as the whole group only shade the group row.
@@ -590,7 +556,6 @@ export function WeekPages({ pages }: { pages: WeekPage[] }) {
               <i className="coverage-cell level-3" /> Hard
             </span>
           </div>
-          <WeekSplit split={page.split} />
         </div>
       ))}
     </div>

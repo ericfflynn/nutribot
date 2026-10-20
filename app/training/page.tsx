@@ -16,7 +16,6 @@ import {
   weekStatus,
   intensityOf,
   muscleWeekOf,
-  splitShort,
   splitOf,
   loadOf,
   trackedOf,
@@ -282,9 +281,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
   // first week with a logged session. Strength groups are shaded by how much
   // of the group was worked (groupDayIntensity), their muscles by the hardest
   // each got. The points column is that week's volume, so on the newest page
-  // it's the live 4-point target; a group shows its percent of that. The split
-  // under it counts the same list as Recent workouts (auto-detected walks left
-  // out); the muscles can say more than the type (activityCategoriesOf).
+  // it's the live 4-point target; a group shows its percent of that.
   const kindsOf = (item: RecentItem) => activityCategoriesOf(item.workoutType, item.session?.muscleGroups);
   const muscleDays = new Map<string, Intensity>(); // "date|muscle"
   for (const session of sessions) {
@@ -327,21 +324,17 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
         muscles: []
       }))
     }));
-    // The split: sessions of each kind that week against the targets.
-    const split = splitOf(recent.filter((item) => pageDays.includes(item.date)).map(kindsOf));
     weekPages.push({
       key: end,
       label: week === 0 ? "Last 7 days" : week === 1 ? "Previous 7 days" : `${week} weeks earlier`,
       range: `${shortDay.format(new Date(`${pageDays[0]}T00:00:00Z`))} – ${shortDay.format(new Date(`${end}T00:00:00Z`))}`,
       days: pageDays.map((day) => ({ date: day, letter: weekdayLetter.format(new Date(`${day}T00:00:00Z`)) })),
-      strength,
-      split: split.map((entry) => ({ ...entry, label: ACTIVITY_LABELS[entry.kind] }))
+      strength
     });
   }
 
-  // The newest week's split, for the line under Next up.
+  // The newest week's split: a tile per kind with a target, under Next up.
   const thisSplit = splitOf(recent.filter((item) => item.date > addDays(today, -7)).map(kindsOf));
-  const splitBehind = splitShort(thisSplit);
 
   return (
     <AppShell
@@ -374,15 +367,18 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
                 : "Every muscle has its weekly volume. A rest day, cardio or mobility fits."}
           </span>
         </div>
-        <p className={splitBehind.length ? "training-split-line" : "training-split-line done"}>
-          <span>Split</span>
-          {splitBehind.length
-            ? `${splitBehind.map((entry) => `${ACTIVITY_LABELS[entry.kind].toLowerCase()} ${entry.count}/${entry.target}`).join(", ")} this week`
-            : `on track: ${thisSplit
-                .filter((entry) => entry.count)
-                .map((entry) => `${entry.count} ${ACTIVITY_LABELS[entry.kind].toLowerCase()}`)
-                .join(", ")}`}
-        </p>
+        <div className="split-tiles" aria-label="Split this week">
+          {thisSplit
+            .filter((entry) => entry.target != null)
+            .map((entry) => (
+              <div key={entry.kind} className="split-tile">
+                <strong className={entry.count < entry.target! ? "short" : undefined}>
+                  {entry.count}/{entry.target}
+                </strong>
+                <span>{ACTIVITY_LABELS[entry.kind]}</span>
+              </div>
+            ))}
+        </div>
         <BodyMap muscles={muscleViews} />
         {week.due.length ? (
           <div className="training-week-bucket due">
