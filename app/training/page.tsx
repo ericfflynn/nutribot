@@ -1,6 +1,6 @@
 import { AppShell, Login } from "../shared-ui";
 import { BodyMap, type MuscleView } from "../body-map";
-import { CoverageGrid, LabelButton, MergeControls, RestoreButton, WorkoutEditor, type CoverageRow } from "../training-ui";
+import { WeekPages, LabelButton, MergeControls, RestoreButton, WorkoutEditor, type CoverageRow, type WeekPage } from "../training-ui";
 import { getSessionUser } from "@/lib/auth";
 import { addDays, rollingDateWindow, todayLocalDate } from "@/lib/dates";
 import { listHealthWorkouts, type HealthWorkout } from "@/lib/health/queries";
@@ -9,7 +9,6 @@ import { getPool } from "@/lib/supabase";
 import { listSoreness } from "@/lib/body-log";
 import { isPossibleDuplicate, type WorkoutRecord } from "@/lib/health/dedupe-rules";
 import {
-  ACTIVITY_CATEGORIES,
   ACTIVITY_LABELS,
   INTENSITIES,
   INTENSITY_RULES,
@@ -17,19 +16,19 @@ import {
   weekStatus,
   intensityOf,
   muscleWeekOf,
+  loadOf,
+  trackedOf,
   TRACKED_MUSCLES,
   MUSCLES,
   STRENGTH_GROUPS,
   activityCategoriesOf,
   canLabel,
-  lastByGroup,
   recommendNext,
   WORKOUT_TYPES,
   WORKOUT_TYPE_LABELS,
   describeMuscles,
   groupDayIntensity,
   musclesOf,
-  namesFor,
   lastTrainedByName,
   listFitbitWorkouts,
   listUnlabeledWorkouts,
@@ -47,11 +46,12 @@ export const dynamic = "force-dynamic";
 // Room for the health sync that opening the app may run (autoSyncHealthAction).
 export const maxDuration = 60;
 
+// Recent workouts lists this many days.
 const WINDOW_DAYS = 14;
+// The week grid pages back this many rolling weeks, as far as there's data.
+const HISTORY_WEEKS = 8;
 // Unlabeled strength workouts worth asking about.
 const UNLABELED_DAYS = 7;
-// A muscle group not trained for this many days shows as missing.
-const MISSING_AFTER_DAYS = 7;
 
 const dayFormat = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
 const shortDay = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
@@ -76,9 +76,6 @@ function formatClock(localDateTime: string) {
   return clockFormat.format(new Date(`${localDateTime}:00Z`));
 }
 
-function daysBetween(from: string, to: string) {
-  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
-}
 
 // Coverage cell shade: level-1 light, level-2 medium, level-3 hard.
 function intensityClass(intensity: Intensity | undefined) {
@@ -135,8 +132,8 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
   }
 
   const today = todayLocalDate();
-  const days = rollingDateWindow(today, WINDOW_DAYS);
-  const start = days[0];
+  const start = addDays(today, -(HISTORY_WEEKS * 7 - 1));
+  const recentStart = addDays(today, -(WINDOW_DAYS - 1));
   const db = getPool();
   if (!db) {
     return (
@@ -157,56 +154,6 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
   const healthById = new Map<string, HealthWorkout>(healthWorkouts.map((workout) => [workout.id, workout]));
   const fitbitById = new Map<string, FitbitWorkout>(fitbit.map((workout) => [workout.id, workout]));
 
-  // Coverage: each group's day is how much of the group was worked
-  // (groupDayIntensity); each specific muscle's is the hardest it got, for
-  // the expanded rows. Keyed "date|name".
-  const coverage = new Map<string, Intensity>();
-  for (const day of days) {
-    const daySessions = sessions.filter((session) => session.date === day);
-    for (const group of STRENGTH_GROUPS) {
-      const intensity = groupDayIntensity(daySessions, group);
-      if (intensity) coverage.set(`${day}|${group}`, intensity);
-    }
-  }
-  const muscleCoverage = new Map<string, Intensity>();
-  for (const session of sessions) {
-    for (const name of session.muscleGroups) {
-      const intensity = intensityOf(session, name);
-      for (const muscle of musclesOf(name)) {
-        const key = `${session.date}|${muscle}`;
-        muscleCoverage.set(key, harder(muscleCoverage.get(key), intensity));
-      }
-    }
-  }
-
-  const lastTrained = lastByGroup(lastByName);
-  const sinceOf = (date: string | undefined) => (date ? daysBetween(date, today) : null);
-  const coverageRows: CoverageRow[] = STRENGTH_GROUPS.map((group) => {
-    const since = sinceOf(lastTrained.get(group));
-    return {
-      name: group,
-      since,
-      missing: since == null || since >= MISSING_AFTER_DAYS,
-      levels: days.map((day) => {
-        return intensityClass(coverage.get(`${day}|${group}`));
-      }),
-      muscles: (MUSCLES[group] as readonly string[]).map((muscle) => ({
-        name: muscle,
-        since: sinceOf(
-          namesFor(muscle as TrackedMuscle)
-            .map((name) => lastByName.get(name))
-            .filter((date): date is string => date != null)
-            .sort()
-            .at(-1)
-        ),
-        missing: false,
-        levels: days.map((day) => {
-          return intensityClass(muscleCoverage.get(`${day}|${muscle}`));
-        }),
-        muscles: []
-      }))
-    };
-  });
   const nextUp = recommendNext(lastByName, sessions, today, soreness);
   // This week: every strength muscle as due, recovering or covered, on the
   // body map, with the due ones listed by how short they are.
@@ -303,8 +250,10 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
   recent.sort((a, b) => b.sort.localeCompare(a.sort));
   // Workout types present in the window, for the filter and the type counts.
   const typeCounts = new Map<WorkoutType, number>();
-  for (const item of recent) typeCounts.set(item.workoutType, (typeCounts.get(item.workoutType) ?? 0) + 1);
-  const shown = typeFilter ? recent.filter((item) => item.workoutType === typeFilter) : recent;
+  for (const item of recent.filter((entry) => entry.date >= recentStart)) typeCounts.set(item.workoutType, (typeCounts.get(item.workoutType) ?? 0) + 1);
+  const shown = (typeFilter ? recent.filter((item) => item.workoutType === typeFilter) : recent).filter(
+    (item) => item.date >= recentStart
+  );
   // Recent workouts by week (Monday to Sunday), newest first, with totals.
   const thisWeek = weekStartOf(today);
   const shownWeeks = [...new Set(shown.map((item) => weekStartOf(item.date)))].map((weekStart) => {
@@ -325,27 +274,71 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     };
   });
 
-  // The mix: strength, cardio, mobility and sport by day, from the same list
-  // (auto-detected walks are already left out). The muscles can say more than
-  // the type: a stretching session is mobility (activityCategoriesOf).
+  // The week grid: one page per rolling 7 days, newest first, back to the
+  // first week with a logged session. Strength groups are shaded by how much
+  // of the group was worked (groupDayIntensity), their muscles by the hardest
+  // each got. The points column is that week's volume, so on the newest page
+  // it's the live 4-point target; a group shows its weakest muscle. Cardio,
+  // mobility and sport come from the same list as Recent workouts
+  // (auto-detected walks left out); the muscles can say more than the type
+  // (activityCategoriesOf).
   const kindsOf = (item: RecentItem) => activityCategoriesOf(item.workoutType, item.session?.muscleGroups);
-  const activityRows: CoverageRow[] = ACTIVITY_CATEGORIES.map((category) => {
-    const items = recent.filter((item) => kindsOf(item).includes(category));
-    const dates = new Set(items.map((item) => item.date));
-    const last = items.map((item) => item.date).sort().at(-1);
-    return {
-      name: ACTIVITY_LABELS[category],
-      since: sinceOf(last),
-      missing: false,
-      levels: days.map((day) => (dates.has(day) ? `activity-${category}` : "")),
-      muscles: []
-    };
-  });
-  const activityTotals = ACTIVITY_CATEGORIES.map((category) => {
-    const items = recent.filter((item) => kindsOf(item)[0] === category);
-    const minutes = items.reduce((sum, item) => sum + (item.minutes ?? 0), 0);
-    return { category, count: items.length, minutes };
-  }).filter((total) => total.count);
+  const muscleDays = new Map<string, Intensity>(); // "date|muscle"
+  for (const session of sessions) {
+    for (const name of session.muscleGroups) {
+      for (const muscle of musclesOf(name)) {
+        const key = `${session.date}|${muscle}`;
+        muscleDays.set(key, harder(muscleDays.get(key), intensityOf(session, name)));
+      }
+    }
+  }
+  // Pages stop at the first logged session: earlier weeks would only have
+  // unlabeled watch workouts, and every muscle at 0 points.
+  const firstDate = sessions.map((session) => session.date).sort()[0] ?? today;
+  const weekPages: WeekPage[] = [];
+  for (let week = 0; week < HISTORY_WEEKS; week++) {
+    const end = addDays(today, -7 * week);
+    const pageDays = rollingDateWindow(end, 7);
+    if (week > 0 && pageDays[6] < firstDate) break;
+    const pointsOf = (muscle: TrackedMuscle) => loadOf(sessions, muscle, end).points;
+    const pointsCell = (points: number) => ({ aside: `${points}/${WEEKLY_TARGET_POINTS}`, done: points >= WEEKLY_TARGET_POINTS });
+    const strength: CoverageRow[] = STRENGTH_GROUPS.map((group) => ({
+      name: group,
+      ...pointsCell(Math.min(...trackedOf(group).map(pointsOf))),
+      levels: pageDays.map((day) =>
+        intensityClass(groupDayIntensity(sessions.filter((session) => session.date === day), group))
+      ),
+      muscles: (MUSCLES[group] as readonly TrackedMuscle[]).map((muscle) => ({
+        name: muscle,
+        ...pointsCell(pointsOf(muscle)),
+        levels: pageDays.map((day) => intensityClass(muscleDays.get(`${day}|${muscle}`))),
+        muscles: []
+      }))
+    }));
+    const activities: CoverageRow[] = (["cardio", "mobility", "sport"] as const).flatMap((category) => {
+      const dates = new Set(
+        recent.filter((item) => kindsOf(item).includes(category) && pageDays.includes(item.date)).map((item) => item.date)
+      );
+      if (category === "sport" && !dates.size) return [];
+      return [
+        {
+          name: ACTIVITY_LABELS[category],
+          aside: dates.size ? `${dates.size}d` : "",
+          done: false,
+          levels: pageDays.map((day) => (dates.has(day) ? "activity" : "")),
+          muscles: []
+        }
+      ];
+    });
+    weekPages.push({
+      key: end,
+      label: week === 0 ? "Last 7 days" : week === 1 ? "Previous 7 days" : `${week} weeks earlier`,
+      range: `${shortDay.format(new Date(`${pageDays[0]}T00:00:00Z`))} – ${shortDay.format(new Date(`${end}T00:00:00Z`))}`,
+      days: pageDays.map((day) => ({ date: day, letter: weekdayLetter.format(new Date(`${day}T00:00:00Z`)) })),
+      strength,
+      activities
+    });
+  }
 
   return (
     <AppShell
@@ -431,35 +424,8 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
         </section>
       ) : null}
 
-      <section className="card" aria-label="Last 14 days">
-        <div className="card-heading">
-          <h2 className="card-title">Last {WINDOW_DAYS} days</h2>
-          <span className="card-aside">
-            {activityTotals.map((total) => `${ACTIVITY_LABELS[total.category]} ${total.count}`).join(" · ") || "Nothing yet"}
-          </span>
-        </div>
-        <h3 className="training-grid-title">Strength</h3>
-        <CoverageGrid
-          days={days.map((day) => ({ date: day, letter: weekdayLetter.format(new Date(`${day}T00:00:00Z`)) }))}
-          rows={coverageRows}
-        />
-        <div className="coverage-legend" aria-hidden="true">
-          <span>
-            <i className="coverage-cell level-1" /> Light
-          </span>
-          <span>
-            <i className="coverage-cell level-2" /> Medium
-          </span>
-          <span>
-            <i className="coverage-cell level-3" /> Hard
-          </span>
-        </div>
-        <p className="training-week-note">A group's shade averages its muscles; tap a group to see each one.</p>
-        <h3 className="training-grid-title">Activity</h3>
-        <CoverageGrid
-          days={days.map((day) => ({ date: day, letter: weekdayLetter.format(new Date(`${day}T00:00:00Z`)) }))}
-          rows={activityRows}
-        />
+      <section className="card" aria-label="Week by week">
+        <WeekPages pages={weekPages} />
       </section>
 
       <section className="group" aria-label="Recent workouts">

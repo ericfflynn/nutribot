@@ -465,51 +465,104 @@ export function WorkoutEditor({
 
 export type CoverageRow = {
   name: string;
-  since: number | null;
-  missing: boolean;
-  levels: string[]; // a cell class per day: "", "level-1".."level-3"
+  aside: string; // the points column: "3/4", or days for an activity
+  done: boolean; // at the weekly target
+  levels: string[]; // a cell class per day: "", "level-1".."level-3", "activity"
   muscles: CoverageRow[]; // specific muscles, for an expandable group
 };
 
-// The coverage grid. Tapping a group with muscles shows a row per muscle;
-// sessions logged as the whole group only shade the group's row.
-export function CoverageGrid({ days, rows }: { days: { date: string; letter: string }[]; rows: CoverageRow[] }) {
-  const [open, setOpen] = useState<string | null>(null);
+export type WeekPage = {
+  key: string;
+  label: string;
+  range: string;
+  days: { date: string; letter: string }[];
+  strength: CoverageRow[];
+  activities: CoverageRow[];
+};
+
+// The week grid. Tapping a group with muscles shows a row per muscle;
+// sessions logged as the whole group only shade the group row.
+export function CoverageGrid({
+  days,
+  rows,
+  open,
+  onToggle
+}: {
+  days: { date: string; letter: string }[];
+  rows: CoverageRow[];
+  open: string | null;
+  onToggle: (name: string) => void;
+}) {
   const line = (row: CoverageRow, sub: boolean) => (
     <div className={sub ? "coverage-row coverage-sub" : "coverage-row"} key={`${sub ? "m" : "g"}-${row.name}`}>
       {!sub && row.muscles.length ? (
-        <button
-          type="button"
-          className={`coverage-name coverage-toggle${row.missing ? " missing" : ""}`}
-          aria-expanded={open === row.name}
-          onClick={() => setOpen(open === row.name ? null : row.name)}
-        >
+        <button type="button" className="coverage-name coverage-toggle" aria-expanded={open === row.name} onClick={() => onToggle(row.name)}>
           {row.name} <span aria-hidden="true">{open === row.name ? "▾" : "▸"}</span>
         </button>
       ) : (
-        <span className={`coverage-name${row.missing ? " missing" : ""}`}>{row.name}</span>
+        <span className="coverage-name">{row.name}</span>
       )}
       <div className="coverage-cells">
         {row.levels.map((level, index) => (
           <span key={days[index].date} className={`coverage-cell ${level}`} />
         ))}
       </div>
-      <span className={row.missing ? "coverage-since missing" : "coverage-since"}>{row.since == null ? "–" : `${row.since}d`}</span>
+      <span className={row.done ? "coverage-points done" : "coverage-points"}>{row.aside}</span>
     </div>
   );
   return (
-    <div className="coverage">
-      <span />
-      <div className="coverage-cells">
-        {days.map((day) => (
-          <span key={day.date} className="coverage-dow">
-            {day.letter}
-          </span>
-        ))}
-      </div>
-      <span className="coverage-since-head">since</span>
+    <>
       {rows.flatMap((row) => [line(row, false), ...(open === row.name ? row.muscles.map((muscle) => line(muscle, true)) : [])])}
-    </div>
+    </>
   );
 }
 
+// Rolling weeks, newest first; swipe right for earlier ones. Which group is
+// expanded carries across pages.
+export function WeekPages({ pages }: { pages: WeekPage[] }) {
+  const [open, setOpen] = useState<string | null>(null);
+  const toggle = (name: string) => setOpen(open === name ? null : name);
+  return (
+    <div className="week-pages">
+      {pages.map((page, index) => (
+        <div key={page.key} className="week-page" aria-label={`${page.label}, ${page.range}`}>
+          <div className="card-heading">
+            <h2 className="card-title">{page.label}</h2>
+            <span className="card-aside">
+              {index < pages.length - 1 ? <span aria-hidden="true">‹ </span> : null}
+              {page.range}
+            </span>
+          </div>
+          <div className="coverage">
+            <span />
+            <div className="coverage-cells">
+              {page.days.map((day) => (
+                <span key={day.date} className="coverage-dow">
+                  {day.letter}
+                </span>
+              ))}
+            </div>
+            <span className="coverage-since-head">pts</span>
+            <CoverageGrid days={page.days} rows={page.strength} open={open} onToggle={toggle} />
+            <span className="coverage-divider" />
+            <CoverageGrid days={page.days} rows={page.activities} open={open} onToggle={toggle} />
+          </div>
+          <div className="coverage-legend" aria-hidden="true">
+            <span>
+              <i className="coverage-cell level-1" /> Light
+            </span>
+            <span>
+              <i className="coverage-cell level-2" /> Medium
+            </span>
+            <span>
+              <i className="coverage-cell level-3" /> Hard
+            </span>
+            <span>
+              <i className="coverage-cell activity" /> Activity
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}

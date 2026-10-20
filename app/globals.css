@@ -2924,17 +2924,21 @@ button.fab {
   background: var(--bg);
 }
 
-/* Light, medium, hard: one hue in clearly separated lightness steps */
+/* Light, medium, hard: the body map's reds, in clearly separated steps */
 .coverage-cell.level-1 {
-  background: #fcdcc4;
+  background: #f6b2a6;
 }
 
 .coverage-cell.level-2 {
-  background: #f28a4c;
+  background: #e3604f;
 }
 
 .coverage-cell.level-3 {
-  background: #a8360f;
+  background: #b81d14;
+}
+
+.coverage-cell.activity {
+  background: #8e8e96;
 }
 
 .coverage-legend {
@@ -3249,17 +3253,17 @@ button.fab {
 }
 
 .intensity-option.level-1.on {
-  background: #fcdcc4;
-  color: #7a3410;
+  background: #f6b2a6;
+  color: #6e1a12;
 }
 
 .intensity-option.level-2.on {
-  background: #f28a4c;
-  color: #3d1400;
+  background: #e3604f;
+  color: #ffffff;
 }
 
 .intensity-option.level-3.on {
-  background: #a8360f;
+  background: #b81d14;
   color: #ffffff;
 }
 
@@ -4137,4 +4141,79 @@ details[open] .journal-preview {
   overflow: hidden;
   clip: rect(0 0 0 0);
   white-space: nowrap;
+}
+
+/* Training: week by week. Pages scroll sideways, newest first; row-reverse
+   starts the scroll at the newest page, so swiping right goes back. */
+.week-pages {
+  display: flex;
+  flex-direction: row-reverse;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  margin: 0 -16px;
+}
+
+.week-pages::-webkit-scrollbar {
+  display: none;
+}
+
+.week-page {
+  display: grid;
+  flex: 0 0 100%;
+  gap: 12px;
+  padding: 0 16px;
+  scroll-snap-align: start;
+  align-content: start;
+}
+
+.week-page .coverage {
+  grid-template-columns: 92px minmax(0, 1fr) 34px;
+}
+
+.week-page .coverage-cells {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.week-page .coverage-cell {
+  height: 22px;
+  border-radius: 6px;
+}
+
+.week-page .coverage-sub .coverage-cell {
+  height: 14px;
+}
+
+.coverage-points {
+  font-size: 13px;
+  font-weight: 700;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.coverage-points.done {
+  color: var(--good);
+}
+
+.coverage-sub .coverage-points {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.coverage-sub .coverage-points.done {
+  color: var(--good);
+}
+
+.coverage-divider {
+  grid-column: 1 / -1;
+  height: 1px;
+  margin: 2px 0;
+  background: var(--line);
+}
+
+.week-page .coverage-legend {
+  flex-wrap: wrap;
 }
