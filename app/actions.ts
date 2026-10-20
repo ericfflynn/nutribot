@@ -18,9 +18,10 @@ import {
   listHabits,
   saveHabit,
   saveHabitLogs,
+  deleteHabitLogs,
   updateHabitLog
 } from "@/lib/habits";
-import { deleteJournalEntry, listJournalTags, saveJournalEntry, updateJournalEntry } from "@/lib/journal";
+import { deleteJournalEntry, listJournalTags, overwriteJournalEntry, saveJournalEntry, updateJournalEntry } from "@/lib/journal";
 import { normalizeTags } from "@/lib/journal-tags";
 import { saveFeedback } from "@/lib/feedback";
 import {
@@ -318,10 +319,18 @@ export async function saveDraftAction(
           client
         });
         saved = { ...stored, saved_id: savedId };
+      } else if (stored.type === "journal" && stored.edits) {
+        if (!(await overwriteJournalEntry(client, user.name, stored.edits.id, stored))) {
+          throw new Error("That journal entry no longer exists.");
+        }
+        savedId = stored.edits.id;
+        saved = { ...stored, saved_id: savedId };
       } else if (stored.type === "journal") {
         savedId = await saveJournalEntry(client, user.name, stored);
         saved = { ...stored, saved_id: savedId };
       } else if (stored.type === "habits") {
+        // A correction removes the logs it replaces first.
+        await deleteHabitLogs(client, user.name, (stored.replaces_logs ?? []).map((log) => log.id));
         const ids = await saveHabitLogs(client, user.name, stored.date, stored.logs);
         // Zeros already covered by a saved log are skipped, so this can be empty.
         savedId = ids.join(",") || "none";

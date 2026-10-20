@@ -193,6 +193,14 @@ export async function saveHabitLogs(db: Queryable, userName: string, date: strin
   return ids;
 }
 
+// Removes saved logs a corrected chat card replaces. Returns how many were
+// still there.
+export async function deleteHabitLogs(db: Queryable, userName: string, ids: string[]) {
+  if (!ids.length) return 0;
+  const { rowCount } = await db.query(`delete from public.habit_logs where user_name = $1 and id = any($2::uuid[])`, [userName, ids]);
+  return rowCount ?? 0;
+}
+
 export async function listHabitLogs(db: Queryable, userName: string, startDate: string, endDate: string): Promise<HabitLog[]> {
   const { rows } = await db.query<HabitLog>(
     `

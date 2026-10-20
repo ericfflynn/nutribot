@@ -58,7 +58,10 @@ function DraftActions({
   onSave: () => void;
   onDiscard: () => void;
 }) {
-  const isEdit = draft.type === "meal" && Boolean(draft.edits);
+  // Drafts that change something saved instead of adding to it.
+  const isEdit =
+    ((draft.type === "meal" || draft.type === "journal") && Boolean(draft.edits)) ||
+    (draft.type === "habits" && Boolean(draft.replaces_logs?.length));
   if (draft.saved_id) return <p className="draft-status saved">{isEdit ? "Updated" : "Saved"}</p>;
   if (draft.discarded) return <p className="draft-status">Discarded</p>;
   if (superseded) return <p className="draft-status">Revised below</p>;
@@ -251,7 +254,13 @@ function JournalCard({ draft, today, ...handlers }: { draft: JournalDraft } & Dr
   const day = dayLabel(draft.date, today);
   const ratings = recordedRatings(draft.ratings);
   return (
-    <CheckinCard draft={draft} kind={`${draft.kind} journal${day ? ` · ${day}` : ""}`} {...handlers}>
+    <CheckinCard draft={draft} kind={`${draft.edits ? "Edit · " : ""}${draft.kind} journal${day ? ` · ${day}` : ""}`} {...handlers}>
+      {draft.edits ? (
+        <p className="draft-edit-note">
+          Replaces your saved {draft.edits.kind} entry
+          {draft.edits.date !== draft.date ? ` from ${dayLabel(draft.edits.date, "") ?? draft.edits.date}` : ""}
+        </p>
+      ) : null}
       {ratings.length ? (
         <div className="draft-ratings">
           {ratings.map((rating) => (
@@ -276,7 +285,10 @@ function JournalCard({ draft, today, ...handlers }: { draft: JournalDraft } & Dr
 function HabitsCard({ draft, today, ...handlers }: { draft: HabitsDraft } & DraftHandlers) {
   const day = dayLabel(draft.date, today);
   return (
-    <CheckinCard draft={draft} kind={`habits${day ? ` · ${day}` : ""}`} {...handlers}>
+    <CheckinCard draft={draft} kind={`${draft.replaces_logs?.length ? "Edit · " : ""}habits${day ? ` · ${day}` : ""}`} {...handlers}>
+      {draft.replaces_logs?.length ? (
+        <p className="draft-edit-note">Replaces your saved {draft.replaces_logs.map((log) => log.label).join(", ")}</p>
+      ) : null}
       <ul className="draft-items">
         {draft.logs.map((log, index) => (
           <li key={`${log.habitId}-${index}`}>

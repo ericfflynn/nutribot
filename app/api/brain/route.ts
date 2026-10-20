@@ -1,7 +1,7 @@
 import { getSessionUser } from "@/lib/auth";
 import { runBrain } from "@/lib/brain";
 import { BrainError } from "@/lib/claude-brain";
-import { appendExchange, currentConversation, historyFrom, listMessages, openDraftsFrom } from "@/lib/chat";
+import { appendExchange, currentConversation, historyFrom, listMessages, openDraftsFrom, savedDraftsFrom } from "@/lib/chat";
 import { isValidLocalDate, todayLocalDate } from "@/lib/dates";
 import { getPool } from "@/lib/supabase";
 
@@ -46,6 +46,7 @@ export async function POST(request: Request) {
       viewDate: date,
       history: historyFrom(thread),
       openDrafts: openDraftsFrom(thread),
+      savedDrafts: savedDraftsFrom(thread),
       syncIfMissing: true
     });
     const messageId = await appendExchange(db, user.name, conversationId, message, reply);

@@ -126,6 +126,8 @@ export type BrainContext = {
   history: Turn[];
   // Unsaved drafts still on screen, so "make that 2 eggs" can revise one.
   openDrafts: Draft[];
+  // Drafts from this chat that were already saved, with what they saved as.
+  savedDrafts?: Draft[];
   // Run a quick exercise-only health sync when today's workout isn't in yet.
   syncIfMissing: boolean;
   now?: Date;
@@ -194,7 +196,7 @@ Today is ${today}; local time is ${nowLocal.slice(11)}. The person is looking at
 ## Logging
 - Call draft_meal once per meal and draft_workout once per separate activity. "Back and bis, then a 20 min run" is two workouts, because the watch records two.
 - A draft is a review card, not a saved record. Never say "logged" or "saved". Say the draft is ready to review, and mention anything worth checking.
-- To change an open draft, call the same tool again with replaces set to its id.
+- To change an open draft, call the same tool again with replaces set to its id. Drafts in saved_drafts are already saved: change those through edits (meals, journal) or replace_logs (habits), never by drafting them again.
 - A message can hold several meals and workouts, or none. Plain questions get a plain answer and no drafts.
 
 ## Meals
@@ -241,7 +243,15 @@ ${HEALTH_PROMPT}
 - Write plain text in short sentences: no markdown, bullets, bold or headings. A blank line between topics is fine.`;
 }
 
-function promptFor(message: string, history: Turn[], openDrafts: Draft[]) {
+// What was saved from this chat: the ids to edit, never to redo.
+function describeSaved(draft: Draft) {
+  if (draft.type === "journal") return { id: draft.id, type: "journal", date: draft.date, kind: draft.kind, saved_as_entry: draft.saved_id };
+  if (draft.type === "habits") return { id: draft.id, type: "habits", date: draft.date, saved_log_ids: draft.saved_id };
+  if (draft.type === "meal") return { id: draft.id, type: "meal", date: draft.date, meal_type: draft.meal_type, saved_as_meal: draft.saved_id };
+  return { id: draft.id, type: draft.type, saved: true };
+}
+
+function promptFor(message: string, history: Turn[], openDrafts: Draft[], savedDrafts: Draft[] = []) {
   const parts: string[] = [];
   if (history.length) {
     parts.push(
@@ -277,6 +287,9 @@ function promptFor(message: string, history: Turn[], openDrafts: Draft[]) {
     );
     parts.push(`<open_drafts>\n${JSON.stringify(summary)}\n</open_drafts>`);
   }
+  if (savedDrafts.length) {
+    parts.push(`<saved_drafts>\n${JSON.stringify(savedDrafts.map(describeSaved))}\n</saved_drafts>`);
+  }
   parts.push(`<message>\n${message}\n</message>`);
   return parts.join("\n\n");
 }
@@ -289,7 +302,7 @@ export async function runBrain(message: string, context: BrainContext): Promise<
 
   // Drafts this reply produced, keyed by id so a revision replaces in place.
   const drafts = new Map<string, Draft>();
-  const openById = new Map(context.openDrafts.map((draft) => [draft.id, draft]));
+  const openById = new Map([...(context.savedDrafts ?? []), ...context.openDrafts].map((draft) => [draft.id, draft]));
   let synced = false;
 
   function resolveDraftId(replaces: string | undefined): { id: string; previous?: Draft } | { error: string } {
@@ -303,7 +316,11 @@ export async function runBrain(message: string, context: BrainContext): Promise<
             ? `That draft is already saved as meal ${previous.saved_id}. Call draft_meal with edits set to that id instead.`
             : previous.type === "workout"
               ? "That workout is already saved; it can be edited on the Training page."
-              : "That draft is already saved. Make a new draft, or delete the saved one on Today."
+              : previous.type === "journal"
+                ? `That entry is already saved as journal entry ${previous.saved_id}. To change it, call draft_journal with edits set to that id and the whole revised entry; never add a second entry for it.`
+                : previous.type === "habits"
+                  ? `That card is already saved (habit log ids: ${previous.saved_id}). To correct those logs, call draft_habits with replace_logs set to the ones that change; to log more uses that day, make a new card without replace_logs.`
+                  : "That draft is already saved. Make a new draft, or delete the saved one on Today."
       };
     }
     return { id: replaces, previous };
@@ -636,7 +653,7 @@ export async function runBrain(message: string, context: BrainContext): Promise<
 
   const run = await runClaude({
     system: systemPrompt(today, nowLocal, context.viewDate),
-    prompt: promptFor(message, context.history, context.openDrafts),
+    prompt: promptFor(message, context.history, context.openDrafts, context.savedDrafts),
     server: {
       name: SERVER,
       config: createSdkMcpServer({

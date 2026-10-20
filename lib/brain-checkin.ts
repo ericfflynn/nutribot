@@ -22,24 +22,42 @@ import {
   type HabitInput,
   type HabitLogInput
 } from "./habits";
-import { JOURNAL_KINDS, MOOD_LABELS, STRESS_LABELS, listJournalEntries, listJournalTags, ratingLabel, type JournalInput, type Rating } from "./journal";
+import {
+  JOURNAL_KINDS,
+  MOOD_LABELS,
+  STRESS_LABELS,
+  getJournalEntry,
+  listJournalEntries,
+  listJournalTags,
+  ratingLabel,
+  type JournalInput,
+  type JournalKind,
+  type Rating
+} from "./journal";
 import { TAG_CATEGORIES, normalizeTags } from "./journal-tags";
+
+// A saved entry a journal draft rewrites (draft_journal with edits).
+export type JournalEditTarget = { id: string; date: string; kind: JournalKind };
 
 export type JournalDraft = JournalInput & {
   type: "journal";
   id: string;
+  // Set when saving overwrites a saved entry instead of adding one.
+  edits?: JournalEditTarget | null;
   saved_id: string | null;
   discarded?: boolean;
 };
 
 export type HabitLogDraft = HabitLogInput & Pick<Habit, "name" | "measure" | "unit">;
 
-// One card for a day's habit logs, zeros included.
+// One card for a day's habit logs, zeros included. Saving adds them to the
+// day, after deleting any saved logs it replaces (a correction).
 export type HabitsDraft = {
   type: "habits";
   id: string;
   date: string;
   logs: HabitLogDraft[];
+  replaces_logs?: { id: string; label: string }[];
   saved_id: string | null;
   discarded?: boolean;
 };
@@ -65,6 +83,7 @@ export const CHECKIN_PROMPT = `## Journal
 - energy (1 drained, 5 energized) and soreness (1 none, 5 very sore) are optional too. Every rating the text doesn't support is null, never a guess.
 - tags: one to four lowercase tags for what came up. Prefer these, by category: ${TAG_CATEGORIES.map((category) => `${category.label}: ${category.tags.join(", ")}`).join("; ")}. Add a custom tag only for something specific that none of these cover ("sore legs"), and reuse the owner's earlier tags (list_journal) over new wording.
 - kind is morning before noon, evening after 5 pm, other in between. An entry written before 4 am about the night before belongs to the previous date.
+- One entry per day and kind. To add to or change a saved entry (more detail, a different rating), call draft_journal with edits set to its id and the whole revised entry: keep their earlier words and add the new ones. list_journal shows ids, and draft_journal says when that day already has an entry of that kind. Never say whether an entry exists without checking list_journal.
 
 ## Check-ins
 - A check-in is a short conversation, not a form. Nothing is required; skip whatever they don't want to answer.
@@ -78,6 +97,7 @@ export const CHECKIN_PROMPT = `## Journal
 - Times are 24-hour local. Read a time without am or pm the way it was most likely meant: gaming, drinks and anything after dinner are evening ("8:30 to 11:15" is 20:30-23:15). Don't ask which.
 - amount 0 means they said they didn't do it today. Only record 0 when they say so. A habit never mentioned stays unlogged.
 - One draft_habits call per day holds all of that day's habit logs, uses and zeros together.
+- Saving a card adds its logs to the day. To log more uses later in the day, make a new card. To correct a saved log ("it was 3 drinks, not 2"), call draft_habits with replace_logs set to the ids of the logs that change (list_habit_logs and draft_habits show them) and the corrected logs; never send a correction as an extra log, or the day counts both.
 - In an evening check-in, call list_habit_logs for today and ask in one short sentence about active habits tracked today with no log yet, so missing days get their zeros ("Any weed, nicotine or drinks today? Read or play Xbox?").
 - To start tracking something new, or change a habit's name, description, scale, goal, cutoff or days, call draft_habit with the habit's current values for everything that isn't changing (list_habits has them). The owner can also edit habits on the Habits tab. A habit's measure can't change once it has logs; suggest a new habit instead. Intensity habits need a scale_guide that says what 1, 2 and 3 mean.
 - Each habit can have a goal: for limit habits the most that's OK in a day (0 means none), for build habits the least. A cutoff makes any use after that time a miss, optionally on weeknights (Sun-Thu) only. list_habit_logs says whether each day met the goal; use it for "how am I doing".
@@ -86,6 +106,7 @@ export const CHECKIN_PROMPT = `## Journal
 const localDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("Local date, YYYY-MM-DD.");
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).describe("Local time, HH:MM.");
 const rating = z.number().int().min(1).max(5).nullable();
+const uuid = z.string().uuid();
 const MAX_RANGE_DAYS = 92;
 
 function text(value: unknown) {
@@ -140,12 +161,25 @@ export function checkinTools(context: {
       stress: rating,
       soreness: rating,
       tags: z.array(z.string()).max(8),
-      replaces: z.string().optional().describe("Id of an open draft this revises.")
+      replaces: z.string().optional().describe("Id of an open draft this revises."),
+      edits: z
+        .string()
+        .optional()
+        .describe("Id of a saved entry (from list_journal) this draft rewrites: saving overwrites its date, kind, text, ratings and tags.")
     },
     async (args) => {
       const target = resolveDraftId(args.replaces);
       if ("error" in target) return errorText(target.error);
-      const day = checkDate(args.date);
+      // A revision of an edit draft keeps editing the same entry.
+      const previousEdit = target.previous?.type === "journal" ? (target.previous as JournalDraft).edits : null;
+      const editId = args.edits ?? previousEdit?.id;
+      let edits: JournalEditTarget | null = null;
+      if (editId) {
+        const entry = uuid.safeParse(editId).success ? await getJournalEntry(db, userName, editId) : null;
+        if (!entry) return errorText(`No saved journal entry with id ${editId}. Call list_journal.`);
+        edits = { id: entry.id, date: entry.date, kind: entry.kind };
+      }
+      const day = checkDate(args.date ?? edits?.date);
       if ("error" in day) return errorText(day.error);
       const ratings = { mood: args.mood, energy: args.energy, stress: args.stress, soreness: args.soreness };
       const known = (await listJournalTags(db, userName, day.date)).map((row) => row.tag);
@@ -157,9 +191,26 @@ export function checkinTools(context: {
         body: args.body.trim(),
         ratings,
         tags: normalizeTags(args.tags, known),
+        edits,
         saved_id: null
       });
-      return text({ draft_id: target.id, date: day.date, ratings });
+      // A new entry for a day and kind that already has one is usually an
+      // addition to it: say so, with the id to edit instead.
+      const sameKind = edits
+        ? []
+        : (await listJournalEntries(db, userName, day.date, day.date)).filter((entry) => entry.kind === args.kind);
+      return text({
+        draft_id: target.id,
+        date: day.date,
+        ratings,
+        ...(edits ? { rewrites: `saved ${edits.kind} entry ${edits.id} (${edits.date})` } : {}),
+        ...(sameKind.length
+          ? {
+              already_saved: sameKind.map((entry) => `${entry.id}: ${entry.body.slice(0, 120)}`),
+              note: `${day.date} already has a saved ${args.kind} entry. If this adds to or changes it, call draft_journal again with replaces set to ${target.id} and edits set to its id, keeping its words.`
+            }
+          : {})
+      });
     }
   );
 
@@ -179,13 +230,18 @@ export function checkinTools(context: {
           })
         )
         .min(1),
-      replaces: z.string().optional().describe("Id of an open draft this revises.")
+      replaces: z.string().optional().describe("Id of an open draft this revises."),
+      replace_logs: z
+        .array(z.string())
+        .optional()
+        .describe("Ids of saved logs that day (from list_habit_logs) this card corrects; they're deleted when it's saved. Leave out to add to the day.")
     },
     async (args) => {
       const target = resolveDraftId(args.replaces);
       if ("error" in target) return errorText(target.error);
       const day = checkDate(args.date);
       if ("error" in day) return errorText(day.error);
+      const saved = await listHabitLogs(db, userName, day.date, day.date);
 
       const habits = await listHabits(db, userName);
       const byId = new Map(habits.map((habit) => [habit.id, habit]));
@@ -209,15 +265,31 @@ export function checkinTools(context: {
           endedAt: log.ended_at
         });
       }
-      putDraft({ type: "habits", id: target.id, date: day.date, logs, saved_id: null });
+      // A revision of a correction keeps replacing the same logs.
+      const previousReplaces = target.previous?.type === "habits" ? (target.previous as HabitsDraft).replaces_logs : undefined;
+      const replaceIds = args.replace_logs ?? previousReplaces?.map((log) => log.id) ?? [];
+      const replaces: { id: string; label: string }[] = [];
+      for (const id of new Set(replaceIds)) {
+        const log = saved.find((item) => item.id === id);
+        const habit = log ? byId.get(log.habitId) : undefined;
+        if (!log || !habit) return errorText(`No saved log ${id} on ${day.date}. Call list_habit_logs.`);
+        replaces.push({ id, label: `${habit.name}: ${formatHabitAmount(habit, log.amount)}` });
+      }
+      putDraft({ type: "habits", id: target.id, date: day.date, logs, replaces_logs: replaces, saved_id: null });
 
       // What's still unknown that day, so Claude can ask about it.
-      const saved = await listHabitLogs(db, userName, day.date, day.date);
       const covered = new Set([...saved.map((log) => log.habitId), ...logs.map((log) => log.habitId)]);
       return text({
         draft_id: target.id,
         date: day.date,
         logs: logs.map((log) => `${log.name}: ${formatHabitAmount(log, log.amount)}`),
+        ...(replaces.length ? { replaces_saved: replaces.map((log) => log.label) } : {}),
+        already_saved: saved
+          .filter((log) => !replaces.some((item) => item.id === log.id))
+          .map((log) => {
+            const habit = byId.get(log.habitId);
+            return `${log.id}: ${habit ? `${habit.name} ${formatHabitAmount(habit, log.amount)}` : "archived habit"}${log.details ? ` "${log.details}"` : ""}`;
+          }),
         not_logged_yet: habits
           .filter((habit) => !covered.has(habit.id) && trackedOn(habit, day.date))
           .map((habit) => habit.name)
@@ -312,7 +384,7 @@ export function checkinTools(context: {
               .map(([name, value]) => `${name} ${value} (${ratingLabel(name, value!)})`)
               .join(", ");
             const tags = entry.tags.length ? ` [${entry.tags.join(", ")}]` : "";
-            return `${entry.date} ${entry.kind}${ratings ? ` (${ratings})` : ""}${tags}: ${entry.body}`;
+            return `${entry.date} ${entry.kind} (id ${entry.id})${ratings ? ` (${ratings})` : ""}${tags}: ${entry.body}`;
           })
           .join("\n")
       );
@@ -340,12 +412,15 @@ export function checkinTools(context: {
           const verdict = outcome === "met" ? ", goal met" : outcome.startsWith("miss") ? `, goal missed (${outcome.slice(5)} of 3)` : "";
           if (outcome === "off") return `${day.habit.name}: not tracked that day`;
           if (day.status === "unknown") return `${day.habit.name}: not logged`;
-          if (day.status === "none") return `${day.habit.name}: none${verdict}`;
+          if (day.status === "none") {
+            const zero = dayLogs.find((log) => log.habitId === day.habit.id);
+            return `${day.habit.name}: none${verdict}${zero ? ` [id ${zero.id}]` : ""}`;
+          }
           const uses = dayLogs
             .filter((log) => log.habitId === day.habit.id && log.amount > 0)
             .map((log) => {
               const times = log.startedAt || log.endedAt ? ` ${log.startedAt ?? "?"}-${log.endedAt ?? "?"}` : "";
-              return `${formatHabitAmount(day.habit, log.amount)}${times}${log.details ? ` "${log.details}"` : ""}`;
+              return `${formatHabitAmount(day.habit, log.amount)}${times}${log.details ? ` "${log.details}"` : ""} [id ${log.id}]`;
             });
           const late = day.lateMinutes ? `, ${formatMinutes(day.lateMinutes)} past ${day.habit.cutoff}` : "";
           return `${day.habit.name}: ${formatHabitAmount(day.habit, day.level)}${late}${verdict} (${uses.join("; ")})`;

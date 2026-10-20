@@ -75,14 +75,25 @@ export function historyFrom(messages: ChatMessage[]): Turn[] {
   return messages.slice(-HISTORY_TURNS).map((message) => ({ role: message.role, text: message.content }));
 }
 
-// Unsaved, undiscarded drafts from the last few replies, newest version of each.
-export function openDraftsFrom(messages: ChatMessage[]): Draft[] {
+// The newest version of each draft from the last few replies.
+function recentDraftsFrom(messages: ChatMessage[]): Draft[] {
   const recent = messages.filter((message) => message.role === "assistant").slice(-OPEN_DRAFT_MESSAGES);
   const byId = new Map<string, Draft>();
   for (const message of recent) {
     for (const draft of message.drafts) byId.set(draft.id, draft);
   }
-  return [...byId.values()].filter((draft) => !draft.saved_id && !draft.discarded);
+  return [...byId.values()];
+}
+
+// Unsaved, undiscarded drafts from the last few replies.
+export function openDraftsFrom(messages: ChatMessage[]): Draft[] {
+  return recentDraftsFrom(messages).filter((draft) => !draft.saved_id && !draft.discarded);
+}
+
+// Drafts from the last few replies that were saved, so a follow-up ("add
+// that I was stressed") edits what was saved instead of adding a duplicate.
+export function savedDraftsFrom(messages: ChatMessage[]): Draft[] {
+  return recentDraftsFrom(messages).filter((draft) => draft.saved_id);
 }
 
 export async function appendExchange(

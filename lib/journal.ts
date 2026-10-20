@@ -72,6 +72,42 @@ export async function saveJournalEntry(db: Queryable, userName: string, input: J
   return rows[0].id;
 }
 
+// One saved entry, for a chat draft that rewrites it.
+export async function getJournalEntry(db: Queryable, userName: string, id: string): Promise<JournalEntry | null> {
+  const { rows } = await db.query<{ date: string }>(
+    `select entry_date::text as date from public.journal_entries where id = $1::uuid and user_name = $2`,
+    [id, userName]
+  );
+  if (!rows[0]) return null;
+  const entries = await listJournalEntries(db, userName, rows[0].date, rows[0].date);
+  return entries.find((entry) => entry.id === id) ?? null;
+}
+
+// Rewrites a saved entry from a chat edit draft: date, kind, text, ratings
+// and tags. False when the entry is gone.
+export async function overwriteJournalEntry(db: Queryable, userName: string, id: string, input: JournalInput) {
+  const { rowCount } = await db.query(
+    `
+    update public.journal_entries
+    set entry_date = $3::date, kind = $4, body = $5, mood = $6, energy = $7, stress = $8, soreness = $9, tags = $10
+    where id = $1::uuid and user_name = $2
+    `,
+    [
+      id,
+      userName,
+      input.date,
+      input.kind,
+      input.body,
+      input.ratings.mood,
+      input.ratings.energy,
+      input.ratings.stress,
+      input.ratings.soreness,
+      input.tags
+    ]
+  );
+  return Boolean(rowCount);
+}
+
 // Fixes a saved entry's ratings and tags. The body stays as written.
 export async function updateJournalEntry(
   db: Queryable,
