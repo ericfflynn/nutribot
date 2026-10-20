@@ -35,6 +35,7 @@ import {
   listWorkoutSessions,
   type FitbitWorkout,
   type Intensity,
+  type MuscleGroup,
   type MuscleStatus,
   type TrackedMuscle,
   type WorkoutSession,
@@ -278,8 +279,8 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
   // first week with a logged session. Strength groups are shaded by how much
   // of the group was worked (groupDayIntensity), their muscles by the hardest
   // each got. The points column is that week's volume, so on the newest page
-  // it's the live 4-point target; a group shows its weakest muscle. Cardio,
-  // mobility and sport come from the same list as Recent workouts
+  // it's the live 4-point target; a group sums its muscles out of 4 each.
+  // Cardio, mobility and sport come from the same list as Recent workouts
   // (auto-detected walks left out); the muscles can say more than the type
   // (activityCategoriesOf).
   const kindsOf = (item: RecentItem) => activityCategoriesOf(item.workoutType, item.session?.muscleGroups);
@@ -302,9 +303,17 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     if (week > 0 && pageDays[6] < firstDate) break;
     const pointsOf = (muscle: TrackedMuscle) => loadOf(sessions, muscle, end).points;
     const pointsCell = (points: number) => ({ aside: `${points}/${WEEKLY_TARGET_POINTS}`, done: points >= WEEKLY_TARGET_POINTS });
+    // A group's points out of 4 per muscle, each muscle capped at 4 so one
+    // muscle's extra can't cover for another: Shoulders 8/12 means 67% there.
+    const groupCell = (group: MuscleGroup) => {
+      const muscles = trackedOf(group);
+      const points = muscles.reduce((sum, muscle) => sum + Math.min(WEEKLY_TARGET_POINTS, pointsOf(muscle)), 0);
+      const target = WEEKLY_TARGET_POINTS * muscles.length;
+      return { aside: `${points}/${target}`, done: points >= target };
+    };
     const strength: CoverageRow[] = STRENGTH_GROUPS.map((group) => ({
       name: group,
-      ...pointsCell(Math.min(...trackedOf(group).map(pointsOf))),
+      ...groupCell(group),
       levels: pageDays.map((day) =>
         intensityClass(groupDayIntensity(sessions.filter((session) => session.date === day), group))
       ),

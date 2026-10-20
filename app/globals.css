@@ -4169,7 +4169,7 @@ details[open] .journal-preview {
 }
 
 .week-page .coverage {
-  grid-template-columns: 92px minmax(0, 1fr) 34px;
+  grid-template-columns: 92px minmax(0, 1fr) 42px;
 }
 
 .week-page .coverage-cells {
