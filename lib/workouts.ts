@@ -91,6 +91,8 @@ export function currentMuscles(names: readonly MuscleName[], intensity: MuscleIn
 // The strength groups: the Training tab's coverage grid and "Next up".
 // Cardio and Mobility are tracked as activities instead (ACTIVITY_CATEGORIES).
 export const STRENGTH_GROUPS: MuscleGroup[] = ["Chest", "Back", "Shoulders", "Arms", "Legs", "Core"];
+// Every muscle volume, recovery and soreness are tracked on, in display order.
+export const TRACKED_MUSCLES: TrackedMuscle[] = STRENGTH_GROUPS.flatMap(trackedOf);
 
 // How hard each muscle was worked. A session can set it per muscle ("light
 // chest, heavy tris"); a muscle without its own intensity takes the session's
@@ -142,21 +144,81 @@ function daysBetween(from: string, to: string) {
   return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
 }
 
-// Weekly volume and recovery for one muscle. A session logged as the whole
-// group counts for every muscle in it.
-export function loadOf(sessions: readonly TrainedSession[], muscle: TrackedMuscle, today: string): Load {
-  let points = 0;
+// Soreness reported on the Training tab (body_log, kind "sore"). A small
+// input: it can only push back when a muscle is ready to train again (a mild
+// report for the day it's made, a bad one for three days), never its weekly
+// points. Report it again to extend it. First guesses; tune with history.
+export const SEVERITIES = ["mild", "bad"] as const;
+export type Severity = (typeof SEVERITIES)[number];
+export const SORENESS_HOLD_DAYS: Record<Severity, number> = { mild: 1, bad: 3 };
+export type SorenessReport = { id: string; date: string; muscle: string; severity: Severity };
+
+// Where a muscle stands on the weekly target: covered at 4 points; otherwise
+// due when it's ready to train, recovering while it isn't. The Training tab's
+// body map and "This week" both use this.
+export const WEEK_BUCKETS = ["due", "recovering", "covered"] as const;
+export type WeekBucket = (typeof WEEK_BUCKETS)[number];
+
+export function bucketOf(load: Load): WeekBucket {
+  if (load.points >= WEEKLY_TARGET_POINTS) return "covered";
+  return load.readyIn > 0 ? "recovering" : "due";
+}
+
+// Days until a muscle's soreness has passed, from its latest report on or
+// before today.
+function sorenessReadyIn(reports: readonly SorenessReport[], muscle: TrackedMuscle, today: string) {
   let readyIn = 0;
-  for (const session of sessions) {
-    const ago = daysBetween(session.date, today);
-    if (ago < 0) continue;
-    const name = session.muscleGroups.find((item) => item === groupOf(muscle) || musclesOf(item).includes(muscle));
-    if (!name) continue;
-    const rules = INTENSITY_RULES[intensityOf(session, name)];
-    if (ago < WEEK_DAYS) points += rules.points;
-    readyIn = Math.max(readyIn, rules.recoveryDays - ago);
+  for (const report of reports) {
+    const ago = daysBetween(report.date, today);
+    if (report.muscle !== muscle || ago < 0) continue;
+    readyIn = Math.max(readyIn, SORENESS_HOLD_DAYS[report.severity] - ago);
   }
-  return { points, readyIn };
+  return readyIn;
+}
+
+// The sessions that trained a muscle, with what each did to it.
+function hitsOf<S extends TrainedSession>(sessions: readonly S[], muscle: TrackedMuscle, today: string) {
+  return sessions.flatMap((session) => {
+    const ago = daysBetween(session.date, today);
+    const name = session.muscleGroups.find((item) => item === groupOf(muscle) || musclesOf(item).includes(muscle));
+    if (ago < 0 || !name) return [];
+    const intensity = intensityOf(session, name);
+    const rules = INTENSITY_RULES[intensity];
+    return [{ session, intensity, ago, points: ago < WEEK_DAYS ? rules.points : 0, readyIn: Math.max(0, rules.recoveryDays - ago) }];
+  });
+}
+
+// Weekly volume and recovery for one muscle. A session logged as the whole
+// group counts for every muscle in it; soreness can only push recovery out.
+export function loadOf(
+  sessions: readonly TrainedSession[],
+  muscle: TrackedMuscle,
+  today: string,
+  soreness: readonly SorenessReport[] = []
+): Load {
+  const hits = hitsOf(sessions, muscle, today);
+  return {
+    points: hits.reduce((sum, hit) => sum + hit.points, 0),
+    readyIn: Math.max(0, ...hits.map((hit) => hit.readyIn), sorenessReadyIn(soreness, muscle, today))
+  };
+}
+
+// Everything the body map says about one muscle: its bucket and why.
+export function muscleWeekOf<S extends TrainedSession>(
+  sessions: readonly S[],
+  soreness: readonly SorenessReport[],
+  muscle: TrackedMuscle,
+  today: string
+) {
+  const load = loadOf(sessions, muscle, today, soreness);
+  const hits = hitsOf(sessions, muscle, today)
+    .filter((hit) => hit.ago < WEEK_DAYS || hit.readyIn > 0)
+    .sort((a, b) => a.ago - b.ago);
+  const sore = soreness
+    .filter((report) => report.muscle === muscle && daysBetween(report.date, today) >= 0)
+    .filter((report) => SORENESS_HOLD_DAYS[report.severity] - daysBetween(report.date, today) > 0)
+    .sort((a, b) => b.date.localeCompare(a.date));
+  return { muscle, bucket: bucketOf(load), ...load, hits, sore };
 }
 
 // How much of a group one day's sessions worked, for the coverage grid's group
@@ -185,15 +247,14 @@ export type MuscleStatus = { muscle: TrackedMuscle; group: MuscleGroup } & Load;
 // Every strength muscle sorted into what to train: due (recovered and short
 // of the weekly target, least volume first), recovering (short but not ready,
 // soonest first) and covered (at target).
-export function weekStatus(sessions: readonly TrainedSession[], today: string) {
+export function weekStatus(sessions: readonly TrainedSession[], today: string, soreness: readonly SorenessReport[] = []) {
   const all: MuscleStatus[] = STRENGTH_GROUPS.flatMap((group) =>
-    trackedOf(group).map((muscle) => ({ muscle, group, ...loadOf(sessions, muscle, today) }))
+    trackedOf(group).map((muscle) => ({ muscle, group, ...loadOf(sessions, muscle, today, soreness) }))
   );
-  const short = all.filter((item) => item.points < WEEKLY_TARGET_POINTS);
   return {
-    due: short.filter((item) => !item.readyIn).sort((a, b) => a.points - b.points),
-    recovering: short.filter((item) => item.readyIn).sort((a, b) => a.readyIn - b.readyIn),
-    covered: all.filter((item) => item.points >= WEEKLY_TARGET_POINTS)
+    due: all.filter((item) => bucketOf(item) === "due").sort((a, b) => a.points - b.points),
+    recovering: all.filter((item) => bucketOf(item) === "recovering").sort((a, b) => a.readyIn - b.readyIn),
+    covered: all.filter((item) => bucketOf(item) === "covered")
   };
 }
 
@@ -259,9 +320,15 @@ export type NextUp = {
 };
 
 // What to train next: the split with the most volume missing from muscles
-// that have recovered. Longer gaps break ties. `lastByName` maps group and
-// muscle names to the last date trained; `sessions` must cover the last week.
-export function recommendNext(lastByName: Map<string, string>, sessions: readonly TrainedSession[], today: string): NextUp {
+// that have recovered and aren't sore. Longer gaps break ties. `lastByName`
+// maps group and muscle names to the last date trained; `sessions` must cover
+// the last week.
+export function recommendNext(
+  lastByName: Map<string, string>,
+  sessions: readonly TrainedSession[],
+  today: string,
+  soreness: readonly SorenessReport[] = []
+): NextUp {
   const sinceOf = (muscle: TrackedMuscle) => {
     const values = [...namesFor(muscle), groupOf(muscle)]
       .map((name) => lastByName.get(name))
@@ -270,7 +337,7 @@ export function recommendNext(lastByName: Map<string, string>, sessions: readonl
     return values.length ? Math.min(...values) : null;
   };
   const stateOf = (muscle: TrackedMuscle) => {
-    const load = loadOf(sessions, muscle, today);
+    const load = loadOf(sessions, muscle, today, soreness);
     const since = sinceOf(muscle);
     const short = Math.max(0, WEEKLY_TARGET_POINTS - load.points);
     return { muscle, since, points: load.points, ready: load.readyIn === 0, short };

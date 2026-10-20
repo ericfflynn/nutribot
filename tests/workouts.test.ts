@@ -11,6 +11,8 @@ import {
   groupDayIntensity,
   intensityOf,
   loadOf,
+  muscleWeekOf,
+  type SorenessReport,
   normalizeMuscles,
   recommendNext,
   type TrainedSession,
@@ -184,4 +186,35 @@ test("a group's day averages its muscles: one medium delt is a light shoulder da
   // Two sessions the same day: each muscle takes its hardest.
   const day = [session(TODAY, ["Front Delts"], 8), session(TODAY, ["Front Delts", "Side Delts"], 5)];
   assert.equal(groupDayIntensity(day, "Shoulders"), "medium");
+});
+
+const sore = (date: string, muscle: string, severity: SorenessReport["severity"]): SorenessReport => ({ id: `${date}-${muscle}`, date, muscle, severity });
+
+test("soreness only pushes back when a muscle is ready, never its points", () => {
+  const sessions = [session("2026-10-09", ["Quads"], 5)]; // medium, 3 days ago: ready, 2 points
+  assert.deepEqual(loadOf(sessions, "Quads", TODAY), { points: 2, readyIn: 0 });
+  assert.deepEqual(loadOf(sessions, "Quads", TODAY, [sore(TODAY, "Quads", "mild")]), { points: 2, readyIn: 1 });
+  assert.equal(loadOf(sessions, "Quads", TODAY, [sore(TODAY, "Quads", "bad")]).readyIn, 3);
+  // A mild report from yesterday has passed; a bad one still counts.
+  assert.equal(loadOf(sessions, "Quads", TODAY, [sore("2026-10-11", "Quads", "mild")]).readyIn, 0);
+  assert.equal(loadOf(sessions, "Quads", TODAY, [sore("2026-10-11", "Quads", "bad")]).readyIn, 2);
+});
+
+test("a muscle's week: due when ready and short, recovering when not, covered at 4", () => {
+  const sessions = [session("2026-10-11", ["Lats"], 8), session("2026-10-08", ["Biceps"], 5), session("2026-10-10", ["Biceps"], 5)];
+  assert.equal(muscleWeekOf(sessions, [], "Lats", TODAY).bucket, "recovering");
+  assert.equal(muscleWeekOf(sessions, [], "Biceps", TODAY).bucket, "covered");
+  assert.equal(muscleWeekOf(sessions, [], "Traps", TODAY).bucket, "due");
+  assert.equal(muscleWeekOf(sessions, [sore(TODAY, "Traps", "mild")], "Traps", TODAY).bucket, "recovering");
+  const lats = muscleWeekOf(sessions, [], "Lats", TODAY);
+  assert.deepEqual([lats.points, lats.readyIn, lats.hits.length], [3, 4, 1]);
+});
+
+test("Next up leaves out sore muscles", () => {
+  // Nothing logged: every split is equally short and push wins the tie, unless
+  // its muscles are sore.
+  assert.equal(recommendNext(new Map(), [], TODAY).split, "Push day");
+  const allSore = ["Chest", "Front Delts", "Side Delts", "Triceps"].map((muscle) => sore(TODAY, muscle, "bad"));
+  const next = recommendNext(new Map(), [], TODAY, allSore);
+  assert.notEqual(next.split, "Push day");
 });

@@ -57,7 +57,7 @@ Free tags drifted (28 entries, 28 different tags, many repeating data the app al
 
 ### Planned: body log for soreness and pain (agreed October 17, 2026, not built)
 
-One simple log, logged through chat (a card to Save, like everything else): a body part, **sore** or **pain**, and **mild** or **bad**, on a date. Soreness uses the Training muscle names; pain uses plain body parts (wrist, lower back) for recurring problems and injuries. The point is looking back: "wrist pain 6 times since August, mostly after push days". Later, and deliberately not designed yet: soreness and pain feed recovery and Next up on the Training tab.
+One simple log, logged through chat (a card to Save, like everything else): a body part, **sore** or **pain**, and **mild** or **bad**, on a date. Soreness uses the Training muscle names; pain uses plain body parts (wrist, lower back) for recurring problems and injuries. The point is looking back: "wrist pain 6 times since August, mostly after push days". The `body_log` table exists since October 19, 2026, and soreness is logged from the Training tab's body map, where it pushes back a muscle's recovery ([training-plan.md](training-plan.md#soreness)). Logging through chat and pain are still to build.
 
 ## Habits
 

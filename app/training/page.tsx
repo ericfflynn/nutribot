@@ -1,10 +1,12 @@
 import { AppShell, Login } from "../shared-ui";
+import { BodyMap, type MuscleView } from "../body-map";
 import { CoverageGrid, LabelButton, MergeControls, RestoreButton, WorkoutEditor, type CoverageRow } from "../training-ui";
 import { getSessionUser } from "@/lib/auth";
 import { addDays, rollingDateWindow, todayLocalDate } from "@/lib/dates";
 import { listHealthWorkouts, type HealthWorkout } from "@/lib/health/queries";
 import { workoutStrain } from "@/lib/health/scores";
 import { getPool } from "@/lib/supabase";
+import { listSoreness } from "@/lib/body-log";
 import { isPossibleDuplicate, type WorkoutRecord } from "@/lib/health/dedupe-rules";
 import {
   ACTIVITY_CATEGORIES,
@@ -14,6 +16,8 @@ import {
   WEEKLY_TARGET_POINTS,
   weekStatus,
   intensityOf,
+  muscleWeekOf,
+  TRACKED_MUSCLES,
   MUSCLES,
   STRENGTH_GROUPS,
   activityCategoriesOf,
@@ -51,6 +55,16 @@ const MISSING_AFTER_DAYS = 7;
 
 const dayFormat = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
 const shortDay = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+
+// The Monday a date's week starts on.
+function weekStartOf(date: string) {
+  return addDays(date, -((new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7));
+}
+
+function formatMinutes(total: number) {
+  const hours = Math.floor(total / 60);
+  return hours ? `${hours} h ${total % 60} min` : `${total} min`;
+}
 const weekdayLetter = new Intl.DateTimeFormat("en-US", { weekday: "narrow", timeZone: "UTC" });
 const clockFormat = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" });
 
@@ -132,12 +146,13 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     );
   }
 
-  const [sessions, fitbit, healthWorkouts, unlabeled, lastByName] = await Promise.all([
+  const [sessions, fitbit, healthWorkouts, unlabeled, lastByName, soreness] = await Promise.all([
     listWorkoutSessions(db, user.name, start, today),
     listFitbitWorkouts(db, user.name, start, today),
     listHealthWorkouts(user.name, start, today),
     listUnlabeledWorkouts(db, user.name, addDays(today, -(UNLABELED_DAYS - 1)), today),
-    lastTrainedByName(db, user.name, today)
+    lastTrainedByName(db, user.name, today),
+    listSoreness(db, user.name, addDays(today, -6), today)
   ]);
   const healthById = new Map<string, HealthWorkout>(healthWorkouts.map((workout) => [workout.id, workout]));
   const fitbitById = new Map<string, FitbitWorkout>(fitbit.map((workout) => [workout.id, workout]));
@@ -192,14 +207,26 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
       }))
     };
   });
-  const nextUp = recommendNext(lastByName, sessions, today);
-  // This week: every strength muscle as due, recovering or covered.
-  const week = weekStatus(sessions, today);
-  const weekBuckets: { key: string; label: string; items: MuscleStatus[]; note: (item: MuscleStatus) => string }[] = [
-    { key: "due", label: "Due", items: week.due, note: (item) => `${item.points}/${WEEKLY_TARGET_POINTS}` },
-    { key: "recovering", label: "Recovering", items: week.recovering, note: (item) => `${item.readyIn}d` },
-    { key: "covered", label: "Covered", items: week.covered, note: () => "" }
-  ];
+  const nextUp = recommendNext(lastByName, sessions, today, soreness);
+  // This week: every strength muscle as due, recovering or covered, on the
+  // body map, with the due ones listed by how short they are.
+  const week = weekStatus(sessions, today, soreness);
+  const muscleViews: MuscleView[] = TRACKED_MUSCLES.map((muscle) => {
+    const view = muscleWeekOf(sessions, soreness, muscle, today);
+    return {
+      muscle,
+      bucket: view.bucket,
+      points: view.points,
+      readyIn: view.readyIn,
+      sessions: view.hits.map((hit) => `${formatDay(hit.session.date)} · ${hit.session.name} · ${hit.intensity}, +${hit.points}`),
+      sore: view.sore.map((report) => ({
+        id: report.id,
+        severity: report.severity,
+        when: report.date === today ? "today" : formatDay(report.date),
+        today: report.date === today
+      }))
+    };
+  });
 
   // Recent workouts: every Fitbit workout except unlabeled walks, plus sessions
   // that aren't linked to one (pending or untracked).
@@ -277,6 +304,25 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
   const typeCounts = new Map<WorkoutType, number>();
   for (const item of recent) typeCounts.set(item.workoutType, (typeCounts.get(item.workoutType) ?? 0) + 1);
   const shown = typeFilter ? recent.filter((item) => item.workoutType === typeFilter) : recent;
+  // Recent workouts by week (Monday to Sunday), newest first, with totals.
+  const thisWeek = weekStartOf(today);
+  const shownWeeks = [...new Set(shown.map((item) => weekStartOf(item.date)))].map((weekStart) => {
+    const items = shown.filter((item) => weekStartOf(item.date) === weekStart);
+    const minutes = items.reduce((sum, item) => sum + (item.minutes ?? 0), 0);
+    return {
+      weekStart,
+      label:
+        weekStart === thisWeek
+          ? "This week"
+          : weekStart === addDays(thisWeek, -7)
+            ? "Last week"
+            : `Week of ${shortDay.format(new Date(`${weekStart}T00:00:00Z`))}`,
+      summary: [`${items.length} workout${items.length === 1 ? "" : "s"}`, minutes ? formatMinutes(minutes) : null]
+        .filter(Boolean)
+        .join(" · "),
+      items
+    };
+  });
 
   // The mix: strength, cardio, mobility and sport by day, from the same list
   // (auto-detected walks are already left out). The muscles can say more than
@@ -307,75 +353,53 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
       active="training"
       title="Training"
     >
-      <p className="training-range">
-        Last {WINDOW_DAYS} days · {shortDay.format(new Date(`${start}T00:00:00Z`))} –{" "}
-        {shortDay.format(new Date(`${today}T00:00:00Z`))}
-      </p>
 
-      <section className="card training-missing" aria-label="Next up">
-        <span className="training-missing-label">Next up</span>
-        <strong>
-          {nextUp.split
-            ? `${nextUp.split}${nextUp.addCore ? " + core" : ""}`
-            : nextUp.rest === "recovering"
-              ? `Recover${nextUp.addCore ? ", or core" : ""}`
-              : "You're covered"}
-        </strong>
-        <span className="training-missing-note">
-          {nextUp.split
-            ? nextUp.neglected
-                .map(
-                  (item) =>
-                    `${item.muscle} ${item.points}/${WEEKLY_TARGET_POINTS}${item.since == null ? ", not logged yet" : item.since >= 7 ? `, ${item.since} days` : ""}`
-                )
-                .join(" · ")
-            : nextUp.rest === "recovering"
-              ? "What's short this week is still recovering. A rest day, cardio or mobility fits."
-              : "Every strength group has its weekly volume. A rest day, cardio or mobility fits."}
-        </span>
-      </section>
-
-      <section className="card" aria-label="This week">
-        <div className="card-heading">
-          <h2 className="card-title">This week</h2>
-          <span className="card-aside">Last 7 days</span>
-        </div>
-        <div className="training-week">
-          {weekBuckets.map((bucket) =>
-            bucket.items.length ? (
-              <div key={bucket.key} className={`training-week-bucket ${bucket.key}`}>
-                <span className="training-week-label">
-                  {bucket.label} <small>{bucket.items.length}</small>
-                </span>
-                <div className="training-week-chips">
-                  {bucket.items.map((item) => (
-                    <span key={item.muscle}>
-                      {item.muscle}
-                      {bucket.note(item) ? <small> {bucket.note(item)}</small> : null}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ) : null
-          )}
-        </div>
-        <p className="training-week-note">
-          {WEEKLY_TARGET_POINTS} points per muscle a week: light {INTENSITY_RULES.light.points}, medium{" "}
-          {INTENSITY_RULES.medium.points}, hard {INTENSITY_RULES.hard.points}. Recovery: light 1 day, medium 2–3, hard 5–6.
-        </p>
-      </section>
-
-      <section className="card" aria-label="Activity">
-        <div className="card-heading">
-          <h2 className="card-title">Activity</h2>
-          <span className="card-aside">
-            {activityTotals.map((total) => `${ACTIVITY_LABELS[total.category]} ${total.count}`).join(" · ") || "Nothing yet"}
+      <section className="card training-week-card" aria-label="This week">
+        <div className="training-next">
+          <span className="training-missing-label">Next up</span>
+          <strong>
+            {nextUp.split
+              ? `${nextUp.split}${nextUp.addCore ? " + core" : ""}`
+              : nextUp.rest === "recovering"
+                ? `Recover${nextUp.addCore ? ", or core" : ""}`
+                : "You're covered"}
+          </strong>
+          <span className="training-missing-note">
+            {nextUp.split
+              ? nextUp.neglected
+                  .map(
+                    (item) =>
+                      `${item.muscle} ${item.points}/${WEEKLY_TARGET_POINTS}${item.since == null ? ", not logged yet" : item.since >= 7 ? `, ${item.since} days` : ""}`
+                  )
+                  .join(" · ")
+              : nextUp.rest === "recovering"
+                ? "What's short this week is still recovering. A rest day, cardio or mobility fits."
+                : "Every muscle has its weekly volume. A rest day, cardio or mobility fits."}
           </span>
         </div>
-        <CoverageGrid
-          days={days.map((day) => ({ date: day, letter: weekdayLetter.format(new Date(`${day}T00:00:00Z`)) }))}
-          rows={activityRows}
-        />
+        <BodyMap muscles={muscleViews} />
+        {week.due.length ? (
+          <div className="training-week-bucket due">
+            <span className="training-week-label">
+              Due <small>{week.due.length}</small>
+            </span>
+            <div className="training-week-chips">
+              {week.due.map((item: MuscleStatus) => (
+                <span key={item.muscle}>
+                  {item.muscle}
+                  <small>
+                    {" "}
+                    {item.points}/{WEEKLY_TARGET_POINTS}
+                  </small>
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        <p className="training-week-note">
+          {WEEKLY_TARGET_POINTS} points per muscle in any 7 days: light {INTENSITY_RULES.light.points}, medium{" "}
+          {INTENSITY_RULES.medium.points}, hard {INTENSITY_RULES.hard.points}. Recovery: light 1 day, medium 2–3, hard 5–6.
+        </p>
       </section>
 
       {unlabeled.length ? (
@@ -406,8 +430,14 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
         </section>
       ) : null}
 
-      <section className="card" aria-label="Coverage">
-        <h2 className="card-title">Strength coverage</h2>
+      <section className="card" aria-label="Last 14 days">
+        <div className="card-heading">
+          <h2 className="card-title">Last {WINDOW_DAYS} days</h2>
+          <span className="card-aside">
+            {activityTotals.map((total) => `${ACTIVITY_LABELS[total.category]} ${total.count}`).join(" · ") || "Nothing yet"}
+          </span>
+        </div>
+        <h3 className="training-grid-title">Strength</h3>
         <CoverageGrid
           days={days.map((day) => ({ date: day, letter: weekdayLetter.format(new Date(`${day}T00:00:00Z`)) }))}
           rows={coverageRows}
@@ -424,6 +454,11 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
           </span>
         </div>
         <p className="training-week-note">A group's shade averages its muscles; tap a group to see each one.</p>
+        <h3 className="training-grid-title">Activity</h3>
+        <CoverageGrid
+          days={days.map((day) => ({ date: day, letter: weekdayLetter.format(new Date(`${day}T00:00:00Z`)) }))}
+          rows={activityRows}
+        />
       </section>
 
       <section className="group" aria-label="Recent workouts">
@@ -440,47 +475,54 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
             ))}
           </nav>
         ) : null}
-        {shown.length ? (
-          shown.map((item) => (
-            <article key={item.key} className="card training-workout">
-              <div className="training-workout-head">
-                <div>
-                  <span className="training-workout-when">{item.when}</span>
-                  <strong>{item.title}</strong>
-                  {item.detail ? <span className="training-workout-detail">{item.detail}</span> : null}
-                  {item.status ? <span className="training-workout-detail">{item.status}</span> : null}
-                </div>
-                {item.strain != null ? (
-                  <div className="training-workout-strain">
-                    <strong>{item.strain.toFixed(1)}</strong>
-                    <span>strain</span>
+        {shownWeeks.length ? (
+          shownWeeks.map((week) => (
+            <div key={week.weekStart} className="training-recent-week">
+              <h3 className="training-week-head">
+                {week.label} <span>{week.summary}</span>
+              </h3>
+              {week.items.map((item) => (
+                <article key={item.key} className="card training-workout">
+                  <div className="training-workout-head">
+                    <div>
+                      <span className="training-workout-when">{item.when}</span>
+                      <strong>{item.title}</strong>
+                      {item.detail ? <span className="training-workout-detail">{item.detail}</span> : null}
+                      {item.status ? <span className="training-workout-detail">{item.status}</span> : null}
+                    </div>
+                    {item.strain != null ? (
+                      <div className="training-workout-strain">
+                        <strong>{item.strain.toFixed(1)}</strong>
+                        <span>strain</span>
+                      </div>
+                    ) : null}
                   </div>
-                ) : null}
-              </div>
-              {item.chips.length || item.labelPrompt || item.session ? (
-                <div className="training-workout-foot">
-                  <div className="training-chips">
-                    {item.chips.map((chip) => (
-                      <span key={chip}>{chip}</span>
-                    ))}
-                  </div>
-                  {item.labelPrompt && item.fitbitId ? <LabelButton prompt={item.labelPrompt} workoutId={item.fitbitId} date={item.date} defaultType={item.workoutType} /> : null}
-                </div>
-              ) : null}
-              {item.fitbitId ? (
-                <MergeControls id={item.fitbitId} mergedCount={item.mergedCount} overlaps={item.overlaps} />
-              ) : null}
-              {item.session ? (
-                <WorkoutEditor
-                  id={item.session.id}
-                  name={item.session.name}
-                  workoutType={item.session.workoutType}
-                  muscleGroups={item.session.muscleGroups}
-                  muscleIntensity={item.session.muscleIntensity}
-                  rpe={item.session.rpe}
-                />
-              ) : null}
-            </article>
+                  {item.chips.length || item.labelPrompt || item.session ? (
+                    <div className="training-workout-foot">
+                      <div className="training-chips">
+                        {item.chips.map((chip) => (
+                          <span key={chip}>{chip}</span>
+                        ))}
+                      </div>
+                      {item.labelPrompt && item.fitbitId ? <LabelButton prompt={item.labelPrompt} workoutId={item.fitbitId} date={item.date} defaultType={item.workoutType} /> : null}
+                    </div>
+                  ) : null}
+                  {item.fitbitId ? (
+                    <MergeControls id={item.fitbitId} mergedCount={item.mergedCount} overlaps={item.overlaps} />
+                  ) : null}
+                  {item.session ? (
+                    <WorkoutEditor
+                      id={item.session.id}
+                      name={item.session.name}
+                      workoutType={item.session.workoutType}
+                      muscleGroups={item.session.muscleGroups}
+                      muscleIntensity={item.session.muscleIntensity}
+                      rpe={item.session.rpe}
+                    />
+                  ) : null}
+                </article>
+              ))}
+            </div>
           ))
         ) : (
           <p className="footnote">

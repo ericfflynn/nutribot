@@ -36,9 +36,12 @@ import {
 import { REMINDER_KINDS } from "@/lib/reminder-rules";
 import { z } from "zod";
 import { mergeWorkouts, separateWorkout } from "@/lib/health/dedupe";
+import { deleteBodyReport, saveSoreness } from "@/lib/body-log";
 import {
   INTENSITIES,
   MUSCLE_NAMES,
+  SEVERITIES,
+  TRACKED_MUSCLES,
   WORKOUT_TYPES,
   WORKOUT_TYPE_LABELS,
   deleteWorkoutSession,
@@ -467,6 +470,30 @@ export async function ignoreWorkoutAction(
   revalidatePath("/");
   revalidatePath("/training");
   return { ok: true };
+}
+
+// Training page: report a muscle sore today from the body map. A new report
+// replaces that day's for the muscle.
+export async function logSorenessAction(muscle: string, severity: string): Promise<{ ok: boolean; error?: string }> {
+  const user = await getSessionUser();
+  const db = getPool();
+  if (!user || !db) return { ok: false, error: "Log in again." };
+  if (!(TRACKED_MUSCLES as string[]).includes(muscle) || !(SEVERITIES as readonly string[]).includes(severity)) {
+    return { ok: false, error: "Unknown muscle." };
+  }
+  await saveSoreness(db, user.name, todayLocalDate(), muscle, severity as (typeof SEVERITIES)[number]);
+  revalidatePath("/training");
+  return { ok: true };
+}
+
+export async function deleteSorenessAction(id: string): Promise<{ ok: boolean; error?: string }> {
+  const user = await getSessionUser();
+  const db = getPool();
+  if (!user || !db) return { ok: false, error: "Log in again." };
+  if (!z.string().uuid().safeParse(id).success) return { ok: false, error: "Unknown report." };
+  const deleted = await deleteBodyReport(db, user.name, id);
+  revalidatePath("/training");
+  return deleted ? { ok: true } : { ok: false, error: "That report is already gone." };
 }
 
 // Training page: label a watch workout by picking muscles, without the chat.

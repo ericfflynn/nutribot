@@ -388,6 +388,24 @@ create table if not exists public.workout_ignores (
 
 alter table public.workout_ignores enable row level security;
 
+-- Soreness and pain, one row per report (docs/training-plan.md#fatigue).
+-- Soreness uses the Training muscle names and feeds each muscle's fatigue;
+-- pain uses plain body parts (wrist, lower back) and is for looking back.
+create table if not exists public.body_log (
+  id uuid primary key default gen_random_uuid(),
+  user_name text not null,
+  entry_date date not null,
+  body_part text not null,
+  kind text not null check (kind in ('sore', 'pain')),
+  severity text not null check (severity in ('mild', 'bad')),
+  note text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists body_log_user_date on public.body_log (user_name, entry_date desc);
+
+alter table public.body_log enable row level security;
+
 -- The chat thread: one continuous thread per user. Assistant rows carry the
 -- drafts shown with that reply, and whether each was saved.
 create table if not exists public.chat_messages (

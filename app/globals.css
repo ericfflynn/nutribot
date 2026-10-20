@@ -3936,3 +3936,217 @@ details[open] .journal-preview {
   background: #34c759;
 }
 
+
+/* Training: This week, with the body map (app/body-map.tsx). Muscles are
+   shaded by the weekly target: due (orange, darker the further short),
+   recovering (amber) or covered (green). */
+.training-next {
+  display: grid;
+  gap: 4px;
+}
+
+.training-next .training-missing-label {
+  color: var(--strain-ink);
+}
+
+.training-next strong {
+  font-size: 20px;
+}
+
+.body-map {
+  display: grid;
+  gap: 10px;
+}
+
+.body-map svg {
+  display: block;
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+.body-silhouette {
+  fill: #e6e6eb;
+}
+
+.body-limbs path {
+  fill: none;
+  stroke: #e6e6eb;
+  stroke-linecap: round;
+}
+
+.body-muscle {
+  stroke: var(--surface);
+  stroke-width: 1;
+  cursor: pointer;
+  transition: fill 0.15s;
+}
+
+.body-muscle.selected {
+  stroke: var(--ink);
+  stroke-width: 1.6;
+}
+
+.body-muscle.due-low,
+.body-swatch.due-low,
+.muscle-state.due-low {
+  fill: #e0582a;
+  background: #e0582a;
+}
+
+.body-muscle.due-high,
+.muscle-state.due-high {
+  fill: #f6a77d;
+  background: #f6a77d;
+}
+
+.body-muscle.recovering,
+.body-swatch.recovering,
+.muscle-state.recovering {
+  fill: #f3c969;
+  background: #f3c969;
+}
+
+.body-muscle.covered,
+.body-swatch.covered,
+.muscle-state.covered {
+  fill: #8fcf9f;
+  background: #8fcf9f;
+}
+
+.body-map-caption {
+  fill: var(--muted);
+  font-size: 9px;
+  text-anchor: middle;
+}
+
+.body-map-legend {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.body-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 3px;
+  border-radius: 3px;
+  vertical-align: -1px;
+}
+
+.body-map-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.muscle-detail {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--bg);
+}
+
+.muscle-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.muscle-detail-head strong {
+  font-size: 16px;
+}
+
+.muscle-detail-head .text-button {
+  margin-left: auto;
+}
+
+.muscle-state {
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: #3a2a1c;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.muscle-state.due-low {
+  color: #fff;
+}
+
+.muscle-detail-ready,
+.muscle-detail-points {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.muscle-detail-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+}
+
+.muscle-detail-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.muscle-detail-sore {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.muscle-detail-sore .pill-button {
+  height: 28px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.pill-button.on {
+  background: var(--ink);
+  color: var(--surface);
+}
+
+.training-grid-title {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.training-recent-week {
+  display: grid;
+  gap: 10px;
+}
+
+.training-week-head {
+  margin: 6px 4px 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.training-week-head span {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
