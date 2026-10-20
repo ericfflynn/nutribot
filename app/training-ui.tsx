@@ -489,37 +489,54 @@ function formatMixMinutes(total: number) {
   return total % 60 ? `${hours} h ${total % 60} min` : `${hours} h`;
 }
 
-function formatShortMinutes(total: number) {
-  const hours = Math.floor(total / 60);
-  if (!hours) return `${total}m`;
-  return total % 60 ? `${hours}h ${total % 60}m` : `${hours}h`;
+// A slice of the pie as an SVG path, angles in turns from 12 o'clock.
+function slicePath(from: number, to: number, radius: number) {
+  const point = (turn: number) => {
+    const angle = turn * 2 * Math.PI;
+    return `${(radius * Math.sin(angle)).toFixed(2)} ${(-radius * Math.cos(angle)).toFixed(2)}`;
+  };
+  return `M0 0 L${point(from)} A${radius} ${radius} 0 ${to - from > 0.5 ? 1 : 0} 1 ${point(to)} Z`;
 }
 
-// The week's workouts by kind: a row each, with a plain bar for its minutes
-// against the week's biggest kind, aligned with the strength grid above.
+// The week's workouts by kind, by count: a grey pie (a fixed shade per kind,
+// white gaps between slices) with a legend that carries the numbers.
 function WorkoutMix({ mix }: { mix: WeekMix[] }) {
-  const most = Math.max(0, ...mix.map((entry) => entry.minutes));
   const count = mix.reduce((sum, entry) => sum + entry.count, 0);
   const minutes = mix.reduce((sum, entry) => sum + entry.minutes, 0);
+  let turn = 0;
+  // Each kind keeps its shade from week to week.
+  const slices = mix.map((entry) => {
+    const from = turn;
+    turn += entry.count / count;
+    return { ...entry, from, to: turn, shade: `mix-${entry.kind}` };
+  });
   return (
     <div className="workout-mix">
       <div className="workout-mix-head">
         <h3 className="training-grid-title">Workouts</h3>
-        <span className="card-aside">
-          {count ? `${count} · ${formatMixMinutes(minutes)}` : "None"}
-        </span>
+        <span className="card-aside">{count ? `${count} · ${formatMixMinutes(minutes)}` : "None"}</span>
       </div>
-      {mix.map((entry) => (
-        <div key={entry.kind} className="workout-mix-row">
-          <span className="coverage-name">
-            {entry.label} <small>{entry.count}</small>
-          </span>
-          <span className="workout-mix-track">
-            <span style={{ width: most ? `${(entry.minutes / most) * 100}%` : "0" }} />
-          </span>
-          <span className="workout-mix-value">{entry.minutes ? formatShortMinutes(entry.minutes) : "–"}</span>
+      {count ? (
+        <div className="workout-mix-body">
+          <svg viewBox="-50 -50 100 100" className="workout-pie" role="img" aria-label={slices.map((slice) => `${slice.label} ${slice.count}`).join(", ")}>
+            {slices.length === 1 ? (
+              <circle r={48} className={slices[0].shade} />
+            ) : (
+              slices.map((slice) => <path key={slice.kind} d={slicePath(slice.from, slice.to, 48)} className={slice.shade} />)
+            )}
+          </svg>
+          <ul className="workout-mix-legend">
+            {slices.map((slice) => (
+              <li key={slice.kind}>
+                <i className={slice.shade} aria-hidden="true" />
+                <span>{slice.label}</span>
+                <strong>{slice.count}</strong>
+                <span className="workout-mix-value">{Math.round((slice.count / count) * 100)}%</span>
+              </li>
+            ))}
+          </ul>
         </div>
-      ))}
+      ) : null}
     </div>
   );
 }

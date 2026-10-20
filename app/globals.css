@@ -4190,11 +4190,11 @@ details[open] .journal-preview {
   flex-wrap: wrap;
 }
 
-/* Training: the week's workouts by kind, a plain bar each, in the strength
-   grid's columns. */
+/* Training: the week's workouts by kind, a grey pie by count. Each kind has
+   a fixed shade, darkest for strength; white gaps separate the slices. */
 .workout-mix {
   display: grid;
-  gap: 8px;
+  gap: 10px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
 }
@@ -4210,30 +4210,50 @@ details[open] .journal-preview {
   margin: 0;
 }
 
-.workout-mix-row {
+.workout-mix-body {
   display: grid;
-  grid-template-columns: 92px minmax(0, 1fr) 42px;
+  grid-template-columns: 96px minmax(0, 1fr);
   align-items: center;
-  gap: 6px;
+  gap: 20px;
 }
 
-.workout-mix-row small {
-  color: var(--muted);
-  font-weight: 500;
-}
-
-.workout-mix-track {
-  height: 8px;
-  border-radius: 999px;
-  background: var(--bg);
-  overflow: hidden;
-}
-
-.workout-mix-track span {
+.workout-pie {
   display: block;
-  height: 100%;
-  border-radius: 999px;
-  background: #8e8e93;
+  width: 96px;
+  height: 96px;
+}
+
+.workout-pie path,
+.workout-pie circle {
+  stroke: var(--surface);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.workout-mix-legend {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+}
+
+.workout-mix-legend li {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto 40px;
+  align-items: center;
+  gap: 8px;
+}
+
+.workout-mix-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.workout-mix-legend strong {
+  font-variant-numeric: tabular-nums;
 }
 
 .workout-mix-value {
@@ -4241,4 +4261,29 @@ details[open] .journal-preview {
   font-size: 13px;
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+.mix-strength {
+  fill: #3a3a3c;
+  background: #3a3a3c;
+}
+
+.mix-cardio {
+  fill: #6e6e73;
+  background: #6e6e73;
+}
+
+.mix-mobility {
+  fill: #9a9aa0;
+  background: #9a9aa0;
+}
+
+.mix-sport {
+  fill: #c2c2c8;
+  background: #c2c2c8;
+}
+
+.mix-other {
+  fill: #dcdce1;
+  background: #dcdce1;
 }
