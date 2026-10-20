@@ -1,6 +1,6 @@
 import { AppShell, Login } from "../shared-ui";
 import { BodyMap, type MuscleView } from "../body-map";
-import { WeekPages, LabelButton, MergeControls, RestoreButton, WorkoutEditor, type CoverageRow, type WeekPage } from "../training-ui";
+import { WeekPages, LabelButton, MergeControls, RestoreButton, WorkoutEditor, type CoverageRow, type WeekMix, type WeekPage } from "../training-ui";
 import { getSessionUser } from "@/lib/auth";
 import { addDays, rollingDateWindow, todayLocalDate } from "@/lib/dates";
 import { listHealthWorkouts, type HealthWorkout } from "@/lib/health/queries";
@@ -47,6 +47,9 @@ export const dynamic = "force-dynamic";
 // Room for the health sync that opening the app may run (autoSyncHealthAction).
 export const maxDuration = 60;
 
+// The kinds of training in the week's mix, in their fixed color order.
+const MIX_KINDS = ["strength", "cardio", "mobility", "sport", "other"] as const;
+
 // Recent workouts lists this many days.
 const WINDOW_DAYS = 14;
 // The week grid pages back this many rolling weeks, as far as there's data.
@@ -64,7 +67,8 @@ function weekStartOf(date: string) {
 
 function formatMinutes(total: number) {
   const hours = Math.floor(total / 60);
-  return hours ? `${hours} h ${total % 60} min` : `${total} min`;
+  if (!hours) return `${total} min`;
+  return total % 60 ? `${hours} h ${total % 60} min` : `${hours} h`;
 }
 const weekdayLetter = new Intl.DateTimeFormat("en-US", { weekday: "narrow", timeZone: "UTC" });
 const clockFormat = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" });
@@ -279,10 +283,9 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
   // first week with a logged session. Strength groups are shaded by how much
   // of the group was worked (groupDayIntensity), their muscles by the hardest
   // each got. The points column is that week's volume, so on the newest page
-  // it's the live 4-point target; a group shows its percent of that.
-  // Cardio, mobility and sport come from the same list as Recent workouts
-  // (auto-detected walks left out); the muscles can say more than the type
-  // (activityCategoriesOf).
+  // it's the live 4-point target; a group shows its percent of that. The mix
+  // under it comes from the same list as Recent workouts (auto-detected walks
+  // left out); the muscles can say more than the type (activityCategoriesOf).
   const kindsOf = (item: RecentItem) => activityCategoriesOf(item.workoutType, item.session?.muscleGroups);
   const muscleDays = new Map<string, Intensity>(); // "date|muscle"
   for (const session of sessions) {
@@ -325,28 +328,19 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
         muscles: []
       }))
     }));
-    const activities: CoverageRow[] = (["cardio", "mobility", "sport"] as const).flatMap((category) => {
-      const dates = new Set(
-        recent.filter((item) => kindsOf(item).includes(category) && pageDays.includes(item.date)).map((item) => item.date)
-      );
-      if (category === "sport" && !dates.size) return [];
-      return [
-        {
-          name: ACTIVITY_LABELS[category],
-          aside: dates.size ? `${dates.size}d` : "",
-          done: false,
-          levels: pageDays.map((day) => (dates.has(day) ? "activity" : "")),
-          muscles: []
-        }
-      ];
-    });
+    // The mix: each workout that week by its main kind, with its minutes.
+    const weekItems = recent.filter((item) => pageDays.includes(item.date));
+    const mix: WeekMix[] = MIX_KINDS.map((kind) => {
+      const items = weekItems.filter((item) => kindsOf(item)[0] === kind);
+      return { kind, label: ACTIVITY_LABELS[kind], count: items.length, minutes: items.reduce((sum, item) => sum + (item.minutes ?? 0), 0) };
+    }).filter((entry) => entry.count);
     weekPages.push({
       key: end,
       label: week === 0 ? "Last 7 days" : week === 1 ? "Previous 7 days" : `${week} weeks earlier`,
       range: `${shortDay.format(new Date(`${pageDays[0]}T00:00:00Z`))} – ${shortDay.format(new Date(`${end}T00:00:00Z`))}`,
       days: pageDays.map((day) => ({ date: day, letter: weekdayLetter.format(new Date(`${day}T00:00:00Z`)) })),
       strength,
-      activities
+      mix
     });
   }
 

@@ -2937,9 +2937,6 @@ button.fab {
   background: #b81d14;
 }
 
-.coverage-cell.activity {
-  background: #8e8e96;
-}
 
 .coverage-legend {
   display: flex;
@@ -3923,24 +3920,6 @@ details[open] .journal-preview {
   flex-basis: 100%;
 }
 
-/* Training: the activity mix, one color per kind of training */
-.coverage-cell.activity-strength {
-  background: var(--strain);
-}
-
-.coverage-cell.activity-cardio {
-  background: #5ac8fa;
-}
-
-.coverage-cell.activity-mobility {
-  background: #af52de;
-}
-
-.coverage-cell.activity-sport {
-  background: #34c759;
-}
-
-
 /* Training: This week, with the body map (app/body-map.tsx). The body is
    grey; each tracked muscle is tinted toward red by its fatigue (inline fill). */
 .training-next {
@@ -4207,13 +4186,85 @@ details[open] .journal-preview {
   color: var(--good);
 }
 
-.coverage-divider {
-  grid-column: 1 / -1;
-  height: 1px;
-  margin: 2px 0;
-  background: var(--line);
-}
-
 .week-page .coverage-legend {
   flex-wrap: wrap;
+}
+
+/* Training: the week's workout mix, one 100% bar by minutes. Fixed kind
+   order and colors (checked for color-blind separation); the legend carries
+   the numbers, since aqua and yellow are light against white. */
+.workout-mix {
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.workout-mix-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.workout-mix-head .training-grid-title {
+  margin: 0;
+}
+
+.workout-mix-bar {
+  display: flex;
+  gap: 2px;
+  height: 14px;
+}
+
+.workout-mix-bar span {
+  min-width: 4px;
+  border-radius: 4px;
+}
+
+.workout-mix-legend {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+
+.workout-mix-legend li {
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.workout-mix-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.workout-mix-value {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.mix-strength {
+  background: #2a78d6;
+}
+
+.mix-cardio {
+  background: #eb6834;
+}
+
+.mix-mobility {
+  background: #1baf7a;
+}
+
+.mix-sport {
+  background: #eda100;
+}
+
+.mix-other {
+  background: #a1a1a8;
 }

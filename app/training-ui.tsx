@@ -477,8 +477,58 @@ export type WeekPage = {
   range: string;
   days: { date: string; letter: string }[];
   strength: CoverageRow[];
-  activities: CoverageRow[];
+  mix: WeekMix[];
 };
+
+// One kind of training in a week: how many workouts, and their minutes.
+export type WeekMix = { kind: string; label: string; count: number; minutes: number };
+
+function formatMixMinutes(total: number) {
+  const hours = Math.floor(total / 60);
+  if (!hours) return `${total} min`;
+  return total % 60 ? `${hours} h ${total % 60} min` : `${hours} h`;
+}
+
+// The week's workouts by kind: one 100% bar sized by minutes (by count when
+// nothing has minutes), with a legend that carries the numbers.
+function WorkoutMix({ mix }: { mix: WeekMix[] }) {
+  const totalMinutes = mix.reduce((sum, entry) => sum + entry.minutes, 0);
+  const sizeOf = (entry: WeekMix) => (totalMinutes ? entry.minutes : entry.count);
+  const total = mix.reduce((sum, entry) => sum + sizeOf(entry), 0);
+  const count = mix.reduce((sum, entry) => sum + entry.count, 0);
+  return (
+    <div className="workout-mix">
+      <div className="workout-mix-head">
+        <h3 className="training-grid-title">Workout mix</h3>
+        <span className="card-aside">
+          {count ? `${count} workout${count === 1 ? "" : "s"}${totalMinutes ? ` · ${formatMixMinutes(totalMinutes)}` : ""}` : "No workouts"}
+        </span>
+      </div>
+      {total ? (
+        <>
+          <div className="workout-mix-bar" role="img" aria-label={mix.map((entry) => `${entry.label} ${Math.round((sizeOf(entry) / total) * 100)}%`).join(", ")}>
+            {mix.map((entry) =>
+              sizeOf(entry) ? (
+                <span key={entry.kind} className={`mix-${entry.kind}`} style={{ flexGrow: sizeOf(entry) }} title={`${entry.label}: ${Math.round((sizeOf(entry) / total) * 100)}%`} />
+              ) : null
+            )}
+          </div>
+          <ul className="workout-mix-legend">
+            {mix.map((entry) => (
+              <li key={entry.kind}>
+                <i className={`mix-${entry.kind}`} aria-hidden="true" />
+                <span>{entry.label}</span>
+                <span className="workout-mix-value">
+                  {entry.count} · {entry.minutes ? formatMixMinutes(entry.minutes) : "–"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+    </div>
+  );
+}
 
 // The week grid. Tapping a group with muscles shows a row per muscle;
 // sessions logged as the whole group only shade the group row.
@@ -544,8 +594,6 @@ export function WeekPages({ pages }: { pages: WeekPage[] }) {
             </div>
             <span className="coverage-since-head">pts</span>
             <CoverageGrid days={page.days} rows={page.strength} open={open} onToggle={toggle} />
-            <span className="coverage-divider" />
-            <CoverageGrid days={page.days} rows={page.activities} open={open} onToggle={toggle} />
           </div>
           <div className="coverage-legend" aria-hidden="true">
             <span>
@@ -557,10 +605,8 @@ export function WeekPages({ pages }: { pages: WeekPage[] }) {
             <span>
               <i className="coverage-cell level-3" /> Hard
             </span>
-            <span>
-              <i className="coverage-cell activity" /> Activity
-            </span>
           </div>
+          <WorkoutMix mix={page.mix} />
         </div>
       ))}
     </div>
