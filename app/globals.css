@@ -3937,9 +3937,8 @@ details[open] .journal-preview {
 }
 
 
-/* Training: This week, with the body map (app/body-map.tsx). Muscles are
-   shaded by the weekly target: due (orange, darker the further short),
-   recovering (amber) or covered (green). */
+/* Training: This week, with the body map (app/body-map.tsx). The body is
+   grey; each tracked muscle is tinted toward red by its fatigue (inline fill). */
 .training-next {
   display: grid;
   gap: 4px;
@@ -3958,83 +3957,65 @@ details[open] .journal-preview {
   gap: 10px;
 }
 
-.body-map svg {
-  display: block;
-  width: 100%;
+.body-figures {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
   max-width: 420px;
+  width: 100%;
   margin: 0 auto;
 }
 
-.body-silhouette {
-  fill: #e6e6eb;
+.body-figure {
+  display: grid;
+  gap: 2px;
+  margin: 0;
 }
 
-.body-limbs path {
-  fill: none;
-  stroke: #e6e6eb;
-  stroke-linecap: round;
+.body-figure svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.body-figure figcaption {
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.body-part {
+  fill: #e4e4e9;
+}
+
+.body-hair {
+  fill: #a9a9b0;
 }
 
 .body-muscle {
-  stroke: var(--surface);
-  stroke-width: 1;
   cursor: pointer;
-  transition: fill 0.15s;
+  transition: fill 0.2s;
 }
 
-.body-muscle.selected {
+.body-muscle.selected path {
   stroke: var(--ink);
-  stroke-width: 1.6;
-}
-
-.body-muscle.due-low,
-.body-swatch.due-low,
-.muscle-state.due-low {
-  fill: #e0582a;
-  background: #e0582a;
-}
-
-.body-muscle.due-high,
-.muscle-state.due-high {
-  fill: #f6a77d;
-  background: #f6a77d;
-}
-
-.body-muscle.recovering,
-.body-swatch.recovering,
-.muscle-state.recovering {
-  fill: #f3c969;
-  background: #f3c969;
-}
-
-.body-muscle.covered,
-.body-swatch.covered,
-.muscle-state.covered {
-  fill: #8fcf9f;
-  background: #8fcf9f;
-}
-
-.body-map-caption {
-  fill: var(--muted);
-  font-size: 9px;
-  text-anchor: middle;
+  stroke-width: 6;
+  paint-order: stroke;
 }
 
 .body-map-legend {
   display: flex;
+  align-items: center;
   justify-content: center;
-  gap: 14px;
+  gap: 8px;
   color: var(--muted);
   font-size: 12px;
 }
 
-.body-swatch {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  margin-right: 3px;
-  border-radius: 3px;
-  vertical-align: -1px;
+.body-scale {
+  width: 90px;
+  height: 8px;
+  border-radius: 999px;
 }
 
 .body-map-hint {
@@ -4069,13 +4050,20 @@ details[open] .journal-preview {
 .muscle-state {
   padding: 2px 8px;
   border-radius: 999px;
-  color: #3a2a1c;
+  background: #e4e4ea;
   font-size: 12px;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
-.muscle-state.due-low {
-  color: #fff;
+.muscle-state.due {
+  background: #fdebe3;
+  color: #7a3410;
+}
+
+.muscle-state.covered {
+  background: var(--accent-soft);
+  color: var(--good);
 }
 
 .muscle-detail-ready,

@@ -218,6 +218,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
       bucket: view.bucket,
       points: view.points,
       readyIn: view.readyIn,
+      fatigue: view.fatigue,
       sessions: view.hits.map((hit) => `${formatDay(hit.session.date)} · ${hit.session.name} · ${hit.intensity}, +${hit.points}`),
       sore: view.sore.map((report) => ({
         id: report.id,

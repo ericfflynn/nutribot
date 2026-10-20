@@ -164,6 +164,13 @@ export function bucketOf(load: Load): WeekBucket {
   return load.readyIn > 0 ? "recovering" : "due";
 }
 
+// How fatigued a muscle is, 0 (ready) to 1 (a hard session today), from its
+// days until ready. The body map tints muscles toward red by it.
+export function fatigueLevel(readyIn: number) {
+  const most = INTENSITY_RULES.hard.recoveryDays;
+  return Math.min(readyIn, most) / most;
+}
+
 // Days until a muscle's soreness has passed, from its latest report on or
 // before today.
 function sorenessReadyIn(reports: readonly SorenessReport[], muscle: TrackedMuscle, today: string) {
@@ -218,7 +225,7 @@ export function muscleWeekOf<S extends TrainedSession>(
     .filter((report) => report.muscle === muscle && daysBetween(report.date, today) >= 0)
     .filter((report) => SORENESS_HOLD_DAYS[report.severity] - daysBetween(report.date, today) > 0)
     .sort((a, b) => b.date.localeCompare(a.date));
-  return { muscle, bucket: bucketOf(load), ...load, hits, sore };
+  return { muscle, bucket: bucketOf(load), fatigue: fatigueLevel(load.readyIn), ...load, hits, sore };
 }
 
 // How much of a group one day's sessions worked, for the coverage grid's group

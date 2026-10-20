@@ -1,14 +1,17 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { deleteSorenessAction, logSorenessAction } from "./actions";
+import { BODY_BACK, BODY_FRONT, BODY_VIEWBOX } from "./body-map-paths";
 import { SEVERITIES, WEEKLY_TARGET_POINTS, type Severity, type TrackedMuscle, type WeekBucket } from "@/lib/workouts";
 
 export type MuscleView = {
   muscle: TrackedMuscle;
   bucket: WeekBucket;
   readyIn: number;
+  // 0 fresh to 1 fully fatigued (fatigueLevel in lib/workouts.ts).
+  fatigue: number;
   points: number;
   // "Thu, Oct 16 · Push day · hard", newest first.
   sessions: string[];
@@ -18,157 +21,94 @@ export type MuscleView = {
 
 const BUCKET_LABELS: Record<WeekBucket, string> = { due: "Due", recovering: "Recovering", covered: "Covered" };
 
-// The map's shade: covered, recovering, or due (darker the further short).
-function shadeOf(view: MuscleView | undefined) {
-  if (!view) return "due due-low";
-  if (view.bucket !== "due") return view.bucket;
-  return view.points <= 1 ? "due due-low" : "due due-high";
+// Fresh muscles are the body's grey; any fatigue is red, from light (a day
+// to go) to deep (a hard session today). Mixing grey into red reads as pink.
+const GREY = "rgb(212 212 218)";
+const LIGHT_RED = [246, 178, 166];
+const RED = [208, 32, 24];
+function fillOf(fatigue: number) {
+  if (fatigue <= 0) return GREY;
+  const mix = LIGHT_RED.map((value, index) => Math.round(value + (RED[index] - value) * fatigue));
+  return `rgb(${mix.join(" ")})`;
 }
 
-// Shapes for one figure, 120 wide. `pair` shapes are drawn on the left and
-// mirrored to the right. Schematic, not anatomical: each tracked muscle gets
-// one clear tap target in roughly the right place.
-type Shape = { muscle: TrackedMuscle; pair: boolean; draw: (props: object) => ReactNode };
-const ellipse = (cx: number, cy: number, rx: number, ry: number, rotate = 0) =>
-  function Ellipse(props: object) {
-    return <ellipse cx={cx} cy={cy} rx={rx} ry={ry} transform={rotate ? `rotate(${rotate} ${cx} ${cy})` : undefined} {...props} />;
-  };
-const path = (d: string) =>
-  function Path(props: object) {
-    return <path d={d} {...props} />;
-  };
-const rect = (x: number, y: number, width: number, height: number) =>
-  function Rect(props: object) {
-    return <rect x={x} y={y} width={width} height={height} rx={3} {...props} />;
-  };
-
-const FRONT: Shape[] = [
-  { muscle: "Chest", pair: true, draw: path("M59 42 L44 43 Q39 50 42 60 Q48 66 59 64 Z") },
-  { muscle: "Side Delts", pair: true, draw: ellipse(32, 46, 4.5, 7.5, 12) },
-  { muscle: "Front Delts", pair: true, draw: ellipse(38, 46, 4.5, 7, 8) },
-  { muscle: "Biceps", pair: true, draw: ellipse(31.5, 66, 4.8, 11, 6) },
-  { muscle: "Forearms", pair: true, draw: ellipse(27.2, 106, 4.2, 13, 5) },
-  { muscle: "Upper Abs", pair: true, draw: rect(52, 68, 7.5, 19) },
-  { muscle: "Lower Abs", pair: true, draw: rect(52.5, 89, 7, 20) },
-  { muscle: "Obliques", pair: true, draw: path("M44 70 Q48 69 50 72 L50 104 Q46 102 44 96 Q42 84 44 70 Z") },
-  { muscle: "Quads", pair: true, draw: ellipse(50.5, 149, 8.5, 25, 3) }
-];
-
-const BACK: Shape[] = [
-  { muscle: "Upper Back", pair: true, draw: path("M59 51 L53 47 L49 56 L52 71 L59 75 Z") },
-  { muscle: "Traps", pair: false, draw: path("M60 27 L52 33 L42 39 L52 42 L60 49 L68 42 L78 39 L68 33 Z") },
-  { muscle: "Side Delts", pair: true, draw: ellipse(32, 46, 4.5, 7.5, 12) },
-  { muscle: "Rear Delts", pair: true, draw: ellipse(38, 47, 4.5, 7, 8) },
-  { muscle: "Lats", pair: true, draw: path("M47 58 Q42 63 42 75 Q44 88 53 97 L55 94 Q54 83 49 72 Z") },
-  { muscle: "Lower Back", pair: false, draw: rect(54, 92, 12, 20) },
-  { muscle: "Triceps", pair: true, draw: ellipse(31.5, 66, 4.8, 11, 6) },
-  { muscle: "Forearms", pair: true, draw: ellipse(27.2, 106, 4.2, 13, 5) },
-  { muscle: "Glutes", pair: true, draw: ellipse(51, 124, 9, 10) },
-  { muscle: "Hamstrings", pair: true, draw: ellipse(50, 157, 8, 21, 3) },
-  { muscle: "Calves", pair: true, draw: ellipse(48, 203, 6.5, 17) }
-];
-
-// The body behind the muscles: head, torso, arms and legs.
-function Silhouette() {
-  const limbs = (
-    <>
-      <path d="M34 44 L29 86" strokeWidth={11} />
-      <path d="M29 86 L25 128" strokeWidth={9} />
-      <path d="M50 118 L48 180" strokeWidth={20} />
-      <path d="M48 180 L47 238" strokeWidth={13} />
-    </>
-  );
-  return (
-    <g className="body-silhouette">
-      <circle cx={60} cy={16} r={10} />
-      <rect x={55} y={24} width={10} height={10} rx={3} />
-      <path d="M40 38 Q60 33 80 38 L83 60 Q80 90 76 118 L44 118 Q40 90 37 60 Z" />
-      <path d="M44 112 L76 112 L78 128 L60 134 L42 128 Z" />
-      <g className="body-limbs">
-        {limbs}
-        <g transform="translate(120 0) scale(-1 1)">{limbs}</g>
-      </g>
-      <circle cx={24} cy={134} r={5} />
-      <circle cx={96} cy={134} r={5} />
-      <ellipse cx={46} cy={244} rx={7} ry={4} />
-      <ellipse cx={74} cy={244} rx={7} ry={4} />
-    </g>
-  );
+function fatigueLabel(view: MuscleView) {
+  if (!view.readyIn) return "Fresh";
+  return `${view.fatigue >= 0.6 ? "Fatigued" : "Recovering"}, ready in ${view.readyIn} day${view.readyIn === 1 ? "" : "s"}`;
 }
 
 function Figure({
-  shapes,
-  x,
-  label,
-  stateOf,
+  side,
+  fatigueOf,
   selected,
   onPick
 }: {
-  shapes: Shape[];
-  x: number;
-  label: string;
-  stateOf: (muscle: TrackedMuscle) => string;
+  side: "front" | "back";
+  fatigueOf: (muscle: TrackedMuscle) => number;
   selected: TrackedMuscle | null;
   onPick: (muscle: TrackedMuscle) => void;
 }) {
-  const props = (muscle: TrackedMuscle) => ({
-    className: `body-muscle ${stateOf(muscle)}${selected === muscle ? " selected" : ""}`,
-    onClick: () => onPick(muscle)
-  });
+  const regions = side === "front" ? BODY_FRONT : BODY_BACK;
   return (
-    <g transform={`translate(${x} 0)`}>
-      <Silhouette />
-      {shapes.map((shape) => (
-        <g key={shape.muscle}>
-          {shape.draw(props(shape.muscle))}
-          {shape.pair ? <g transform="translate(120 0) scale(-1 1)">{shape.draw(props(shape.muscle))}</g> : null}
-        </g>
-      ))}
-      <text x={60} y={262} className="body-map-caption">
-        {label}
-      </text>
-    </g>
+    <figure className="body-figure">
+      <svg viewBox={BODY_VIEWBOX[side]} role="group" aria-label={side === "front" ? "Front" : "Back"}>
+        {regions.map((region) => {
+          const muscle = region.muscle;
+          const className = muscle
+            ? `body-muscle${selected === muscle ? " selected" : ""}`
+            : region.slug === "hair"
+              ? "body-hair"
+              : "body-part";
+          return (
+            <g
+              key={region.slug}
+              className={className}
+              fill={muscle ? fillOf(fatigueOf(muscle)) : undefined}
+              onClick={muscle ? () => onPick(muscle) : undefined}
+            >
+              {region.paths.map((d, index) => (
+                <path key={index} d={d} />
+              ))}
+            </g>
+          );
+        })}
+      </svg>
+      <figcaption>{side === "front" ? "Front" : "Back"}</figcaption>
+    </figure>
   );
 }
 
-// Front and back figures shaded by the weekly target: due (ready and short of
-// 4 points), recovering (short but not ready) or covered. Tapping a muscle
-// shows its week, and can report it sore today.
+// Front and back figures, each muscle tinted from grey (fresh) to red
+// (fatigued: just trained hard, or sore). Tapping a muscle shows its week
+// against the 4-point target, and can report it sore today.
 export function BodyMap({ muscles }: { muscles: MuscleView[] }) {
   const [selected, setSelected] = useState<TrackedMuscle | null>(null);
   const byMuscle = new Map(muscles.map((view) => [view.muscle, view]));
-  const stateOf = (muscle: TrackedMuscle) => shadeOf(byMuscle.get(muscle));
+  const fatigueOf = (muscle: TrackedMuscle) => byMuscle.get(muscle)?.fatigue ?? 0;
   const pick = (muscle: TrackedMuscle) => setSelected(selected === muscle ? null : muscle);
   const view = selected ? byMuscle.get(selected) : undefined;
-  const count = (bucket: WeekBucket) => muscles.filter((item) => item.bucket === bucket).length;
 
   return (
     <div className="body-map">
-      <svg viewBox="0 0 260 270" role="group" aria-label="Muscles by weekly volume">
-        <Figure shapes={FRONT} x={4} label="Front" stateOf={stateOf} selected={selected} onPick={pick} />
-        <Figure shapes={BACK} x={136} label="Back" stateOf={stateOf} selected={selected} onPick={pick} />
-      </svg>
-      <div className="body-map-legend">
-        <span>
-          <i className="body-swatch due due-low" /> Due {count("due")}
-        </span>
-        <span>
-          <i className="body-swatch recovering" /> Recovering {count("recovering")}
-        </span>
-        <span>
-          <i className="body-swatch covered" /> Covered {count("covered")}
-        </span>
+      <div className="body-figures">
+        <Figure side="front" fatigueOf={fatigueOf} selected={selected} onPick={pick} />
+        <Figure side="back" fatigueOf={fatigueOf} selected={selected} onPick={pick} />
+      </div>
+      <div className="body-map-legend" aria-hidden="true">
+        <span>Fresh</span>
+        <i className="body-scale" style={{ background: `linear-gradient(90deg, ${fillOf(0)} 0 18%, ${fillOf(0.2)} 18%, ${fillOf(1)})` }} />
+        <span>Fatigued</span>
       </div>
       {view ? (
         <MuscleDetail key={view.muscle} view={view} onClose={() => setSelected(null)} />
       ) : (
         <p className="body-map-hint">Tap a muscle for its week.</p>
       )}
-      {/* The same state as a list, for screen readers. */}
+      {/* The same as a list, for screen readers. */}
       <ul className="visually-hidden">
         {muscles.map((item) => (
           <li key={item.muscle}>
-            {item.muscle}: {BUCKET_LABELS[item.bucket]}, {item.points} of {WEEKLY_TARGET_POINTS} points
+            {item.muscle}: {fatigueLabel(item)}; {item.points} of {WEEKLY_TARGET_POINTS} points, {BUCKET_LABELS[item.bucket].toLowerCase()}
           </li>
         ))}
       </ul>
@@ -195,17 +135,14 @@ function MuscleDetail({ view, onClose }: { view: MuscleView; onClose: () => void
     <div className="muscle-detail">
       <div className="muscle-detail-head">
         <strong>{view.muscle}</strong>
-        <span className={`muscle-state ${shadeOf(view)}`}>{BUCKET_LABELS[view.bucket]}</span>
-        <span className="muscle-detail-ready">
-          {view.readyIn ? `ready in ${view.readyIn} day${view.readyIn === 1 ? "" : "s"}` : "ready"}
+        <span className={`muscle-state ${view.bucket}`}>
+          {view.points}/{WEEKLY_TARGET_POINTS} · {BUCKET_LABELS[view.bucket]}
         </span>
         <button type="button" className="text-button" onClick={onClose} aria-label="Close">
           Done
         </button>
       </div>
-      <p className="muscle-detail-points">
-        {view.points}/{WEEKLY_TARGET_POINTS} points this week
-      </p>
+      <p className="muscle-detail-points">{fatigueLabel(view)}</p>
       {view.sessions.length || view.sore.length ? (
         <ul className="muscle-detail-list">
           {view.sore.map((report) => (
