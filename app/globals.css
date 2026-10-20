@@ -4190,9 +4190,8 @@ details[open] .journal-preview {
   flex-wrap: wrap;
 }
 
-/* Training: the week's workout mix, one 100% bar by minutes. Fixed kind
-   order and colors (checked for color-blind separation); the legend carries
-   the numbers, since aqua and yellow are light against white. */
+/* Training: the week's workouts by kind, a plain bar each, in the strength
+   grid's columns. */
 .workout-mix {
   display: grid;
   gap: 8px;
@@ -4211,60 +4210,35 @@ details[open] .journal-preview {
   margin: 0;
 }
 
-.workout-mix-bar {
-  display: flex;
-  gap: 2px;
-  height: 14px;
-}
-
-.workout-mix-bar span {
-  min-width: 4px;
-  border-radius: 4px;
-}
-
-.workout-mix-legend {
+.workout-mix-row {
   display: grid;
-  gap: 4px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  font-size: 13px;
-}
-
-.workout-mix-legend li {
-  display: grid;
-  grid-template-columns: 10px 1fr auto;
+  grid-template-columns: 92px minmax(0, 1fr) 42px;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
-.workout-mix-legend i {
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
+.workout-mix-row small {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.workout-mix-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.workout-mix-track span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: #8e8e93;
 }
 
 .workout-mix-value {
   color: var(--muted);
+  font-size: 13px;
+  text-align: right;
   font-variant-numeric: tabular-nums;
-}
-
-.mix-strength {
-  background: #2a78d6;
-}
-
-.mix-cardio {
-  background: #eb6834;
-}
-
-.mix-mobility {
-  background: #1baf7a;
-}
-
-.mix-sport {
-  background: #eda100;
-}
-
-.mix-other {
-  background: #a1a1a8;
 }

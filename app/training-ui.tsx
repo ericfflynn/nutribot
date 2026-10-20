@@ -489,43 +489,37 @@ function formatMixMinutes(total: number) {
   return total % 60 ? `${hours} h ${total % 60} min` : `${hours} h`;
 }
 
-// The week's workouts by kind: one 100% bar sized by minutes (by count when
-// nothing has minutes), with a legend that carries the numbers.
+function formatShortMinutes(total: number) {
+  const hours = Math.floor(total / 60);
+  if (!hours) return `${total}m`;
+  return total % 60 ? `${hours}h ${total % 60}m` : `${hours}h`;
+}
+
+// The week's workouts by kind: a row each, with a plain bar for its minutes
+// against the week's biggest kind, aligned with the strength grid above.
 function WorkoutMix({ mix }: { mix: WeekMix[] }) {
-  const totalMinutes = mix.reduce((sum, entry) => sum + entry.minutes, 0);
-  const sizeOf = (entry: WeekMix) => (totalMinutes ? entry.minutes : entry.count);
-  const total = mix.reduce((sum, entry) => sum + sizeOf(entry), 0);
+  const most = Math.max(0, ...mix.map((entry) => entry.minutes));
   const count = mix.reduce((sum, entry) => sum + entry.count, 0);
+  const minutes = mix.reduce((sum, entry) => sum + entry.minutes, 0);
   return (
     <div className="workout-mix">
       <div className="workout-mix-head">
-        <h3 className="training-grid-title">Workout mix</h3>
+        <h3 className="training-grid-title">Workouts</h3>
         <span className="card-aside">
-          {count ? `${count} workout${count === 1 ? "" : "s"}${totalMinutes ? ` · ${formatMixMinutes(totalMinutes)}` : ""}` : "No workouts"}
+          {count ? `${count} · ${formatMixMinutes(minutes)}` : "None"}
         </span>
       </div>
-      {total ? (
-        <>
-          <div className="workout-mix-bar" role="img" aria-label={mix.map((entry) => `${entry.label} ${Math.round((sizeOf(entry) / total) * 100)}%`).join(", ")}>
-            {mix.map((entry) =>
-              sizeOf(entry) ? (
-                <span key={entry.kind} className={`mix-${entry.kind}`} style={{ flexGrow: sizeOf(entry) }} title={`${entry.label}: ${Math.round((sizeOf(entry) / total) * 100)}%`} />
-              ) : null
-            )}
-          </div>
-          <ul className="workout-mix-legend">
-            {mix.map((entry) => (
-              <li key={entry.kind}>
-                <i className={`mix-${entry.kind}`} aria-hidden="true" />
-                <span>{entry.label}</span>
-                <span className="workout-mix-value">
-                  {entry.count} · {entry.minutes ? formatMixMinutes(entry.minutes) : "–"}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </>
-      ) : null}
+      {mix.map((entry) => (
+        <div key={entry.kind} className="workout-mix-row">
+          <span className="coverage-name">
+            {entry.label} <small>{entry.count}</small>
+          </span>
+          <span className="workout-mix-track">
+            <span style={{ width: most ? `${(entry.minutes / most) * 100}%` : "0" }} />
+          </span>
+          <span className="workout-mix-value">{entry.minutes ? formatShortMinutes(entry.minutes) : "–"}</span>
+        </div>
+      ))}
     </div>
   );
 }

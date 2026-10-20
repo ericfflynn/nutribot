@@ -47,7 +47,7 @@ export const dynamic = "force-dynamic";
 // Room for the health sync that opening the app may run (autoSyncHealthAction).
 export const maxDuration = 60;
 
-// The kinds of training in the week's mix, in their fixed color order.
+// The kinds of training under the week grid, in display order.
 const MIX_KINDS = ["strength", "cardio", "mobility", "sport", "other"] as const;
 
 // Recent workouts lists this many days.
