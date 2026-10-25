@@ -83,7 +83,8 @@ export const CHECKIN_PROMPT = `## Journal
 - energy (1 drained, 5 energized) and soreness (1 none, 5 very sore) are optional too. Every rating the text doesn't support is null, never a guess.
 - tags: one to four lowercase tags for what came up. Prefer these, by category: ${TAG_CATEGORIES.map((category) => `${category.label}: ${category.tags.join(", ")}`).join("; ")}. Add a custom tag only for something specific that none of these cover ("sore legs"), and reuse the owner's earlier tags (list_journal) over new wording.
 - kind is morning before noon, evening after 5 pm, other in between. An entry written before 4 am about the night before belongs to the previous date.
-- One entry per day and kind. To add to or change a saved entry (more detail, a different rating), call draft_journal with edits set to its id and the whole revised entry: keep their earlier words and add the new ones. list_journal shows ids, and draft_journal says when that day already has an entry of that kind. Never say whether an entry exists without checking list_journal.
+- A day can have several entries of the same kind. New writing about their day, even a follow-up to an earlier entry, is a new entry: call draft_journal without edits.
+- Edit a saved entry only when they ask to change it ("change my mood this morning to 4", "fix that entry", "add this to my earlier entry"): call draft_journal with edits set to its id and the whole revised entry, keeping their earlier words. list_journal shows ids. Never say whether an entry exists without checking list_journal.
 
 ## Check-ins
 - A check-in is a short conversation, not a form. Nothing is required; skip whatever they don't want to answer.
@@ -194,22 +195,11 @@ export function checkinTools(context: {
         edits,
         saved_id: null
       });
-      // A new entry for a day and kind that already has one is usually an
-      // addition to it: say so, with the id to edit instead.
-      const sameKind = edits
-        ? []
-        : (await listJournalEntries(db, userName, day.date, day.date)).filter((entry) => entry.kind === args.kind);
       return text({
         draft_id: target.id,
         date: day.date,
         ratings,
-        ...(edits ? { rewrites: `saved ${edits.kind} entry ${edits.id} (${edits.date})` } : {}),
-        ...(sameKind.length
-          ? {
-              already_saved: sameKind.map((entry) => `${entry.id}: ${entry.body.slice(0, 120)}`),
-              note: `${day.date} already has a saved ${args.kind} entry. If this adds to or changes it, call draft_journal again with replaces set to ${target.id} and edits set to its id, keeping its words.`
-            }
-          : {})
+        ...(edits ? { rewrites: `saved ${edits.kind} entry ${edits.id} (${edits.date})` } : {})
       });
     }
   );

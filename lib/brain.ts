@@ -317,7 +317,7 @@ export async function runBrain(message: string, context: BrainContext): Promise<
             : previous.type === "workout"
               ? "That workout is already saved; it can be edited on the Training page."
               : previous.type === "journal"
-                ? `That entry is already saved as journal entry ${previous.saved_id}. To change it, call draft_journal with edits set to that id and the whole revised entry; never add a second entry for it.`
+                ? `That entry is already saved as journal entry ${previous.saved_id}. To change that entry, call draft_journal with edits set to that id and the whole revised entry; new writing is a new draft without replaces.`
                 : previous.type === "habits"
                   ? `That card is already saved (habit log ids: ${previous.saved_id}). To correct those logs, call draft_habits with replace_logs set to the ones that change; to log more uses that day, make a new card without replace_logs.`
                   : "That draft is already saved. Make a new draft, or delete the saved one on Today."
