@@ -102,7 +102,7 @@ A first version the same day planned five dated days ahead by searching every or
 | `after_hard` | After a hard day on any of these muscles, the next day's work on any of them is at most `maxNext`. | Shoulder joint: Chest, Front/Side/Rear Delts, Triceps, Lats, Upper Back; next day medium. |
 | `hard_streak` | At most `maxDays` hard strength days in a row; the next is medium. | 2 |
 
-Planned next: tapping an alternative to make it the pick; exercises mapped to primary and secondary muscles; soreness and pain from chat; rules from chat with a Rules list.
+Planned next: a week plan (7 days from today, tap a day to lock in a day type or Cardio / Yoga / Pilates / Golf / Rest, grey suggestions for open days worked out from the locked ones and soreness, warnings on clashes, a missed locked day sliding the rest forward; needs a small table for locked days); tapping an alternative to make it the pick; exercises mapped to primary and secondary muscles; soreness and pain from chat; rules from chat with a Rules list.
 
 ## Later: per-exercise sets
 
