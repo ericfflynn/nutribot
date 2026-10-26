@@ -107,8 +107,8 @@ export const INTENSITY_RULES: Record<Intensity, { label: string; recoveryDays: n
   light: { label: "Light", recoveryDays: 1, points: 1 },
   // Solid working sets: 2-3 days.
   medium: { label: "Medium", recoveryDays: 2, points: 2 },
-  // Heavy or to failure: 5-6 days.
-  hard: { label: "Hard", recoveryDays: 5, points: 3 }
+  // Heavy or to failure: 4 days (very sore, fading; see sorenessOf).
+  hard: { label: "Hard", recoveryDays: 4, points: 3 }
 };
 // Volume points each muscle should get in any 7 days: a hard and a light
 // session, or two medium. A group's target is this times its muscles.
@@ -137,21 +137,69 @@ export type TrainedSession = { date: string; muscleGroups: MuscleName[]; muscleI
 
 export type Load = {
   points: number; // volume points in the last 7 days, today included
-  readyIn: number; // days until recovered; 0 is ready
+  soreness: number; // 0 fresh to 3 very sore, fading (sorenessOf)
+  readyIn: number; // days until fresh; 0 is ready
 };
 
 function daysBetween(from: string, to: string) {
   return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
 }
 
-// Soreness reported on the Training tab (body_log, kind "sore"). A small
-// input: it can only push back when a muscle is ready to train again (a mild
-// report for the day it's made, a bad one for three days), never its weekly
-// points. Report it again to extend it. First guesses; tune with history.
-export const SEVERITIES = ["mild", "bad"] as const;
-export type Severity = (typeof SEVERITIES)[number];
-export const SORENESS_HOLD_DAYS: Record<Severity, number> = { mild: 1, bad: 3 };
-export type SorenessReport = { id: string; date: string; muscle: string; severity: Severity };
+// Soreness: one level per muscle, 0 Fresh, 1 Slight, 2 Sore, 3 Very sore.
+// Workouts set it (light 1, medium 2, hard 3, never lowering it) and it fades
+// SORENESS_FADE_PER_DAY a day, so very sore is fresh again in 4 days, sore in
+// 2, slight in 1. The owner can set any muscle's level from the body map
+// (body_log, kind "sore", `level`): his level replaces the computed one that
+// day, holds through the next and fades from there. So "still sore after 5
+// days" holds a muscle back, and "feels fresh" makes it ready early.
+export const SORENESS_LEVELS = ["Fresh", "Slight", "Sore", "Very sore"] as const;
+export const SORENESS_FROM: Record<Intensity, number> = { light: 1, medium: 2, hard: 3 };
+export const SORENESS_FADE_PER_DAY = 0.75;
+const SORENESS_LOOKBACK_DAYS = 14;
+export type SorenessReport = { id: string; date: string; muscle: string; level: number };
+
+// The level as a step: halves round down, so 0.5 is fresh and 1.5 slight.
+export function sorenessStep(level: number) {
+  return level <= 0.5 ? 0 : level <= 1.5 ? 1 : level <= 2.5 ? 2 : 3;
+}
+
+// What a muscle can take at a soreness level: fresh anything, slight up to
+// medium, sore or very sore light blood-flow work only.
+export function mostFor(level: number): Intensity {
+  const step = sorenessStep(level);
+  return step === 0 ? "hard" : step === 1 ? "medium" : "light";
+}
+
+// A muscle's soreness on `date`, after that day's workouts and reports.
+export function sorenessOf(
+  sessions: readonly TrainedSession[],
+  reports: readonly SorenessReport[],
+  muscle: TrackedMuscle,
+  date: string
+) {
+  const hits = hitsOf(sessions, muscle, date).filter((hit) => hit.ago <= SORENESS_LOOKBACK_DAYS);
+  const mine = reports.filter((report) => report.muscle === muscle);
+  let level = 0;
+  let reported = false;
+  for (let ago = SORENESS_LOOKBACK_DAYS; ago >= 0; ago -= 1) {
+    // A level he set holds through the next day (soreness peaks the day
+    // after), then fades.
+    if (!reported) level = Math.max(0, level - SORENESS_FADE_PER_DAY);
+    reported = false;
+    for (const hit of hits) if (hit.ago === ago) level = Math.max(level, SORENESS_FROM[hit.intensity]);
+    const day = shiftDate(date, -ago);
+    const report = mine.find((item) => item.date === day);
+    if (report) {
+      level = report.level;
+      reported = true;
+    }
+  }
+  return level;
+}
+
+function readyInFor(level: number) {
+  return level <= 0.5 ? 0 : Math.ceil((level - 0.5) / SORENESS_FADE_PER_DAY);
+}
 
 // Where a muscle stands on the weekly target: covered at 4 points; otherwise
 // due when it's ready to train, recovering while it isn't. The Training tab's
@@ -164,23 +212,10 @@ export function bucketOf(load: Load): WeekBucket {
   return load.readyIn > 0 ? "recovering" : "due";
 }
 
-// How fatigued a muscle is, 0 (ready) to 1 (a hard session today), from its
-// days until ready. The body map tints muscles toward red by it.
-export function fatigueLevel(readyIn: number) {
-  const most = INTENSITY_RULES.hard.recoveryDays;
-  return Math.min(readyIn, most) / most;
-}
-
-// Days until a muscle's soreness has passed, from its latest report on or
-// before today.
-function sorenessReadyIn(reports: readonly SorenessReport[], muscle: TrackedMuscle, today: string) {
-  let readyIn = 0;
-  for (const report of reports) {
-    const ago = daysBetween(report.date, today);
-    if (report.muscle !== muscle || ago < 0) continue;
-    readyIn = Math.max(readyIn, SORENESS_HOLD_DAYS[report.severity] - ago);
-  }
-  return readyIn;
+// How sore a muscle is, 0 (fresh) to 1 (very sore). The body map tints
+// muscles toward red by it.
+export function fatigueLevel(soreness: number) {
+  return Math.min(soreness, 3) / 3;
 }
 
 // The sessions that trained a muscle, with what each did to it.
@@ -195,8 +230,8 @@ function hitsOf<S extends TrainedSession>(sessions: readonly S[], muscle: Tracke
   });
 }
 
-// Weekly volume and recovery for one muscle. A session logged as the whole
-// group counts for every muscle in it; soreness can only push recovery out.
+// Weekly volume and soreness for one muscle. A session logged as the whole
+// group counts for every muscle in it.
 export function loadOf(
   sessions: readonly TrainedSession[],
   muscle: TrackedMuscle,
@@ -204,10 +239,10 @@ export function loadOf(
   soreness: readonly SorenessReport[] = []
 ): Load {
   const hits = hitsOf(sessions, muscle, today);
-  return {
-    points: hits.reduce((sum, hit) => sum + hit.points, 0),
-    readyIn: Math.max(0, ...hits.map((hit) => hit.readyIn), sorenessReadyIn(soreness, muscle, today))
-  };
+  const level = sorenessOf(sessions, soreness, muscle, today);
+  // A level he set today holds through tomorrow: a day more to fresh.
+  const held = level > 0.5 && soreness.some((report) => report.muscle === muscle && report.date === today);
+  return { points: hits.reduce((sum, hit) => sum + hit.points, 0), soreness: level, readyIn: readyInFor(level) + (held ? 1 : 0) };
 }
 
 // Everything the body map says about one muscle: its bucket and why.
@@ -221,11 +256,9 @@ export function muscleWeekOf<S extends TrainedSession>(
   const hits = hitsOf(sessions, muscle, today)
     .filter((hit) => hit.ago < WEEK_DAYS || hit.readyIn > 0)
     .sort((a, b) => a.ago - b.ago);
-  const sore = soreness
-    .filter((report) => report.muscle === muscle && daysBetween(report.date, today) >= 0)
-    .filter((report) => SORENESS_HOLD_DAYS[report.severity] - daysBetween(report.date, today) > 0)
-    .sort((a, b) => b.date.localeCompare(a.date));
-  return { muscle, bucket: bucketOf(load), fatigue: fatigueLevel(load.readyIn), ...load, hits, sore };
+  // The owner's own level for today, if he set one.
+  const todayReport = soreness.find((report) => report.muscle === muscle && report.date === today) ?? null;
+  return { muscle, bucket: bucketOf(load), fatigue: fatigueLevel(load.soreness), ...load, hits, todayReport };
 }
 
 // How much of a group one day's sessions worked, for the coverage grid's group
@@ -322,72 +355,221 @@ export function splitOf(workouts: readonly (readonly ActivityCategory[])[]): Spl
   }));
 }
 
-// Strength days to suggest, each with the muscles it covers.
-const SPLITS: { name: string; muscles: TrackedMuscle[] }[] = [
+// Next up: what to train next, from each muscle's soreness and last hit. Not
+// a strict push/pull/legs split: arm and shoulder days are in the mix, and
+// whatever was logged simply moves each muscle's last hit.
+const DAY_TYPES: { name: string; muscles: TrackedMuscle[] }[] = [
   { name: "Push day", muscles: ["Chest", "Front Delts", "Side Delts", "Triceps"] },
-  { name: "Pull day", muscles: ["Lats", "Upper Back", "Traps", "Rear Delts", "Biceps"] },
-  { name: "Leg day", muscles: ["Quads", "Hamstrings", "Glutes", "Calves"] }
+  { name: "Pull day", muscles: ["Lats", "Upper Back", "Traps", "Rear Delts", "Biceps", "Forearms"] },
+  { name: "Leg day", muscles: ["Quads", "Hamstrings", "Glutes", "Calves", "Lower Back"] },
+  { name: "Arm day", muscles: ["Biceps", "Triceps", "Forearms"] },
+  { name: "Shoulder day", muscles: ["Front Delts", "Side Delts", "Rear Delts", "Traps"] }
 ];
-// Core is added to whichever day comes next, not a day of its own.
+// Core is added to a day when it's due, not a day of its own.
 const CORE: TrackedMuscle[] = ["Upper Abs", "Lower Abs", "Obliques"];
 
-// Days counted for a muscle never logged, and the cap on any gap.
-const NEVER_DAYS = 30;
+// A muscle is due once it's fresh or slightly sore and this many days have
+// passed since its last medium or hard work. Every muscle should be hit within 7.
+export const DUE_AFTER_DAYS = 4;
+const MIN_DUE = 2; // a day needs at least this many due muscles
+const MAX_ACCESSORY = 2;
+// The day types "after that" lists; arm and shoulder days are only picks.
+const MAIN_DAYS = ["Push day", "Pull day", "Leg day"];
+const NEVER = 99;
 
-export type NextUp = {
-  // null when nothing ready is short of its weekly volume.
-  split: string | null;
-  // Why there's no split: every muscle at target, or the short ones still recovering.
-  rest: "covered" | "recovering" | null;
-  // Ready muscles furthest below the weekly target, at most 3.
-  neglected: { muscle: TrackedMuscle; since: number | null; points: number }[];
-  addCore: boolean; // core is ready and short of its weekly volume
+// Rules the plan follows. Each can only lower a day's intensity. They're
+// data, not code, so they can move to the database and be added from chat;
+// new kinds of rule are code.
+//   after_hard: after a hard day on any of these muscles, the next day's work
+//     on any of them is at most maxNext ("heavy bench, then back light").
+//   hard_streak: at most maxDays hard strength days in a row.
+export type TrainingRule =
+  | { id: string; kind: "after_hard"; label: string; muscles: TrackedMuscle[]; maxNext: Intensity }
+  | { id: string; kind: "hard_streak"; label: string; maxDays: number };
+
+export const DEFAULT_RULES: TrainingRule[] = [
+  {
+    id: "shoulder-joint",
+    kind: "after_hard",
+    label: "Easy on the shoulder the day after a heavy upper-body day",
+    muscles: ["Chest", "Front Delts", "Side Delts", "Rear Delts", "Triceps", "Lats", "Upper Back"],
+    maxNext: "medium"
+  },
+  { id: "hard-streak", kind: "hard_streak", label: "At most 2 hard days in a row", maxDays: 2 }
+];
+
+const RANK: Record<Intensity, number> = { light: 0, medium: 1, hard: 2 };
+
+function shiftDate(date: string, days: number) {
+  const value = new Date(`${date}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+// The hardest each tracked muscle was worked on one date.
+function intensitiesOn(sessions: readonly TrainedSession[], date: string) {
+  const byMuscle = new Map<TrackedMuscle, Intensity>();
+  for (const session of sessions) {
+    if (session.date !== date) continue;
+    for (const name of session.muscleGroups) {
+      const intensity = intensityOf(session, name);
+      // A group name means every muscle in it.
+      const muscles = (MUSCLE_GROUPS as readonly string[]).includes(name) ? trackedOf(name as MuscleGroup) : musclesOf(name);
+      for (const muscle of muscles) {
+        const before = byMuscle.get(muscle);
+        if (!before || RANK[intensity] > RANK[before]) byMuscle.set(muscle, intensity);
+      }
+    }
+  }
+  return byMuscle;
+}
+
+const hasHard = (byMuscle: Map<TrackedMuscle, Intensity>, muscles: readonly TrackedMuscle[] = TRACKED_MUSCLES) =>
+  muscles.some((muscle) => byMuscle.get(muscle) === "hard");
+
+// The most the rules allow a day on these muscles, and the rule that set it.
+function ruleCap(sessions: readonly TrainedSession[], date: string, muscles: readonly TrackedMuscle[], rules: readonly TrainingRule[]) {
+  let cap: { max: Intensity; rule: TrainingRule | null } = { max: "hard", rule: null };
+  const lower = (max: Intensity, rule: TrainingRule) => {
+    if (RANK[max] < RANK[cap.max]) cap = { max, rule };
+  };
+  const yesterday = intensitiesOn(sessions, shiftDate(date, -1));
+  for (const rule of rules) {
+    if (rule.kind === "after_hard") {
+      if (hasHard(yesterday, rule.muscles) && muscles.some((muscle) => rule.muscles.includes(muscle))) lower(rule.maxNext, rule);
+    } else {
+      let streak = 0;
+      while (streak < rule.maxDays && hasHard(intensitiesOn(sessions, shiftDate(date, -(streak + 1))))) streak += 1;
+      if (streak >= rule.maxDays) lower("medium", rule);
+    }
+  }
+  return cap;
+}
+
+// Days since a muscle's last medium or hard work before `date`, and whether
+// that included a hard day in the last 7. NEVER when not in the sessions.
+function lastHitOf(sessions: readonly TrainedSession[], muscle: TrackedMuscle, date: string) {
+  let since = NEVER;
+  let hardThisWeek = false;
+  for (const hit of hitsOf(sessions, muscle, date)) {
+    if (hit.ago < 1 || hit.intensity === "light") continue;
+    since = Math.min(since, hit.ago);
+    if (hit.intensity === "hard" && hit.ago < WEEK_DAYS) hardThisWeek = true;
+  }
+  return { since, hardThisWeek };
+}
+
+const isStrength = (session: TrainedSession) =>
+  session.muscleGroups.some((name) => STRENGTH_GROUPS.includes(groupOf(name)));
+
+export type SuggestedDay = {
+  name: string; // the day type
+  // Its fresh, due muscles (and core when due), each at the most its
+  // soreness, the week and the rules allow.
+  work: { muscle: TrackedMuscle; intensity: Intensity; since: number }[];
+  // Its muscles that are sore: light blood-flow work only.
+  bloodFlow: TrackedMuscle[];
+  // A light finisher or two outside the day: fresh, due muscles.
+  accessory: TrackedMuscle[];
+  heldBy: TrainingRule | null; // a rule that kept some of it below hard
 };
 
-// What to train next: the split with the most volume missing from muscles
-// that have recovered and aren't sore. Longer gaps break ties. `lastByName`
-// maps group and muscle names to the last date trained; `sessions` must cover
-// the last week.
-export function recommendNext(
-  lastByName: Map<string, string>,
+export type Suggestion = {
+  date: string;
+  // Sore or very sore muscles (level 2+), sorest first.
+  out: { muscle: TrackedMuscle; level: number }[];
+  // Fresh or slightly sore muscles, longest since a real hit first.
+  fresh: { muscle: TrackedMuscle; level: number; since: number }[];
+  pick: SuggestedDay | null; // null: nothing due, a rest or active-recovery day
+  alternatives: string[]; // other day types with enough due, at most 2
+  // The main day types after the pick, in the order they'll be due.
+  after: string[];
+};
+
+// What to train on `date`, the way the owner decides: what's out (sore),
+// what's fresh and due (DUE_AFTER_DAYS since a real hit), and the day type
+// whose due muscles are most overdue. No dates ahead: a missed day just leaves the
+// same suggestion up. Pass the sessions up to the day before `date`.
+export function suggestNext(
   sessions: readonly TrainedSession[],
-  today: string,
-  soreness: readonly SorenessReport[] = []
-): NextUp {
-  const sinceOf = (muscle: TrackedMuscle) => {
-    const values = [...namesFor(muscle), groupOf(muscle)]
-      .map((name) => lastByName.get(name))
-      .filter((date): date is string => date != null)
-      .map((date) => daysBetween(date, today));
-    return values.length ? Math.min(...values) : null;
+  date: string,
+  soreness: readonly SorenessReport[] = [],
+  rules: readonly TrainingRule[] = DEFAULT_RULES
+): Suggestion {
+  const state = new Map(
+    TRACKED_MUSCLES.map((muscle) => {
+      const level = sorenessOf(sessions, soreness, muscle, date);
+      return [muscle, { muscle, level, ...lastHitOf(sessions, muscle, date) }] as const;
+    })
+  );
+  const isDue = (muscle: TrackedMuscle) => {
+    const item = state.get(muscle)!;
+    return sorenessStep(item.level) <= 1 && item.since >= DUE_AFTER_DAYS;
   };
-  const stateOf = (muscle: TrackedMuscle) => {
-    const load = loadOf(sessions, muscle, today, soreness);
-    const since = sinceOf(muscle);
-    const short = Math.max(0, WEEKLY_TARGET_POINTS - load.points);
-    return { muscle, since, points: load.points, ready: load.readyIn === 0, short };
-  };
-  const scored = SPLITS.map((split) => {
-    const muscles = split.muscles.map(stateOf);
-    const gap = (since: number | null) => Math.min(NEVER_DAYS, since ?? NEVER_DAYS) / (NEVER_DAYS * 10);
-    const score =
-      muscles.reduce((sum, item) => sum + (item.ready && item.short ? item.short / WEEKLY_TARGET_POINTS + gap(item.since) : 0), 0) /
-      muscles.length;
-    return { split, muscles, score };
-  });
-  const core = CORE.map(stateOf);
-  const addCore = core.some((item) => item.ready && item.short > 0);
-  const best = scored.reduce((a, b) => (b.score > a.score ? b : a));
-  if (best.score === 0) {
-    const anyShort = scored.some((item) => item.muscles.some((muscle) => muscle.short > 0));
-    return { split: null, rest: anyShort ? "recovering" : "covered", neglected: [], addCore };
+  const options = DAY_TYPES.map((type) => {
+    const due = type.muscles.filter(isDue);
+    // How overdue: each due muscle's days past DUE_AFTER_DAYS (capped), so
+    // four muscles at 8 days beat six at 4.
+    const overdue = due.reduce((sum, muscle) => sum + Math.min(state.get(muscle)!.since, 14) - DUE_AFTER_DAYS + 1, 0);
+    return { type, due, overdue };
+  })
+    .filter((option) => option.due.length >= MIN_DUE)
+    .sort((a, b) => b.overdue - a.overdue || b.due.length - a.due.length);
+
+  let pick: SuggestedDay | null = null;
+  const best = options[0];
+  if (best) {
+    const core = CORE.filter(isDue);
+    const muscles = [...best.due, ...(core.length >= MIN_DUE ? core : [])];
+    const cap = ruleCap(sessions, date, muscles, rules);
+    let heldBy: TrainingRule | null = null;
+    const work = muscles.map((muscle) => {
+      const item = state.get(muscle)!;
+      let intensity = mostFor(item.level);
+      // At most one hard day per muscle a week.
+      if (intensity === "hard" && item.hardThisWeek) intensity = "medium";
+      if (RANK[cap.max] < RANK[intensity]) {
+        intensity = cap.max;
+        heldBy = cap.rule;
+      }
+      return { muscle, intensity, since: item.since };
+    });
+    const accessory = TRACKED_MUSCLES.filter((muscle) => !best.type.muscles.includes(muscle) && !CORE.includes(muscle) && isDue(muscle))
+      .sort((a, b) => state.get(b)!.since - state.get(a)!.since)
+      .slice(0, MAX_ACCESSORY);
+    const bloodFlow = best.type.muscles.filter((muscle) => sorenessStep(state.get(muscle)!.level) >= 2);
+    pick = { name: best.type.name, work, bloodFlow, accessory, heldBy };
   }
-  const neglected = best.muscles
-    .filter((item) => item.ready && item.short > 0)
-    .sort((a, b) => a.points - b.points || (b.since ?? Infinity) - (a.since ?? Infinity))
-    .slice(0, 3)
-    .map(({ muscle, since, points }) => ({ muscle, since, points }));
-  return { split: best.split.name, rest: null, neglected, addCore };
+
+  // When each main day type will next have MIN_DUE due muscles, if nothing
+  // else is trained: soreness fades, days since grow.
+  const dueIn = (type: (typeof DAY_TYPES)[number]) => {
+    for (let wait = 0; wait <= 14; wait += 1) {
+      const due = type.muscles.filter((muscle) => {
+        const item = state.get(muscle)!;
+        return sorenessStep(Math.max(0, item.level - SORENESS_FADE_PER_DAY * wait)) <= 1 && item.since + wait >= DUE_AFTER_DAYS;
+      });
+      if (due.length >= MIN_DUE) return wait;
+    }
+    return 15;
+  };
+  const after = DAY_TYPES.filter((type) => MAIN_DAYS.includes(type.name) && type.name !== pick?.name)
+    .map((type) => ({ name: type.name, wait: dueIn(type) }))
+    .sort((a, b) => a.wait - b.wait)
+    .map((item) => item.name);
+
+  const all = [...state.values()];
+  return {
+    date,
+    out: all.filter((item) => sorenessStep(item.level) >= 2).sort((a, b) => b.level - a.level).map(({ muscle, level }) => ({ muscle, level })),
+    fresh: all
+      .filter((item) => sorenessStep(item.level) <= 1)
+      .sort((a, b) => b.since - a.since)
+      .map(({ muscle, level, since }) => ({ muscle, level, since })),
+    pick,
+    alternatives: options.slice(1, 3).map((option) => option.type.name),
+    after
+  };
 }
 
 export function groupOf(name: MuscleName): MuscleGroup {

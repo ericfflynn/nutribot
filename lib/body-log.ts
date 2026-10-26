@@ -1,8 +1,9 @@
-// Soreness and pain reports (body_log). Soreness is logged per muscle from the
-// Training tab's body map and feeds each muscle's fatigue (lib/workouts.ts);
-// pain is for plain body parts (wrist, lower back) and is only kept for now.
+// Soreness and pain reports (body_log). Soreness is a 0-3 level the owner sets
+// per muscle from the Training tab's body map; it replaces the level workouts
+// gave that muscle that day (sorenessOf in lib/workouts.ts). Pain is for plain
+// body parts (wrist, lower back) with a mild/bad severity, and is only kept for now.
 import type { Pool } from "pg";
-import type { Severity, SorenessReport } from "./workouts";
+import type { SorenessReport } from "./workouts";
 
 export async function listSoreness(
   db: Pick<Pool, "query">,
@@ -12,9 +13,9 @@ export async function listSoreness(
 ): Promise<SorenessReport[]> {
   const { rows } = await db.query(
     `
-    select id::text as "id", entry_date::text as "date", body_part as "muscle", severity as "severity"
+    select id::text as "id", entry_date::text as "date", body_part as "muscle", level::int as "level"
     from public.body_log
-    where user_name = $1 and kind = 'sore' and entry_date >= $2::date and entry_date <= $3::date
+    where user_name = $1 and kind = 'sore' and level is not null and entry_date >= $2::date and entry_date <= $3::date
     order by entry_date desc, created_at desc
     `,
     [userName, startDate, endDate]
@@ -22,8 +23,8 @@ export async function listSoreness(
   return rows;
 }
 
-// One soreness report per muscle per day: a new one replaces that day's.
-export async function saveSoreness(db: Pool, userName: string, date: string, muscle: string, severity: Severity) {
+// One soreness level per muscle per day: a new one replaces that day's.
+export async function saveSoreness(db: Pool, userName: string, date: string, muscle: string, level: number) {
   const client = await db.connect();
   try {
     await client.query("begin");
@@ -32,8 +33,8 @@ export async function saveSoreness(db: Pool, userName: string, date: string, mus
       [userName, date, muscle]
     );
     await client.query(
-      `insert into public.body_log (user_name, entry_date, body_part, kind, severity) values ($1, $2::date, $3, 'sore', $4)`,
-      [userName, date, muscle, severity]
+      `insert into public.body_log (user_name, entry_date, body_part, kind, level) values ($1, $2::date, $3, 'sore', $4)`,
+      [userName, date, muscle, level]
     );
     await client.query("commit");
   } catch (error) {

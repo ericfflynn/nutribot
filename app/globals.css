@@ -3931,8 +3931,102 @@ details[open] .journal-preview {
   color: var(--strain-ink);
 }
 
-.training-next strong {
-  font-size: 20px;
+.training-chips-row {
+  display: grid;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.training-chips-row > span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.training-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.training-chip {
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--bg);
+  font-size: 13px;
+}
+
+.training-chip.out {
+  background: color-mix(in srgb, var(--bad) 14%, var(--surface));
+  color: var(--bad);
+}
+
+.training-pick {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--bg);
+}
+
+.training-pick small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.training-pick strong {
+  font-size: 18px;
+}
+
+.training-pick span {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.training-last-week {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.training-last-week li {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+
+.training-last-week li:last-child {
+  border-bottom: 0;
+}
+
+.training-last-week-day,
+.training-last-week-rest {
+  color: var(--muted);
+}
+
+.training-last-week-items {
+  display: grid;
+  gap: 4px;
+}
+
+.training-last-week-items > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.training-last-week-items small {
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.training-last-week-items small.hard {
+  color: var(--bad);
 }
 
 .body-map {
@@ -4073,6 +4167,7 @@ details[open] .journal-preview {
 
 .muscle-detail-sore {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   color: var(--muted);
@@ -4080,7 +4175,7 @@ details[open] .journal-preview {
 }
 
 .muscle-detail-sore .pill-button {
-  height: 28px;
+  height: 32px;
   padding: 0 12px;
   font-size: 13px;
 }

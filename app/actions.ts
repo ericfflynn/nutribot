@@ -41,7 +41,7 @@ import { deleteBodyReport, saveSoreness } from "@/lib/body-log";
 import {
   INTENSITIES,
   MUSCLE_NAMES,
-  SEVERITIES,
+  SORENESS_LEVELS,
   TRACKED_MUSCLES,
   WORKOUT_TYPES,
   WORKOUT_TYPE_LABELS,
@@ -481,16 +481,16 @@ export async function ignoreWorkoutAction(
   return { ok: true };
 }
 
-// Training page: report a muscle sore today from the body map. A new report
-// replaces that day's for the muscle.
-export async function logSorenessAction(muscle: string, severity: string): Promise<{ ok: boolean; error?: string }> {
+// Training page: set a muscle's soreness today (0 fresh to 3 very sore) from
+// the body map. It replaces that day's level for the muscle.
+export async function logSorenessAction(muscle: string, level: number): Promise<{ ok: boolean; error?: string }> {
   const user = await getSessionUser();
   const db = getPool();
   if (!user || !db) return { ok: false, error: "Log in again." };
-  if (!(TRACKED_MUSCLES as string[]).includes(muscle) || !(SEVERITIES as readonly string[]).includes(severity)) {
+  if (!(TRACKED_MUSCLES as string[]).includes(muscle) || !SORENESS_LEVELS[level] || !Number.isInteger(level)) {
     return { ok: false, error: "Unknown muscle." };
   }
-  await saveSoreness(db, user.name, todayLocalDate(), muscle, severity as (typeof SEVERITIES)[number]);
+  await saveSoreness(db, user.name, todayLocalDate(), muscle, level);
   revalidatePath("/training");
   return { ok: true };
 }
