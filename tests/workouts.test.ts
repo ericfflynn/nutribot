@@ -1,5 +1,5 @@
-// Muscle names, intensity, weekly volume and the "Next up" strength
-// recommendation (lib/workouts.ts).
+// Muscle names, intensity, weekly volume and the "Next up" plan
+// (lib/workouts.ts).
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
@@ -14,7 +14,7 @@ import {
   muscleWeekOf,
   type SorenessReport,
   normalizeMuscles,
-  recommendNext,
+  suggestNext,
   splitOf,
   type TrainedSession,
   weekStatus
@@ -56,25 +56,25 @@ test("chips mark muscles with their own intensity", () => {
   assert.deepEqual(describeMuscles(["Chest", "Triceps"], { Chest: "light" }), ["Chest (light)", "Arms: Triceps"]);
 });
 
-test("weekly volume sums the last 7 days; recovery follows the latest hard work", () => {
+test("weekly volume sums the last 7 days; soreness fades from the latest hard work", () => {
   const sessions = [
-    session("2026-10-10", ["Chest"], 8), // hard, 2 days ago: 3 points, 3 more days to recover
+    session("2026-10-10", ["Chest"], 8), // hard, 2 days ago: 3 points, very sore fading to 1.5
     session("2026-10-11", ["Upper Chest"], 3), // light, yesterday: 1 point (an old name for Chest)
     session("2026-10-05", ["Chest"], 8) // 7 days ago: outside the week
   ];
-  assert.deepEqual(loadOf(sessions, "Chest", TODAY), { points: 4, readyIn: 3 });
-  assert.deepEqual(loadOf(sessions, "Lats", TODAY), { points: 0, readyIn: 0 });
+  assert.deepEqual(loadOf(sessions, "Chest", TODAY), { points: 4, soreness: 1.5, readyIn: 2 });
+  assert.deepEqual(loadOf(sessions, "Lats", TODAY), { points: 0, soreness: 0, readyIn: 0 });
 });
 
 test("each muscle is due, recovering or covered", () => {
   const sessions = [
     session("2026-10-08", ["Chest"], 8), // 3 points, recovered
     session("2026-10-11", ["Chest"], 2), // +1: at target
-    session("2026-10-11", ["Lats"], 8) // hard yesterday: 4 days to go
+    session("2026-10-11", ["Lats"], 8) // hard yesterday: 3 days to go
   ];
   const week = weekStatus(sessions, TODAY);
   assert.deepEqual(week.covered.map((item) => item.muscle), ["Chest"]);
-  assert.deepEqual(week.recovering.map((item) => [item.muscle, item.readyIn]), [["Lats", 4]]);
+  assert.deepEqual(week.recovering.map((item) => [item.muscle, item.readyIn]), [["Lats", 3]]);
   assert.equal(week.due.length, 16); // the other 16 tracked muscles, none trained
 });
 
@@ -89,36 +89,64 @@ test("light work recovers in a day, medium in two", () => {
   assert.equal(loadOf([session("2026-10-11", ["Lats"], 5)], "Lats", TODAY).readyIn, 1);
 });
 
-test("recommends the split with the most volume missing from recovered muscles", () => {
-  const sessions = [session("2026-10-11", ["Mid Chest", "Triceps"], 8), session("2026-10-09", ["Legs"], 6)];
-  const last = new Map([
-    ["Mid Chest", "2026-10-11"],
-    ["Triceps", "2026-10-11"],
-    ["Legs", "2026-10-09"],
-    ["Lats", "2026-09-28"]
-  ]);
-  const next = recommendNext(last, sessions, TODAY);
-  assert.equal(next.split, "Pull day");
-  assert.equal(next.neglected[0].points, 0);
-  assert.equal(next.addCore, true); // core never logged: added to the day, not a day of its own
+test("suggests the day type with the most fresh, due muscles", () => {
+  // Push 2 days ago and legs 3 days ago: neither due. Back never logged.
+  const sessions = [session("2026-10-10", ["Chest", "Shoulders", "Triceps"], 8), session("2026-10-09", ["Legs"], 8)];
+  const next = suggestNext(sessions, TODAY);
+  assert.equal(next.pick?.name, "Pull day");
+  assert.ok(next.pick?.work.some((item) => item.muscle === "Lats" && item.intensity === "hard"));
+  assert.deepEqual(next.after, ["Leg day", "Push day"]);
 });
 
-test("hard work still recovering is skipped even when it's short of volume", () => {
-  // Pull and legs at target; push trained hard yesterday and short.
+test("a muscle is due 4 days after its last medium or hard work; light work isn't a hit", () => {
+  const sessions = [session("2026-10-08", ["Legs"], 5), session("2026-10-10", ["Chest", "Back", "Shoulders", "Arms"], 8)];
+  assert.equal(suggestNext(sessions, TODAY).pick?.name, "Leg day");
+  assert.equal(suggestNext([...sessions, session("2026-10-11", ["Legs"], 2)], TODAY).pick?.name, "Leg day");
+});
+
+test("not a strict split: an arm day when only arms are due", () => {
   const sessions = [
-    session("2026-10-11", ["Chest", "Shoulders", "Arms"], 9),
-    session("2026-10-07", ["Back", "Arms", "Shoulders", "Legs", "Core"], 8),
-    session("2026-10-10", ["Back", "Arms", "Shoulders", "Legs", "Core"], 6)
+    session("2026-10-09", ["Chest", "Front Delts", "Side Delts", "Rear Delts", "Lats", "Upper Back", "Traps", "Lower Back", "Legs", "Core"], 5),
+    session("2026-10-01", ["Arms"], 8)
   ];
-  const next = recommendNext(new Map(), sessions, TODAY);
-  assert.equal(next.split, null);
-  assert.equal(next.rest, "recovering");
+  assert.equal(suggestNext(sessions, TODAY).pick?.name, "Arm day");
 });
 
-test("covered when every split muscle has its weekly volume", () => {
+test("nothing fresh and due: rest or active recovery", () => {
   const all: TrainedSession["muscleGroups"] = ["Chest", "Back", "Shoulders", "Arms", "Legs", "Core"];
-  const sessions = [session("2026-10-06", all, 8), session("2026-10-10", all, 6)];
-  assert.deepEqual(recommendNext(new Map(), sessions, TODAY), { split: null, rest: "covered", neglected: [], addCore: false });
+  assert.equal(suggestNext([session("2026-10-11", all, 5)], TODAY).pick, null);
+});
+
+test("at most one hard day per muscle a week: the next one is medium", () => {
+  // Hard legs 5 days ago: fresh and due, but this week's second leg day is medium.
+  const sessions = [session("2026-10-07", ["Legs"], 8), session("2026-10-11", ["Chest", "Back", "Shoulders", "Arms"], 5)];
+  const pick = suggestNext(sessions, TODAY).pick!;
+  assert.equal(pick.name, "Leg day");
+  assert.ok(pick.work.filter((item) => item.muscle === "Quads").every((item) => item.intensity === "medium"));
+});
+
+test("shoulder rule: the day after hard rear delts, upper body is medium", () => {
+  // Muscle-level logging counts: "rear delts hard" yesterday. Legs aren't due.
+  const sessions = [session("2026-10-11", ["Rear Delts"], 5, { "Rear Delts": "hard" }), session("2026-10-10", ["Legs"], 5)];
+  const pick = suggestNext(sessions, TODAY).pick!;
+  assert.notEqual(pick.name, "Leg day");
+  assert.ok(pick.work.every((item) => item.intensity !== "hard"));
+  assert.equal(pick.heldBy?.id, "shoulder-joint");
+});
+
+test("at most 2 hard days in a row; the third is medium", () => {
+  const sessions = [session("2026-10-10", ["Legs"], 8), session("2026-10-11", ["Calves"], 8)];
+  const pick = suggestNext(sessions, TODAY).pick!;
+  assert.ok(pick.work.every((item) => item.intensity !== "hard"));
+  assert.equal(pick.heldBy?.id, "hard-streak");
+});
+
+test("an accessory comes from fresh, due muscles outside the day", () => {
+  const sessions = [session("2026-10-09", ["Legs"], 8), session("2026-10-10", ["Back", "Arms"], 8)];
+  const pick = suggestNext(sessions, TODAY).pick!;
+  assert.equal(pick.name, "Push day");
+  assert.ok(pick.accessory.length > 0);
+  assert.ok(pick.accessory.every((muscle) => !["Chest", "Front Delts", "Side Delts", "Triceps"].includes(muscle)));
 });
 
 test("workout types roll up into strength, cardio, mobility and sport", () => {
@@ -189,16 +217,29 @@ test("a group's day averages its muscles: one medium delt is a light shoulder da
   assert.equal(groupDayIntensity(day, "Shoulders"), "medium");
 });
 
-const sore = (date: string, muscle: string, severity: SorenessReport["severity"]): SorenessReport => ({ id: `${date}-${muscle}`, date, muscle, severity });
+const sore = (date: string, muscle: string, level: number): SorenessReport => ({ id: `${date}-${muscle}`, date, muscle, level });
 
-test("soreness only pushes back when a muscle is ready, never its points", () => {
-  const sessions = [session("2026-10-09", ["Quads"], 5)]; // medium, 3 days ago: ready, 2 points
-  assert.deepEqual(loadOf(sessions, "Quads", TODAY), { points: 2, readyIn: 0 });
-  assert.deepEqual(loadOf(sessions, "Quads", TODAY, [sore(TODAY, "Quads", "mild")]), { points: 2, readyIn: 1 });
-  assert.equal(loadOf(sessions, "Quads", TODAY, [sore(TODAY, "Quads", "bad")]).readyIn, 3);
-  // A mild report from yesterday has passed; a bad one still counts.
-  assert.equal(loadOf(sessions, "Quads", TODAY, [sore("2026-10-11", "Quads", "mild")]).readyIn, 0);
-  assert.equal(loadOf(sessions, "Quads", TODAY, [sore("2026-10-11", "Quads", "bad")]).readyIn, 2);
+test("workouts set soreness and it fades: very sore is fresh in 4 days, sore in 2", () => {
+  const hard = [session("2026-10-08", ["Quads"], 8)];
+  assert.deepEqual([12, 11, 10, 9, 8].map((day) => loadOf(hard, "Quads", `2026-10-${String(day).padStart(2, "0")}`).readyIn), [0, 1, 2, 3, 4]);
+  const medium = [session("2026-10-10", ["Quads"], 5)];
+  assert.equal(loadOf(medium, "Quads", TODAY).readyIn, 0);
+  assert.equal(loadOf(medium, "Quads", "2026-10-11").readyIn, 1);
+});
+
+test("the owner's soreness wins: sore holds a muscle back, fresh makes it ready", () => {
+  const sessions = [session("2026-10-09", ["Quads"], 5)]; // medium, 3 days ago: fresh, 2 points
+  assert.deepEqual(loadOf(sessions, "Quads", TODAY), { points: 2, soreness: 0, readyIn: 0 });
+  assert.deepEqual(loadOf(sessions, "Quads", TODAY, [sore(TODAY, "Quads", 2)]), { points: 2, soreness: 2, readyIn: 3 });
+  // Marked sore tonight: still out tomorrow.
+  assert.equal(loadOf(sessions, "Quads", "2026-10-13", [sore(TODAY, "Quads", 2)]).soreness, 2);
+  // His level holds through the next day, then fades.
+  assert.equal(loadOf(sessions, "Quads", TODAY, [sore("2026-10-11", "Quads", 3)]).soreness, 3);
+  assert.equal(loadOf(sessions, "Quads", TODAY, [sore("2026-10-10", "Quads", 3)]).soreness, 2.25);
+  // Hard yesterday, but he says it feels fresh.
+  const hard = [session("2026-10-11", ["Quads"], 8)];
+  assert.equal(loadOf(hard, "Quads", TODAY).readyIn, 3);
+  assert.equal(loadOf(hard, "Quads", TODAY, [sore(TODAY, "Quads", 0)]).readyIn, 0);
 });
 
 test("a muscle's week: due when ready and short, recovering when not, covered at 4", () => {
@@ -206,18 +247,26 @@ test("a muscle's week: due when ready and short, recovering when not, covered at
   assert.equal(muscleWeekOf(sessions, [], "Lats", TODAY).bucket, "recovering");
   assert.equal(muscleWeekOf(sessions, [], "Biceps", TODAY).bucket, "covered");
   assert.equal(muscleWeekOf(sessions, [], "Traps", TODAY).bucket, "due");
-  assert.equal(muscleWeekOf(sessions, [sore(TODAY, "Traps", "mild")], "Traps", TODAY).bucket, "recovering");
+  assert.equal(muscleWeekOf(sessions, [sore(TODAY, "Traps", 1)], "Traps", TODAY).bucket, "recovering");
   const lats = muscleWeekOf(sessions, [], "Lats", TODAY);
-  assert.deepEqual([lats.points, lats.readyIn, lats.hits.length], [3, 4, 1]);
+  assert.deepEqual([lats.points, lats.readyIn, lats.hits.length], [3, 3, 1]);
 });
 
-test("Next up leaves out sore muscles", () => {
-  // Nothing logged: every split is equally short and push wins the tie, unless
-  // its muscles are sore.
-  assert.equal(recommendNext(new Map(), [], TODAY).split, "Push day");
-  const allSore = ["Chest", "Front Delts", "Side Delts", "Triceps"].map((muscle) => sore(TODAY, muscle, "bad"));
-  const next = recommendNext(new Map(), [], TODAY, allSore);
-  assert.notEqual(next.split, "Push day");
+test("sore muscles are out: light blood-flow only, even long after the workout", () => {
+  // Legs trained 6 days ago but he says they're still sore.
+  const sessions = [session("2026-10-06", ["Legs"], 8), session("2026-10-11", ["Chest", "Back", "Shoulders", "Arms"], 5)];
+  const reports = ["Quads", "Hamstrings", "Glutes"].map((muscle) => sore(TODAY, muscle, 2));
+  const next = suggestNext(sessions, TODAY, reports);
+  assert.deepEqual(next.out.map((item) => item.muscle).sort(), ["Glutes", "Hamstrings", "Quads"]);
+  assert.ok(!next.pick?.work.some((item) => item.muscle === "Quads"));
+});
+
+test("slightly sore muscles go up to medium", () => {
+  const reports = ["Lats", "Upper Back", "Traps", "Rear Delts", "Biceps", "Forearms"].map((muscle) => sore(TODAY, muscle, 1));
+  const sessions = [session("2026-10-10", ["Chest", "Shoulders", "Triceps", "Legs"], 8)];
+  const pick = suggestNext(sessions, TODAY, reports).pick!;
+  assert.equal(pick.name, "Pull day");
+  assert.ok(pick.work.filter((item) => item.muscle === "Lats").every((item) => item.intensity === "medium"));
 });
 
 test("the split counts a workout for every kind it includes, against 4/2/2", () => {

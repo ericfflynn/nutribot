@@ -2,7 +2,7 @@ import { AppShell, Login } from "../shared-ui";
 import { BodyMap, type MuscleView } from "../body-map";
 import { WeekPages, LabelButton, MergeControls, RestoreButton, WorkoutEditor, type CoverageRow, type WeekPage } from "../training-ui";
 import { getSessionUser } from "@/lib/auth";
-import { addDays, rollingDateWindow, todayLocalDate } from "@/lib/dates";
+import { addDays, localDateTime, rollingDateWindow, todayLocalDate } from "@/lib/dates";
 import { listHealthWorkouts, type HealthWorkout } from "@/lib/health/queries";
 import { workoutStrain } from "@/lib/health/scores";
 import { getPool } from "@/lib/supabase";
@@ -24,13 +24,13 @@ import {
   STRENGTH_GROUPS,
   activityCategoriesOf,
   canLabel,
-  recommendNext,
+  suggestNext,
   WORKOUT_TYPES,
   WORKOUT_TYPE_LABELS,
   describeMuscles,
   groupDayIntensity,
   musclesOf,
-  lastTrainedByName,
+  groupOf,
   listFitbitWorkouts,
   listUnlabeledWorkouts,
   listWorkoutSessions,
@@ -38,6 +38,9 @@ import {
   type Intensity,
   type MuscleGroup,
   type MuscleStatus,
+  type Suggestion,
+  SORENESS_LEVELS,
+  sorenessStep,
   type TrackedMuscle,
   type WorkoutSession,
   type WorkoutType,
@@ -52,6 +55,9 @@ export const maxDuration = 60;
 const WINDOW_DAYS = 14;
 // The week grid pages back this many rolling weeks, as far as there's data.
 const HISTORY_WEEKS = 8;
+// The hour (local) after which an untrained day is over for planning: the
+// owner's workouts have all started by 5 pm.
+const PLAN_DAY_OVER_HOUR = 19;
 // Unlabeled strength workouts worth asking about.
 const UNLABELED_DAYS = 7;
 
@@ -70,6 +76,50 @@ function formatMinutes(total: number) {
 }
 const weekdayLetter = new Intl.DateTimeFormat("en-US", { weekday: "narrow", timeZone: "UTC" });
 const clockFormat = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" });
+
+// Next up, the way the owner decides: what's out (sore), what's fresh, and a
+// pick with alternatives. Text helpers for it and the last 7 days.
+const weekdayShort = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" });
+const listText = (items: string[]) => (items.length > 1 ? `${items.slice(0, -1).join(", ")} and ${items.at(-1)}` : (items[0] ?? ""));
+const daysText = (days: number) => (days > 56 ? "a while" : `${days} day${days === 1 ? "" : "s"}`);
+
+// "Hard: Chest, Triceps · Medium: Front Delts"
+function workText(work: NonNullable<Suggestion["pick"]>["work"]) {
+  return [...INTENSITIES]
+    .reverse()
+    .map((intensity) => ({ intensity, muscles: work.filter((item) => item.intensity === intensity).map((item) => item.muscle) }))
+    .filter((group) => group.muscles.length)
+    .map((group) => `${INTENSITY_RULES[group.intensity].label}: ${group.muscles.join(", ")}`)
+    .join(" · ");
+}
+
+type WeekRow = { date: string; day: string; items: { title: string; tag: string | null; hard: boolean }[] };
+
+// One row per day of the last 7, newest first: what was done, with how hard
+// a lift was or what kind of workout it was.
+function lastWeekRows(recent: RecentItem[], today: string): WeekRow[] {
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = addDays(today, -index);
+    const items = recent
+      .filter((item) => item.date === date)
+      .reverse()
+      .map((item) => {
+        const session = item.session;
+        const strength = session?.muscleGroups.some((name) => STRENGTH_GROUPS.includes(groupOf(name)));
+        let tag: string | null = WORKOUT_TYPE_LABELS[item.workoutType];
+        let hard = false;
+        if (session && strength) {
+          const hardest = session.muscleGroups
+            .map((name) => intensityOf(session, name))
+            .reduce<Intensity>((most, value) => (INTENSITIES.indexOf(value) > INTENSITIES.indexOf(most) ? value : most), "light");
+          tag = INTENSITY_RULES[hardest].label;
+          hard = hardest === "hard";
+        }
+        return { title: `${item.title}${item.minutes != null ? ` · ${item.minutes} min` : ""}`, tag, hard };
+      });
+    return { date, day: index === 0 ? "Today" : weekdayShort.format(new Date(`${date}T00:00:00Z`)), items };
+  });
+}
 
 function formatDay(date: string) {
   return dayFormat.format(new Date(`${date}T00:00:00Z`));
@@ -146,18 +196,21 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     );
   }
 
-  const [sessions, fitbit, healthWorkouts, unlabeled, lastByName, soreness] = await Promise.all([
+  const [sessions, fitbit, healthWorkouts, unlabeled, soreness] = await Promise.all([
     listWorkoutSessions(db, user.name, start, today),
     listFitbitWorkouts(db, user.name, start, today),
     listHealthWorkouts(user.name, start, today),
     listUnlabeledWorkouts(db, user.name, addDays(today, -(UNLABELED_DAYS - 1)), today),
-    lastTrainedByName(db, user.name, today),
-    listSoreness(db, user.name, addDays(today, -6), today)
+    listSoreness(db, user.name, addDays(today, -14), today)
   ]);
   const healthById = new Map<string, HealthWorkout>(healthWorkouts.map((workout) => [workout.id, workout]));
   const fitbitById = new Map<string, FitbitWorkout>(fitbit.map((workout) => [workout.id, workout]));
 
-  const nextUp = recommendNext(lastByName, sessions, today, soreness);
+  // Next up is for today, or tomorrow once today has a lift logged or the
+  // day's training window is over.
+  const loggedToday = sessions.some((session) => session.date === today && session.muscleGroups.some((name) => STRENGTH_GROUPS.includes(groupOf(name))));
+  const nextDate = loggedToday || Number(localDateTime().slice(11, 13)) >= PLAN_DAY_OVER_HOUR ? addDays(today, 1) : today;
+  const next = suggestNext(sessions, nextDate, soreness);
   // This week: every strength muscle as due, recovering or covered, on the
   // body map, with the due ones listed by how short they are.
   const week = weekStatus(sessions, today, soreness);
@@ -169,13 +222,9 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
       points: view.points,
       readyIn: view.readyIn,
       fatigue: view.fatigue,
-      sessions: view.hits.map((hit) => `${formatDay(hit.session.date)} · ${hit.session.name} · ${hit.intensity}, +${hit.points}`),
-      sore: view.sore.map((report) => ({
-        id: report.id,
-        severity: report.severity,
-        when: report.date === today ? "today" : formatDay(report.date),
-        today: report.date === today
-      }))
+      level: view.soreness,
+      today: view.todayReport ? { id: view.todayReport.id, level: view.todayReport.level } : null,
+      sessions: view.hits.map((hit) => `${formatDay(hit.session.date)} · ${hit.session.name} · ${hit.intensity}, +${hit.points}`)
     };
   });
 
@@ -251,6 +300,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     });
   }
   recent.sort((a, b) => b.sort.localeCompare(a.sort));
+  const lastWeek = lastWeekRows(recent, today);
   // Workout types present in the window, for the filter and the type counts.
   const typeCounts = new Map<WorkoutType, number>();
   for (const item of recent.filter((entry) => entry.date >= recentStart)) typeCounts.set(item.workoutType, (typeCounts.get(item.workoutType) ?? 0) + 1);
@@ -344,28 +394,80 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
       title="Training"
     >
 
+      <section className="card" aria-label="Last 7 days">
+        <div className="card-heading">
+          <h2 className="card-title">Last 7 days</h2>
+        </div>
+        <ul className="training-last-week">
+          {lastWeek.map((row) => (
+            <li key={row.date}>
+              <span className="training-last-week-day">{row.day}</span>
+              {row.items.length ? (
+                <span className="training-last-week-items">
+                  {row.items.map((item, index) => (
+                    <span key={index}>
+                      <span>{item.title}</span>
+                      {item.tag ? <small className={item.hard ? "hard" : undefined}>{item.tag}</small> : null}
+                    </span>
+                  ))}
+                </span>
+              ) : (
+                <span className="training-last-week-rest">Rest</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      </section>
+
       <section className="card training-week-card" aria-label="This week">
         <div className="training-next">
-          <span className="training-missing-label">Next up</span>
-          <strong>
-            {nextUp.split
-              ? `${nextUp.split}${nextUp.addCore ? " + core" : ""}`
-              : nextUp.rest === "recovering"
-                ? `Recover${nextUp.addCore ? ", or core" : ""}`
-                : "You're covered"}
-          </strong>
-          <span className="training-missing-note">
-            {nextUp.split
-              ? nextUp.neglected
-                  .map(
-                    (item) =>
-                      `${item.muscle} ${item.points}/${WEEKLY_TARGET_POINTS}${item.since == null ? ", not logged yet" : item.since >= 7 ? `, ${item.since} days` : ""}`
-                  )
-                  .join(" · ")
-              : nextUp.rest === "recovering"
-                ? "What's short this week is still recovering. A rest day, cardio or mobility fits."
-                : "Every muscle has its weekly volume. A rest day, cardio or mobility fits."}
-          </span>
+          <span className="training-missing-label">Next up · {next.date === today ? "today" : "tomorrow"}</span>
+          {next.out.length ? (
+            <div className="training-chips-row">
+              <span>Out</span>
+              <div className="training-chips">
+                {next.out.map((item) => (
+                  <span key={item.muscle} className="training-chip out">
+                    {item.muscle} · {SORENESS_LEVELS[sorenessStep(item.level)].toLowerCase()}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          <div className="training-chips-row">
+            <span>Fresh</span>
+            <div className="training-chips">
+              {next.fresh.slice(0, 8).map((item) => (
+                <span key={item.muscle} className="training-chip">
+                  {item.muscle} · {daysText(item.since)}
+                  {sorenessStep(item.level) === 1 ? ", slight" : ""}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="training-pick">
+            <small>Suggested</small>
+            {next.pick ? (
+              <>
+                <strong>{next.pick.name}</strong>
+                <span>{workText(next.pick.work)}</span>
+                {next.pick.heldBy ? <span>Not hard: {next.pick.heldBy.label.toLowerCase()}</span> : null}
+                {next.pick.bloodFlow.length ? <span>Light blood-flow only: {listText(next.pick.bloodFlow)} (sore)</span> : null}
+                {next.pick.accessory.length ? <span>Accessory at the end: {listText(next.pick.accessory)}</span> : null}
+              </>
+            ) : (
+              <>
+                <strong>Rest or active recovery</strong>
+                <span>Nothing's fresh and due yet. Light cardio, yoga or pilates fits.</span>
+              </>
+            )}
+          </div>
+          {next.alternatives.length ? <span className="training-missing-note">Or: {next.alternatives.join(" · ")}</span> : null}
+          {next.after.length ? (
+            <span className="training-missing-note">
+              After that: {next.after.join(" → ")}, as they freshen up. Rest days: light cardio, yoga or pilates.
+            </span>
+          ) : null}
         </div>
         <div className="split-tiles" aria-label="Split this week">
           {thisSplit
@@ -400,7 +502,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
         ) : null}
         <p className="training-week-note">
           {WEEKLY_TARGET_POINTS} points per muscle in any 7 days: light {INTENSITY_RULES.light.points}, medium{" "}
-          {INTENSITY_RULES.medium.points}, hard {INTENSITY_RULES.hard.points}. Recovery: light 1 day, medium 2–3, hard 5–6.
+          {INTENSITY_RULES.medium.points}, hard {INTENSITY_RULES.hard.points}. Soreness: hard work leaves a muscle very sore for about 4 days, medium sore for 2; tap a muscle to set how it feels.
         </p>
       </section>
 

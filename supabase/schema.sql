@@ -397,10 +397,15 @@ create table if not exists public.body_log (
   entry_date date not null,
   body_part text not null,
   kind text not null check (kind in ('sore', 'pain')),
-  severity text not null check (severity in ('mild', 'bad')),
+  severity text check (severity in ('mild', 'bad')), -- pain
+  level smallint check (level between 0 and 3), -- soreness: 0 fresh, 1 slight, 2 sore, 3 very sore
   note text,
   created_at timestamptz not null default now()
 );
+
+-- October 25, 2026: soreness became a 0-3 level the owner sets; severity is for pain.
+alter table public.body_log add column if not exists level smallint check (level between 0 and 3);
+alter table public.body_log alter column severity drop not null;
 
 create index if not exists body_log_user_date on public.body_log (user_name, entry_date desc);
 
