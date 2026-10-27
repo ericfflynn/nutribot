@@ -99,7 +99,7 @@ type WeekRow = { date: string; day: string; items: { title: string; tag: string 
 // a lift was or what kind of workout it was.
 function lastWeekRows(recent: RecentItem[], today: string): WeekRow[] {
   return Array.from({ length: 7 }, (_, index) => {
-    const date = addDays(today, -index);
+    const date = addDays(today, index - 6);
     const items = recent
       .filter((item) => item.date === date)
       .reverse()
@@ -117,7 +117,7 @@ function lastWeekRows(recent: RecentItem[], today: string): WeekRow[] {
         }
         return { title: `${item.title}${item.minutes != null ? ` · ${item.minutes} min` : ""}`, tag, hard };
       });
-    return { date, day: index === 0 ? "Today" : weekdayShort.format(new Date(`${date}T00:00:00Z`)), items };
+    return { date, day: date === today ? "Today" : weekdayShort.format(new Date(`${date}T00:00:00Z`)), items };
   });
 }
 
@@ -394,57 +394,57 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
       title="Training"
     >
 
-      <section className="card" aria-label="Last 7 days">
-        <div className="card-heading">
-          <h2 className="card-title">Last 7 days</h2>
-        </div>
-        <ul className="training-last-week">
-          {lastWeek.map((row) => (
-            <li key={row.date}>
-              <span className="training-last-week-day">{row.day}</span>
-              {row.items.length ? (
-                <span className="training-last-week-items">
-                  {row.items.map((item, index) => (
-                    <span key={index}>
-                      <span>{item.title}</span>
-                      {item.tag ? <small className={item.hard ? "hard" : undefined}>{item.tag}</small> : null}
-                    </span>
-                  ))}
+      <section className="card training-week-card" aria-label="Body map">
+        <BodyMap muscles={muscleViews} />
+        {week.due.length ? (
+          <div className="training-week-bucket due">
+            <span className="training-week-label">
+              Due <small>{week.due.length}</small>
+            </span>
+            <div className="training-week-chips">
+              {week.due.map((item: MuscleStatus) => (
+                <span key={item.muscle}>
+                  {item.muscle}
+                  <small>
+                    {" "}
+                    {item.points}/{WEEKLY_TARGET_POINTS}
+                  </small>
                 </span>
-              ) : (
-                <span className="training-last-week-rest">Rest</span>
-              )}
-            </li>
-          ))}
-        </ul>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        <p className="training-week-note">
+          {WEEKLY_TARGET_POINTS} points per muscle in any 7 days: light {INTENSITY_RULES.light.points}, medium{" "}
+          {INTENSITY_RULES.medium.points}, hard {INTENSITY_RULES.hard.points}. Soreness: hard work leaves a muscle very sore for about 4 days, medium sore for 2; tap a muscle to set how it feels.
+        </p>
       </section>
 
-      <section className="card training-week-card" aria-label="This week">
+      <section className="card training-week-card" aria-label="Next up">
         <div className="training-next">
           <span className="training-missing-label">Next up · {next.date === today ? "today" : "tomorrow"}</span>
-          {next.out.length ? (
-            <div className="training-chips-row">
-              <span>Out</span>
-              <div className="training-chips">
-                {next.out.map((item) => (
-                  <span key={item.muscle} className="training-chip out">
-                    {item.muscle} · {SORENESS_LEVELS[sorenessStep(item.level)].toLowerCase()}
-                  </span>
-                ))}
-              </div>
-            </div>
-          ) : null}
           <div className="training-chips-row">
             <span>Fresh</span>
             <div className="training-chips">
               {next.fresh.slice(0, 8).map((item) => (
                 <span key={item.muscle} className="training-chip">
                   {item.muscle} · {daysText(item.since)}
-                  {sorenessStep(item.level) === 1 ? ", slight" : ""}
                 </span>
               ))}
             </div>
           </div>
+          {next.out.length ? (
+            <div className="training-chips-row">
+              <span>Out</span>
+              <div className="training-chips">
+                {next.out.map((item) => (
+                  <span key={item.muscle} className="training-chip out">
+                    {item.muscle} · {item.because ?? SORENESS_LEVELS[sorenessStep(item.level)].toLowerCase()}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <div className="training-pick">
             <small>Suggested</small>
             {next.pick ? (
@@ -481,29 +481,31 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
               </div>
             ))}
         </div>
-        <BodyMap muscles={muscleViews} />
-        {week.due.length ? (
-          <div className="training-week-bucket due">
-            <span className="training-week-label">
-              Due <small>{week.due.length}</small>
-            </span>
-            <div className="training-week-chips">
-              {week.due.map((item: MuscleStatus) => (
-                <span key={item.muscle}>
-                  {item.muscle}
-                  <small>
-                    {" "}
-                    {item.points}/{WEEKLY_TARGET_POINTS}
-                  </small>
+      </section>
+
+      <section className="card" aria-label="Last 7 days">
+        <div className="card-heading">
+          <h2 className="card-title">Last 7 days</h2>
+        </div>
+        <ul className="training-last-week">
+          {lastWeek.map((row) => (
+            <li key={row.date}>
+              <span className="training-last-week-day">{row.day}</span>
+              {row.items.length ? (
+                <span className="training-last-week-items">
+                  {row.items.map((item, index) => (
+                    <span key={index}>
+                      <span>{item.title}</span>
+                      {item.tag ? <small className={item.hard ? "hard" : undefined}>{item.tag}</small> : null}
+                    </span>
+                  ))}
                 </span>
-              ))}
-            </div>
-          </div>
-        ) : null}
-        <p className="training-week-note">
-          {WEEKLY_TARGET_POINTS} points per muscle in any 7 days: light {INTENSITY_RULES.light.points}, medium{" "}
-          {INTENSITY_RULES.medium.points}, hard {INTENSITY_RULES.hard.points}. Soreness: hard work leaves a muscle very sore for about 4 days, medium sore for 2; tap a muscle to set how it feels.
-        </p>
+              ) : (
+                <span className="training-last-week-rest">Rest</span>
+              )}
+            </li>
+          ))}
+        </ul>
       </section>
 
       {unlabeled.length ? (

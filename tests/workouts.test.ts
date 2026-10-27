@@ -257,16 +257,18 @@ test("sore muscles are out: light blood-flow only, even long after the workout",
   const sessions = [session("2026-10-06", ["Legs"], 8), session("2026-10-11", ["Chest", "Back", "Shoulders", "Arms"], 5)];
   const reports = ["Quads", "Hamstrings", "Glutes"].map((muscle) => sore(TODAY, muscle, 2));
   const next = suggestNext(sessions, TODAY, reports);
-  assert.deepEqual(next.out.map((item) => item.muscle).sort(), ["Glutes", "Hamstrings", "Quads"]);
+  assert.deepEqual(next.out.filter((item) => item.level >= 2).map((item) => item.muscle).sort(), ["Glutes", "Hamstrings", "Quads"]);
   assert.ok(!next.pick?.work.some((item) => item.muscle === "Quads"));
 });
 
-test("slightly sore muscles go up to medium", () => {
-  const reports = ["Lats", "Upper Back", "Traps", "Rear Delts", "Biceps", "Forearms"].map((muscle) => sore(TODAY, muscle, 1));
-  const sessions = [session("2026-10-10", ["Chest", "Shoulders", "Triceps", "Legs"], 8)];
-  const pick = suggestNext(sessions, TODAY, reports).pick!;
-  assert.equal(pick.name, "Pull day");
-  assert.ok(pick.work.filter((item) => item.muscle === "Lats").every((item) => item.intensity === "medium"));
+test("a muscle marked even slightly sore is out of Next up", () => {
+  // Nothing trained lately: Side Delts would be due, but he says they're slightly sore.
+  const next = suggestNext([], TODAY, [sore(TODAY, "Side Delts", 1)]);
+  assert.deepEqual(next.out.map((item) => item.muscle), ["Side Delts"]);
+  assert.ok(!next.fresh.some((item) => item.muscle === "Side Delts"));
+  assert.ok(!next.pick?.work.some((item) => item.muscle === "Side Delts"));
+  // Marked yesterday, it holds through today too.
+  assert.ok(!suggestNext([], TODAY, [sore("2026-10-11", "Side Delts", 1)]).pick?.work.some((item) => item.muscle === "Side Delts"));
 });
 
 test("the split counts a workout for every kind it includes, against 4/2/2", () => {
@@ -285,4 +287,42 @@ test("the split counts a workout for every kind it includes, against 4/2/2", () 
       ["sport", 1, null]
     ]
   );
+});
+
+test("a mark and a workout: the same day the higher wins, a later day the newest decides", () => {
+  // Marked sore, then a hard session the same day: very sore.
+  assert.equal(loadOf([session(TODAY, ["Quads"], 8)], "Quads", TODAY, [sore(TODAY, "Quads", 2)]).soreness, 3);
+  // Marked sore, then hard the next day: very sore.
+  assert.equal(loadOf([session(TODAY, ["Quads"], 8)], "Quads", TODAY, [sore("2026-10-11", "Quads", 2)]).soreness, 3);
+  // Hard yesterday, sore today: his mark replaces it.
+  assert.equal(loadOf([session("2026-10-11", ["Quads"], 8)], "Quads", TODAY, [sore(TODAY, "Quads", 2)]).soreness, 2);
+  // Very sore marked on a light day stays very sore.
+  assert.equal(loadOf([session(TODAY, ["Quads"], 3)], "Quads", TODAY, [sore(TODAY, "Quads", 3)]).soreness, 3);
+});
+
+test("no back the day after forearms", () => {
+  // Pull and legs equally overdue; forearms yesterday rules out back.
+  const old = [session("2026-10-05", ["Back", "Biceps", "Legs"], 8), session("2026-10-09", ["Chest", "Shoulders", "Triceps"], 8)];
+  const next = suggestNext([...old, session("2026-10-11", ["Forearms"], 3)], TODAY);
+  assert.equal(next.pick?.name, "Leg day");
+  assert.deepEqual(next.out.filter((item) => item.because).map((item) => `${item.muscle} · ${item.because}`), [
+    "Lats · after forearms",
+    "Upper Back · after forearms",
+    "Traps · after forearms"
+  ]);
+  assert.ok(!next.fresh.some((item) => ["Lats", "Upper Back", "Traps"].includes(item.muscle)));
+  assert.ok(!next.pick?.accessory.some((muscle) => ["Lats", "Upper Back", "Traps"].includes(muscle)));
+  assert.ok(suggestNext(old, TODAY).out.every((item) => !item.because));
+});
+
+test("no back the day after biceps, no chest the day after triceps", () => {
+  const old = [session("2026-10-05", ["Back", "Biceps", "Legs"], 8), session("2026-10-05", ["Chest", "Shoulders", "Triceps"], 8)];
+  const tagged = (sessions: TrainedSession[]) =>
+    suggestNext(sessions, TODAY).out.filter((item) => item.because).map((item) => `${item.muscle} · ${item.because}`);
+  assert.deepEqual(tagged([...old, session("2026-10-11", ["Biceps"], 3)]), [
+    "Lats · after biceps",
+    "Upper Back · after biceps",
+    "Traps · after biceps"
+  ]);
+  assert.deepEqual(tagged([...old, session("2026-10-11", ["Triceps"], 3)]), ["Chest · after triceps"]);
 });
