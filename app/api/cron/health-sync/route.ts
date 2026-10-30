@@ -2,6 +2,9 @@ import { isCronAuthorized } from "@/lib/cron";
 import { HEALTH_DATA_TYPES } from "@/lib/health/google";
 import { runHealthSync } from "@/lib/health/sync";
 import { getPool } from "@/lib/supabase";
+import { localDateTime } from "@/lib/dates";
+import { sendIllnessAlert } from "@/lib/body-state/alert";
+import { refreshRecentBodyStates } from "@/lib/body-state/store";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -28,7 +31,21 @@ export async function GET(request: Request) {
       types: HEALTH_DATA_TYPES,
       recentDays: recent ? RECENT_DAYS : undefined
     });
-    return Response.json(result, { status: result.failedTypes.length ? 500 : 200 });
+    // Fresh watch data may show the body fighting something.
+    let illness: unknown = null;
+    try {
+      illness = await sendIllnessAlert(db, userName, localDateTime());
+    } catch {
+      illness = { status: "failed" };
+    }
+    // Store the last 3 days' and today's body state with the fresh data.
+    let bodyStates: unknown = null;
+    try {
+      bodyStates = await refreshRecentBodyStates(db, userName);
+    } catch {
+      bodyStates = { status: "failed" };
+    }
+    return Response.json({ ...result, illness, bodyStates }, { status: result.failedTypes.length ? 500 : 200 });
   } catch {
     // The run row holds the sanitized error; don't echo exception details here.
     return Response.json({ error: "Health sync failed" }, { status: 500 });

@@ -6,6 +6,7 @@ import { discardDraftAction, newChatAction, saveDraftAction } from "./actions";
 import type { Draft, IgnoreDraft, MealDraft, WorkoutDraft } from "@/lib/brain";
 import type { HabitDraft, HabitsDraft, JournalDraft } from "@/lib/brain-checkin";
 import type { FeedbackDraft } from "@/lib/feedback";
+import { SEVERITY_LABELS, type IllnessDraft } from "@/lib/illness-days";
 import { describeGoal, formatHabitAmount, scaleGuideLines } from "@/lib/habits";
 import { recordedRatings } from "@/lib/journal";
 import type { ChatMessage } from "@/lib/chat";
@@ -352,10 +353,23 @@ function FeedbackCard({ draft, ...handlers }: { draft: FeedbackDraft } & DraftHa
   );
 }
 
+function IllnessCard({ draft, ...handlers }: { draft: IllnessDraft } & DraftHandlers) {
+  const range = draft.start_date === draft.end_date ? draft.start_date : `${draft.start_date} to ${draft.end_date}`;
+  return (
+    <CheckinCard draft={draft} kind={draft.severity === 0 ? "feeling better" : "sick day"} {...handlers}>
+      <p className="draft-title">{SEVERITY_LABELS[draft.severity]}</p>
+      <p className="draft-edit-note">{range}</p>
+      {draft.symptoms.length ? <p className="draft-body">{draft.symptoms.join(", ")}</p> : null}
+      {draft.note ? <p className="draft-body">{draft.note}</p> : null}
+    </CheckinCard>
+  );
+}
+
 // Opens the chat sheet from anywhere, optionally with text ready to send.
 const OPEN_EVENT = "nutribot:open-chat";
-export function openChat(text = "") {
-  window.dispatchEvent(new CustomEvent(OPEN_EVENT, { detail: { text } }));
+// With send, the text goes straight to the chat (a check-in's quick reply).
+export function openChat(text = "", options: { send?: boolean } = {}) {
+  window.dispatchEvent(new CustomEvent(OPEN_EVENT, { detail: { text, send: options.send ?? false } }));
 }
 
 // A button that opens the chat with text ready to send.
@@ -379,8 +393,9 @@ export function ChatThread({
   today: string;
   // Extra controls for the header row, e.g. the sheet's close button.
   toolbar?: ReactNode;
-  // Text to put in the composer; a new object replaces what's there.
-  prefill?: { text: string };
+  // Text to put in the composer; a new object replaces what's there. With
+  // send, it's sent as soon as the thread has loaded.
+  prefill?: { text: string; send?: boolean };
 }) {
   const router = useRouter();
   const [loaded, setLoaded] = useState(false);
@@ -402,18 +417,28 @@ export function ChatThread({
       .catch(() => setError("Couldn't load the chat."));
   }, []);
 
+  const sentPrefill = useRef<object | null>(null);
   useEffect(() => {
     if (!prefill) return;
+    if (prefill.send) {
+      if (loaded && sentPrefill.current !== prefill) {
+        sentPrefill.current = prefill;
+        void send(prefill.text);
+      }
+      return;
+    }
     setInput(prefill.text);
     inputRef.current?.focus();
-  }, [prefill]);
+    // send is recreated each render; prefill and loaded decide when to run.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefill, loaded]);
 
   useEffect(() => {
     threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight });
   }, [messages, sending]);
 
-  async function send() {
-    const message = input.trim();
+  async function send(text?: string) {
+    const message = (text ?? input).trim();
     if (!message || sending) return;
     setSending(true);
     setError(null);
@@ -515,6 +540,8 @@ export function ChatThread({
                   return <FeedbackCard key={draft.id} draft={draft} {...handlers} />;
                 case "ignore":
                   return <IgnoreCard key={draft.id} draft={draft} {...handlers} />;
+                case "illness":
+                  return <IllnessCard key={draft.id} draft={draft} {...handlers} />;
               }
             })}
           </div>
@@ -553,13 +580,14 @@ export function ChatThread({
 // The floating Chat button and the full-screen sheet it opens.
 export function ChatSheet({ date, today }: { date: string; today: string }) {
   const [open, setOpen] = useState(false);
-  const [prefill, setPrefill] = useState<{ text: string } | undefined>();
+  const [prefill, setPrefill] = useState<{ text: string; send?: boolean } | undefined>();
 
   useEffect(() => {
     const onOpen = (event: Event) => {
-      const text = (event as CustomEvent<{ text?: string }>).detail?.text ?? "";
+      const detail = (event as CustomEvent<{ text?: string; send?: boolean }>).detail;
+      const text = detail?.text ?? "";
       setOpen(true);
-      if (text) setPrefill({ text });
+      if (text) setPrefill({ text, send: detail?.send });
     };
     window.addEventListener(OPEN_EVENT, onOpen);
     return () => window.removeEventListener(OPEN_EVENT, onOpen);

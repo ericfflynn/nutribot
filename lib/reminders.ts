@@ -174,6 +174,42 @@ export async function dayState(db: Queryable, userName: string, date: string): P
   };
 }
 
+async function hasDevices(db: Queryable, userName: string) {
+  const { rows } = await db.query(`select 1 from public.push_subscriptions where user_name = $1 limit 1`, [userName]);
+  return rows.length > 0;
+}
+
+// Sends one notification to each of the user's devices; returns how many
+// took it. Subscriptions that are gone are deleted.
+export async function pushToDevices(db: Queryable, userName: string, notification: { title: string; body: string; url: string }) {
+  const { rows: subscriptions } = await db.query<{ endpoint: string; p256dh: string; auth: string }>(
+    `select endpoint, p256dh, auth from public.push_subscriptions where user_name = $1`,
+    [userName]
+  );
+  if (!subscriptions.length) return 0;
+  configureWebPush();
+  let delivered = 0;
+  for (const subscription of subscriptions) {
+    try {
+      await webpush.sendNotification(
+        { endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } },
+        JSON.stringify(notification),
+        { TTL: 60 * 60 }
+      );
+      delivered += 1;
+    } catch (error) {
+      // 404 and 410 mean the subscription is gone; the app asks to enable again.
+      const status = (error as { statusCode?: number }).statusCode;
+      if (status === 404 || status === 410) {
+        await db.query(`delete from public.push_subscriptions where endpoint = $1`, [subscription.endpoint]);
+      } else {
+        console.error("push failed", status ?? "unknown");
+      }
+    }
+  }
+  return delivered;
+}
+
 // Sends what's due this hour to each of the user's devices. `localNow` is
 // "YYYY-MM-DDTHH:MM" in APP_TIME_ZONE. Returns what happened, for the cron
 // route's response.
@@ -210,11 +246,7 @@ export async function sendDueReminders(db: Pool, userName: string, localNow: str
     return { userName, status: "already done" };
   }
 
-  const { rows: subscriptions } = await db.query<{ endpoint: string; p256dh: string; auth: string }>(
-    `select endpoint, p256dh, auth from public.push_subscriptions where user_name = $1`,
-    [userName]
-  );
-  if (!subscriptions.length) return { userName, status: "no devices" };
+  if (!(await hasDevices(db, userName))) return { userName, status: "no devices" };
 
   // Claim first, so a retried or duplicate job never sends twice. A snoozed
   // reminder was already claimed today, so it may claim nothing new.
@@ -222,26 +254,7 @@ export async function sendDueReminders(db: Pool, userName: string, localNow: str
   const snoozedDue = due.some((reminder) => reminder.snoozedUntil && Date.parse(reminder.snoozedUntil) <= context.now);
   if (!claimed.size && !snoozedDue && !force) return { userName, status: "already sent" };
 
-  configureWebPush();
-  let delivered = 0;
-  for (const subscription of subscriptions) {
-    try {
-      await webpush.sendNotification(
-        { endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } },
-        JSON.stringify(notification),
-        { TTL: 60 * 60 }
-      );
-      delivered += 1;
-    } catch (error) {
-      // 404 and 410 mean the subscription is gone; the app asks to enable again.
-      const status = (error as { statusCode?: number }).statusCode;
-      if (status === 404 || status === 410) {
-        await db.query(`delete from public.push_subscriptions where endpoint = $1`, [subscription.endpoint]);
-      } else {
-        console.error("push failed", status ?? "unknown");
-      }
-    }
-  }
+  const delivered = await pushToDevices(db, userName, notification);
   if (!delivered && claimed.size) {
     // Let the next hourly run try again.
     await db.query(`delete from public.reminder_sends where user_name = $1 and local_date = $2::date and kind = any($3::text[])`, [

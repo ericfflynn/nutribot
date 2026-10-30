@@ -7,6 +7,8 @@ import { listHealthWorkouts, type HealthWorkout } from "@/lib/health/queries";
 import { workoutStrain } from "@/lib/health/scores";
 import { getPool } from "@/lib/supabase";
 import { listSoreness } from "@/lib/body-log";
+import { getBodyState } from "@/lib/body-state/load";
+import { illnessStateOf } from "@/lib/body-state/build";
 import { isPossibleDuplicate, type WorkoutRecord } from "@/lib/health/dedupe-rules";
 import {
   ACTIVITY_LABELS,
@@ -22,8 +24,8 @@ import {
   TRACKED_MUSCLES,
   MUSCLES,
   STRENGTH_GROUPS,
-  activityCategoriesOf,
   canLabel,
+  splitKinds,
   suggestNext,
   WORKOUT_TYPES,
   WORKOUT_TYPE_LABELS,
@@ -196,12 +198,14 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     );
   }
 
-  const [sessions, fitbit, healthWorkouts, unlabeled, soreness] = await Promise.all([
+  const [sessions, fitbit, healthWorkouts, unlabeled, soreness, body] = await Promise.all([
     listWorkoutSessions(db, user.name, start, today),
     listFitbitWorkouts(db, user.name, start, today),
     listHealthWorkouts(user.name, start, today),
     listUnlabeledWorkouts(db, user.name, addDays(today, -(UNLABELED_DAYS - 1)), today),
-    listSoreness(db, user.name, addDays(today, -14), today)
+    listSoreness(db, user.name, addDays(today, -14), today),
+    // Illness comes from the body state, so Next up agrees with Today.
+    getBodyState(db, user.name, today)
   ]);
   const healthById = new Map<string, HealthWorkout>(healthWorkouts.map((workout) => [workout.id, workout]));
   const fitbitById = new Map<string, FitbitWorkout>(fitbit.map((workout) => [workout.id, workout]));
@@ -210,7 +214,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
   // day's training window is over.
   const loggedToday = sessions.some((session) => session.date === today && session.muscleGroups.some((name) => STRENGTH_GROUPS.includes(groupOf(name))));
   const nextDate = loggedToday || Number(localDateTime().slice(11, 13)) >= PLAN_DAY_OVER_HOUR ? addDays(today, 1) : today;
-  const next = suggestNext(sessions, nextDate, soreness);
+  const next = suggestNext(sessions, nextDate, soreness, undefined, illnessStateOf(body.physical.illness));
   // This week: every strength muscle as due, recovering or covered, on the
   // body map, with the due ones listed by how short they are.
   const week = weekStatus(sessions, today, soreness);
@@ -332,7 +336,6 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
   // of the group was worked (groupDayIntensity), their muscles by the hardest
   // each got. The points column is that week's volume, so on the newest page
   // it's the live 4-point target; a group shows its percent of that.
-  const kindsOf = (item: RecentItem) => activityCategoriesOf(item.workoutType, item.session?.muscleGroups);
   const muscleDays = new Map<string, Intensity>(); // "date|muscle"
   for (const session of sessions) {
     for (const name of session.muscleGroups) {
@@ -384,7 +387,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
   }
 
   // The newest week's split: a tile per kind with a target, under Next up.
-  const thisSplit = splitOf(recent.filter((item) => item.date > addDays(today, -7)).map(kindsOf));
+  const thisSplit = splitOf(splitKinds(sessions, fitbit, addDays(today, -6), today));
 
   return (
     <AppShell
@@ -423,6 +426,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
       <section className="card training-week-card" aria-label="Next up">
         <div className="training-next">
           <span className="training-missing-label">Next up · {next.date === today ? "today" : "tomorrow"}</span>
+          {next.illness ? <p className="training-illness">{next.illness.note}</p> : null}
           <div className="training-chips-row">
             <span>Fresh</span>
             <div className="training-chips">
@@ -454,6 +458,11 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
                 {next.pick.heldBy ? <span>Not hard: {next.pick.heldBy.label.toLowerCase()}</span> : null}
                 {next.pick.bloodFlow.length ? <span>Light blood-flow only: {listText(next.pick.bloodFlow)} (sore)</span> : null}
                 {next.pick.accessory.length ? <span>Accessory at the end: {listText(next.pick.accessory)}</span> : null}
+              </>
+            ) : next.illness?.rest ? (
+              <>
+                <strong>Rest</strong>
+                <span>Get better first. Tell the chat when you feel better.</span>
               </>
             ) : (
               <>

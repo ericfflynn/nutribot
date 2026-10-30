@@ -9,7 +9,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 export type ChartSeries = { key: string; label: string; color: string };
 export type ChartDatum = { day: string; values: Record<string, number | null>; partial?: boolean };
 
-export type ValueFormat = "steps" | "hours" | "integer" | "kcal";
+export type ValueFormat = "steps" | "hours" | "integer" | "decimal" | "kcal";
 
 const integerFormat = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 
@@ -18,6 +18,7 @@ const integerFormat = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 
 const FORMATTERS: Record<ValueFormat, (value: number) => string> = {
   steps: (value) => integerFormat.format(value),
   integer: (value) => integerFormat.format(value),
+  decimal: (value) => value.toFixed(1),
   kcal: (value) => `${integerFormat.format(value)} kcal`,
   hours: (value) => {
     const minutes = Math.round(value * 60);
@@ -180,12 +181,15 @@ export function ColumnChart({
   data,
   series,
   format: formatName,
-  label
+  label,
+  reference
 }: {
   data: ChartDatum[];
   series: ChartSeries[];
   format: ValueFormat;
   label: string;
+  // A dashed line across the plot, e.g. the usual level ("usual 9.5").
+  reference?: { value: number; label: string };
 }) {
   const format = FORMATTERS[formatName];
   const [active, setActive] = useState<number | null>(null);
@@ -195,7 +199,7 @@ export function ColumnChart({
       return value == null ? sum : (sum ?? 0) + value;
     }, null)
   );
-  const max = Math.max(0, ...totals.map((total) => total ?? 0));
+  const max = Math.max(0, reference?.value ?? 0, ...totals.map((total) => total ?? 0));
   const { hi, ticks } = niceDomain(0, max || 1);
 
   return (
@@ -213,6 +217,14 @@ export function ColumnChart({
           <>
             <svg width={width} height={HEIGHT}>
               <Axes width={width} ticks={ticks} y={y} days={data.map((datum) => datum.day)} x={x} />
+              {reference ? (
+                <g aria-hidden="true">
+                  <line x1={MARGIN.left} x2={width - MARGIN.right} y1={y(reference.value)} y2={y(reference.value)} className="chart-reference" />
+                  <text x={width - MARGIN.right} y={y(reference.value) - 4} textAnchor="end" className="chart-reference-label">
+                    {reference.label}
+                  </text>
+                </g>
+              ) : null}
               {data.map((datum, index) => {
                 let base = y(0);
                 const segments = series.filter((item) => datum.values[item.key] != null);
@@ -603,5 +615,144 @@ function SparklineSvg({
         <circle cx={x(active)} cy={y(activeValue)} r="4" fill={color} stroke={SURFACE} strokeWidth="2" />
       ) : null}
     </svg>
+  );
+}
+
+export type VitalPanel = {
+  key: string;
+  label: string; // "Resting HR"
+  unit: string; // "bpm"
+  values: (number | null)[];
+  usual: number | null;
+  off: boolean[]; // past the vital's threshold that day
+  color: string;
+};
+
+const PANEL_HEIGHT = 92;
+const PANEL_MARGIN = { top: 18, right: 14, bottom: 8, left: 36 };
+
+// Two or more vitals over the same days as small charts stacked on one
+// timeline, each with its own y-axis (one axis per chart), a dashed usual
+// line, and red dots on days off the usual. Touching shows every vital for
+// that day.
+export function VitalsChart({ days, panels, label }: { days: string[]; panels: VitalPanel[]; label: string }) {
+  const [active, setActive] = useState<number | null>(null);
+  const axisHeight = 20;
+  const height = panels.length * PANEL_HEIGHT + axisHeight;
+  return (
+    <ChartFrame label={label}>
+      {(width) => {
+        const plotWidth = width - PANEL_MARGIN.left - PANEL_MARGIN.right;
+        const x = (index: number) => PANEL_MARGIN.left + (days.length === 1 ? plotWidth / 2 : (plotWidth * index) / (days.length - 1));
+        const pick = (clientX: number, left: number) =>
+          setActive(Math.min(days.length - 1, Math.max(0, Math.round(((clientX - left - PANEL_MARGIN.left) / plotWidth) * (days.length - 1)))));
+        return (
+          <>
+            <svg
+              width={width}
+              height={height}
+              onPointerMove={(event) => pick(event.clientX, event.currentTarget.getBoundingClientRect().left)}
+              onPointerDown={(event) => pick(event.clientX, event.currentTarget.getBoundingClientRect().left)}
+              onPointerLeave={() => setActive(null)}
+            >
+              {panels.map((panel, panelIndex) => {
+                const top = panelIndex * PANEL_HEIGHT;
+                const plotHeight = PANEL_HEIGHT - PANEL_MARGIN.top - PANEL_MARGIN.bottom;
+                const known = panel.values.filter((value): value is number => value != null);
+                const { lo, hi, ticks } = niceDomain(
+                  Math.min(...known, panel.usual ?? Infinity),
+                  Math.max(...known, panel.usual ?? -Infinity),
+                  2
+                );
+                const y = (value: number) => top + PANEL_MARGIN.top + plotHeight - ((value - lo) / (hi - lo || 1)) * plotHeight;
+                const runs: number[][] = [];
+                panel.values.forEach((value, index) => {
+                  if (value == null) return;
+                  const previous = runs[runs.length - 1];
+                  if (previous && previous[previous.length - 1] === index - 1) previous.push(index);
+                  else runs.push([index]);
+                });
+                const last = panel.values.map((value) => value != null).lastIndexOf(true);
+                return (
+                  <g key={panel.key}>
+                    <text x={PANEL_MARGIN.left} y={top + 11} className="chart-panel-label">
+                      {panel.label} <tspan className="chart-panel-unit">{panel.unit}</tspan>
+                    </text>
+                    {ticks.map((tick) => (
+                      <g key={tick} aria-hidden="true">
+                        <line x1={PANEL_MARGIN.left} x2={width - PANEL_MARGIN.right} y1={y(tick)} y2={y(tick)} className="chart-grid" />
+                        <text x={PANEL_MARGIN.left - 6} y={y(tick)} dy="0.32em" textAnchor="end" className="chart-tick">
+                          {tickFormat.format(tick)}
+                        </text>
+                      </g>
+                    ))}
+                    {panel.usual != null ? (
+                      <g aria-hidden="true">
+                        <line x1={PANEL_MARGIN.left} x2={width - PANEL_MARGIN.right} y1={y(panel.usual)} y2={y(panel.usual)} className="chart-reference" />
+                        <text x={width - PANEL_MARGIN.right} y={y(panel.usual) - 4} textAnchor="end" className="chart-reference-label">
+                          usual {Math.round(panel.usual)}
+                        </text>
+                      </g>
+                    ) : null}
+                    {runs.map((run) =>
+                      run.length > 1 ? (
+                        <polyline
+                          key={run[0]}
+                          points={run.map((index) => `${x(index)},${y(panel.values[index] as number)}`).join(" ")}
+                          fill="none"
+                          stroke={panel.color}
+                          strokeWidth={2}
+                          strokeLinejoin="round"
+                          strokeLinecap="round"
+                        />
+                      ) : null
+                    )}
+                    {panel.values.map((value, index) =>
+                      value == null ? null : (
+                        <circle
+                          key={index}
+                          cx={x(index)}
+                          cy={y(value)}
+                          r={index === last || index === active ? 4.5 : 3}
+                          fill={panel.off[index] ? "var(--status-low)" : panel.color}
+                          stroke={SURFACE}
+                          strokeWidth={index === last || index === active ? 2 : 1}
+                        />
+                      )
+                    )}
+                  </g>
+                );
+              })}
+              {active != null ? (
+                <line x1={x(active)} x2={x(active)} y1={0} y2={panels.length * PANEL_HEIGHT} className="chart-crosshair" />
+              ) : null}
+              {days.map((day, index) => (
+                <text
+                  key={day}
+                  x={x(index)}
+                  y={height - 6}
+                  textAnchor={index === 0 ? "start" : index === days.length - 1 ? "end" : "middle"}
+                  className="chart-tick"
+                >
+                  {new Intl.DateTimeFormat("en-US", { weekday: "narrow", timeZone: "UTC" }).format(new Date(`${day}T00:00:00Z`))}
+                </text>
+              ))}
+            </svg>
+            {active != null ? (
+              <Tooltip
+                x={x(active)}
+                width={width}
+                title={formatDay(days[active], true)}
+                rows={panels.map((panel) => ({
+                  color: panel.off[active] ? "var(--status-low)" : panel.color,
+                  label: panel.label,
+                  value: panel.values[active] == null ? "No data" : `${Math.round(panel.values[active] as number)} ${panel.unit}`
+                }))}
+              />
+            ) : null}
+          </>
+        );
+      }}
+    </ChartFrame>
   );
 }

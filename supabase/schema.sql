@@ -579,3 +579,47 @@ create table if not exists public.app_feedback (
 create index if not exists app_feedback_status_idx on public.app_feedback (status, created_at);
 
 alter table public.app_feedback enable row level security;
+
+-- Sick days logged through chat (lib/illness.ts, docs/illness.md): one row per
+-- day, severity 0 better (ends an illness), 1 mild, 2 sick, 3 very sick.
+-- The early-warning push is recorded in reminder_sends with kind 'illness'.
+create table if not exists public.illness_days (
+  id uuid primary key default gen_random_uuid(),
+  user_name text not null,
+  entry_date date not null,
+  severity smallint not null check (severity between 0 and 3),
+  symptoms text[] not null default '{}',
+  note text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (user_name, entry_date)
+);
+
+alter table public.illness_days enable row level security;
+
+-- Body states (lib/body-state, docs/body-state.md): one daily picture of body
+-- and mind, stored as JSONB, versioned per day. The newest version is the
+-- day's truth; older ones are what the app believed then. A late entry adds a
+-- version to its day and the days after it.
+create table if not exists public.body_states (
+  id uuid primary key default gen_random_uuid(),
+  user_name text not null,
+  state_date date not null,
+  version int not null,
+  trigger text not null check (trigger in ('morning', 'checkin', 'report', 'late_data', 'rebuild')),
+  schema_version int not null,
+  state jsonb not null,
+  state_hash text not null,
+  guardrails jsonb,
+  call jsonb,
+  built_at timestamptz not null default now(),
+  unique (user_name, state_date, version)
+);
+
+alter table public.body_states enable row level security;
+
+-- Each day's current state: its newest version.
+create or replace view public.body_state_current as
+select distinct on (user_name, state_date) *
+from public.body_states
+order by user_name, state_date, version desc;

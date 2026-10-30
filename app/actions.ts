@@ -2,8 +2,10 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { clearSession, createSession, getSessionUser } from "@/lib/auth";
-import { isValidLocalDate, todayLocalDate } from "@/lib/dates";
+import { addDays, isValidLocalDate, todayLocalDate } from "@/lib/dates";
+import { refreshBodyStates, refreshRecentBodyStates } from "@/lib/body-state/store";
 import { parseGoals } from "@/lib/goals";
 import { parseMacroObject, type ParsedMacros } from "@/lib/macros";
 import { HEALTH_DATA_TYPES } from "@/lib/health/google";
@@ -24,6 +26,7 @@ import {
 import { deleteJournalEntry, listJournalTags, overwriteJournalEntry, saveJournalEntry, updateJournalEntry } from "@/lib/journal";
 import { normalizeTags } from "@/lib/journal-tags";
 import { saveFeedback } from "@/lib/feedback";
+import { saveIllnessDays } from "@/lib/illness";
 import {
   deletePushSubscription,
   deleteReminder,
@@ -64,6 +67,22 @@ import {
   saveUserGoals,
   updateMacroEntry
 } from "@/lib/supabase";
+
+// Rebuilds the stored body state from `from` through today once the response
+// is sent: a late entry changes its day and the days after it
+// (docs/body-state.md, Storage). Null means the last 7 days, for edits whose
+// date isn't at hand. Failures only log; the next sync rebuilds again.
+function refreshBodyLater(userName: string, from: string | null, trigger: "report" | "checkin" = "report") {
+  after(async () => {
+    const db = getPool();
+    if (!db) return;
+    try {
+      await refreshBodyStates(db, userName, from ?? addDays(todayLocalDate(), -7), trigger);
+    } catch {
+      console.error("body state refresh failed");
+    }
+  });
+}
 
 function getFormDate(formData: FormData) {
   const entryDate = String(formData.get("entryDate") || formData.get("redirectDate") || "").trim();
@@ -155,6 +174,7 @@ export async function updateMacroEntryAction(formData: FormData) {
     redirect(todayPath(redirectDate, error instanceof Error ? error.message : "Meal update failed."));
   }
 
+  refreshBodyLater(user.name, redirectDate);
   revalidatePath("/");
   redirect(todayPath(redirectDate));
 }
@@ -177,6 +197,7 @@ export async function deleteMacroEntryAction(formData: FormData) {
     redirect(todayPath(redirectDate, error instanceof Error ? error.message : "Meal delete failed."));
   }
 
+  refreshBodyLater(user.name, redirectDate);
   revalidatePath("/");
   redirect(todayPath(redirectDate));
 }
@@ -215,6 +236,7 @@ export async function addWaterAction(formData: FormData) {
   }
   const entryDate = getFormDate(formData);
   await addWaterEntry(user.name, entryDate > todayLocalDate() ? todayLocalDate() : entryDate, ounces);
+  refreshBodyLater(user.name, entryDate > todayLocalDate() ? todayLocalDate() : entryDate);
   revalidatePath("/");
 }
 
@@ -225,6 +247,7 @@ export async function undoWaterAction(formData: FormData) {
     redirect("/");
   }
   await removeLastWaterEntry(user.name, getFormDate(formData));
+  refreshBodyLater(user.name, getFormDate(formData));
   revalidatePath("/");
 }
 
@@ -260,6 +283,13 @@ async function syncRecentHealth(userName: string, skipWithin: string, runningOnl
   } catch {
     // The failure is recorded in health_sync_runs and shown on Today.
   }
+  after(async () => {
+    try {
+      await refreshRecentBodyStates(db, userName);
+    } catch {
+      console.error("body state refresh failed");
+    }
+  });
   return true;
 }
 
@@ -274,6 +304,27 @@ export async function autoSyncHealthAction(): Promise<{ synced: boolean }> {
     revalidatePath("/training");
   }
   return { synced };
+}
+
+// The earliest date a saved draft changes, for the body state rebuild. An
+// edit can move a meal or journal entry, so the earlier of old and new.
+function draftDate(draft: Draft): string | null {
+  switch (draft.type) {
+    case "meal":
+      return draft.edits && draft.edits.date < draft.date ? draft.edits.date : draft.date;
+    case "journal":
+      return draft.edits && draft.edits.date < draft.date ? draft.edits.date : draft.date;
+    case "illness":
+      return draft.start_date;
+    case "workout":
+    case "habits":
+    case "ignore":
+      return draft.date;
+    case "habit":
+      return null;
+    default:
+      return todayLocalDate();
+  }
 }
 
 export type DraftActionResult = { ok: true; draft: Draft } | { ok: false; error: string };
@@ -335,6 +386,10 @@ export async function saveDraftAction(
         // Zeros already covered by a saved log are skipped, so this can be empty.
         savedId = ids.join(",") || "none";
         saved = { ...stored, saved_id: savedId };
+      } else if (stored.type === "illness") {
+        savedId = await saveIllnessDays(client, user.name, stored);
+        saved = { ...stored, saved_id: savedId };
+        revalidatePath("/training");
       } else if (stored.type === "feedback") {
         savedId = await saveFeedback(client, user.name, stored, stored.feedback_id);
         saved = { ...stored, saved_id: savedId };
@@ -378,6 +433,7 @@ export async function saveDraftAction(
       return { draft: saved, result: saved };
     });
     revalidatePath("/");
+    refreshBodyLater(user.name, draftDate(draft), draft.type === "journal" ? "checkin" : "report");
     return { ok: true, draft };
   } catch (error) {
     // A unique-index violation means another session claimed that watch workout.
@@ -450,6 +506,7 @@ export async function updateWorkoutSessionAction(
   const updated = await updateWorkoutSession(db, user.name, id, parsed.data);
   if (!updated) return { ok: false, error: "That workout no longer exists." };
   revalidatePath("/training");
+  refreshBodyLater(user.name, null);
   return { ok: true };
 }
 
@@ -478,6 +535,7 @@ export async function ignoreWorkoutAction(
   await setWorkoutIgnored(db, user.name, workout.id, ignored);
   revalidatePath("/");
   revalidatePath("/training");
+  refreshBodyLater(user.name, null);
   return { ok: true };
 }
 
@@ -492,6 +550,7 @@ export async function logSorenessAction(muscle: string, level: number): Promise<
   }
   await saveSoreness(db, user.name, todayLocalDate(), muscle, level);
   revalidatePath("/training");
+  refreshBodyLater(user.name, todayLocalDate());
   return { ok: true };
 }
 
@@ -502,6 +561,7 @@ export async function deleteSorenessAction(id: string): Promise<{ ok: boolean; e
   if (!z.string().uuid().safeParse(id).success) return { ok: false, error: "Unknown report." };
   const deleted = await deleteBodyReport(db, user.name, id);
   revalidatePath("/training");
+  refreshBodyLater(user.name, null);
   return deleted ? { ok: true } : { ok: false, error: "That report is already gone." };
 }
 
@@ -539,6 +599,7 @@ export async function labelWorkoutAction(
   });
   revalidatePath("/");
   revalidatePath("/training");
+  refreshBodyLater(user.name, null);
   return { ok: true };
 }
 
@@ -552,6 +613,7 @@ export async function mergeWorkoutsAction(firstId: string, secondId: string): Pr
   const result = await mergeWorkouts(db, user.name, firstId, secondId);
   revalidatePath("/");
   revalidatePath("/training");
+  refreshBodyLater(user.name, null);
   return result;
 }
 
@@ -564,6 +626,7 @@ export async function separateWorkoutAction(id: string): Promise<{ ok: boolean; 
   await separateWorkout(db, user.name, id);
   revalidatePath("/");
   revalidatePath("/training");
+  refreshBodyLater(user.name, null);
   return { ok: true };
 }
 
@@ -615,6 +678,7 @@ export async function logHabitAction(input: z.input<typeof habitLogSchema>): Pro
   await saveHabitLogs(db, user.name, log.date, [{ ...log, details: log.details || null }]);
   revalidatePath("/");
   revalidatePath("/habits");
+  refreshBodyLater(user.name, log.date);
   return { ok: true };
 }
 
@@ -677,6 +741,7 @@ export async function updateHabitAction(
   }
   revalidatePath("/");
   revalidatePath("/habits");
+  refreshBodyLater(user.name, null);
   return { ok: true };
 }
 
@@ -714,6 +779,7 @@ export async function updateHabitLogAction(
   }
   revalidatePath("/");
   revalidatePath("/habits");
+  refreshBodyLater(user.name, null);
   return { ok: true };
 }
 
@@ -724,6 +790,7 @@ export async function deleteHabitLogAction(id: string): Promise<{ ok: boolean; e
   const deleted = await deleteHabitLog(db, user.name, id);
   revalidatePath("/");
   revalidatePath("/habits");
+  refreshBodyLater(user.name, null);
   return deleted ? { ok: true } : { ok: false, error: "That entry no longer exists." };
 }
 
@@ -738,6 +805,7 @@ export async function deleteCheckinAction(formData: FormData) {
   const redirectDate = getFormDate(formData);
   const deleted =
     formData.get("kind") === "journal" ? await deleteJournalEntry(db, user.name, id) : await deleteHabitLog(db, user.name, id);
+  refreshBodyLater(user.name, redirectDate);
   revalidatePath("/");
   redirect(todayPath(redirectDate, deleted ? undefined : "That entry no longer exists."));
 }
@@ -751,6 +819,7 @@ export async function deleteWorkoutSessionAction(id: string): Promise<{ ok: bool
   const deleted = await deleteWorkoutSession(db, user.name, id);
   if (!deleted) return { ok: false, error: "That workout no longer exists." };
   revalidatePath("/training");
+  refreshBodyLater(user.name, null);
   return { ok: true };
 }
 
@@ -851,6 +920,6 @@ export async function updateJournalEntryAction(
   if (!updated) return { ok: false, error: "That entry no longer exists." };
   revalidatePath("/");
   revalidatePath("/habits");
+  refreshBodyLater(user.name, null);
   return { ok: true };
 }
-

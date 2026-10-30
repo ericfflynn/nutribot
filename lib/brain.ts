@@ -8,7 +8,10 @@ import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { CHECKIN_PROMPT, CHECKIN_TOOLS, checkinTools, type CheckinDraft } from "./brain-checkin";
 import { HEALTH_PROMPT, HEALTH_TOOLS, healthTools } from "./brain-health";
+import { BODY_PROMPT, BODY_TOOLS, bodyTools } from "./brain-body";
 import { FEEDBACK_PROMPT, FEEDBACK_TOOLS, feedbackTools, type FeedbackDraft } from "./feedback";
+import { ILLNESS_PROMPT, ILLNESS_TOOLS, illnessTools } from "./illness";
+import type { IllnessDraft } from "./illness-days";
 import { runClaude } from "./claude-brain";
 import { addDays, isValidLocalDate, localDateTime } from "./dates";
 import { HEALTH_DATA_TYPES } from "./health/google";
@@ -108,7 +111,7 @@ export type IgnoreDraft = {
   discarded?: boolean;
 };
 
-export type Draft = MealDraft | WorkoutDraft | IgnoreDraft | CheckinDraft | FeedbackDraft;
+export type Draft = MealDraft | WorkoutDraft | IgnoreDraft | CheckinDraft | FeedbackDraft | IllnessDraft;
 
 export type Turn = { role: "user" | "assistant"; text: string };
 
@@ -134,7 +137,7 @@ export type BrainContext = {
 };
 
 const SERVER = "nutribot";
-const TOOLS = ["draft_meal", "draft_workout", "draft_ignore_workout", "list_workouts", "list_meals", "get_goals", ...CHECKIN_TOOLS, ...HEALTH_TOOLS, ...FEEDBACK_TOOLS];
+const TOOLS = ["draft_meal", "draft_workout", "draft_ignore_workout", "list_workouts", "list_meals", "get_goals", ...CHECKIN_TOOLS, ...HEALTH_TOOLS, ...BODY_TOOLS, ...FEEDBACK_TOOLS, ...ILLNESS_TOOLS];
 
 const localDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("Local date, YYYY-MM-DD.");
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
@@ -236,7 +239,11 @@ ${CHECKIN_PROMPT}
 
 ${FEEDBACK_PROMPT}
 
+${ILLNESS_PROMPT}
+
 ${HEALTH_PROMPT}
+
+${BODY_PROMPT}
 
 ## Everything else
 - Answer general questions directly and briefly. You can see their saved meals, workouts, goals, water, journal, habits and watch data.
@@ -260,7 +267,7 @@ function promptFor(message: string, history: Turn[], openDrafts: Draft[], savedD
   }
   if (openDrafts.length) {
     const summary = openDrafts.map((draft) =>
-      draft.type === "journal" || draft.type === "habits" || draft.type === "habit" || draft.type === "feedback" || draft.type === "ignore"
+      draft.type === "journal" || draft.type === "habits" || draft.type === "habit" || draft.type === "feedback" || draft.type === "ignore" || draft.type === "illness"
         ? draft
         : draft.type === "meal"
         ? {
@@ -668,7 +675,19 @@ export async function runBrain(message: string, context: BrainContext): Promise<
           getGoals,
           ...checkinTools({ db, userName, today, resolveDraftId, checkDate, putDraft: (draft) => drafts.set(draft.id, draft) }),
           ...healthTools({ userName, today }),
-          ...feedbackTools({ db, userName, resolveDraftId, putDraft: (draft) => drafts.set(draft.id, draft) })
+          ...bodyTools({ db, userName, today }),
+          ...feedbackTools({ db, userName, resolveDraftId, putDraft: (draft) => drafts.set(draft.id, draft) }),
+          ...illnessTools({
+            db,
+            userName,
+            today,
+            resolveDraftId,
+            checkDate: (date) => {
+              const checked = checkDate(date);
+              return "error" in checked ? { error: checked.error! } : { date: checked.date };
+            },
+            putDraft: (draft) => drafts.set(draft.id, draft)
+          })
         ]
       }),
       tools: TOOLS

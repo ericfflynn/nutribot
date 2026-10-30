@@ -91,6 +91,7 @@ Added October 25, 2026 (`suggestNext` in `lib/workouts.ts`). It suggests what to
 - **The pick:** the day type whose due muscles are most overdue (each muscle's days past 4, capped at 14; at least 2 due): Push (Chest, Front and Side Delts, Triceps), Pull (Lats, Upper Back, Traps, Rear Delts, Biceps, Forearms), Legs (Quads, Hamstrings, Glutes, Calves, Lower Back), Arms (Biceps, Triceps, Forearms) or Shoulders (Front, Side and Rear Delts, Traps). It isn't a strict split: whatever was logged moves each muscle's last hit. Core is added when 2 or more core muscles are due. Nothing due: rest or active recovery.
 - **Intensity per muscle:** hard, medium if it already had a hard day in the last 7, lower if a rule says so.
 - **Blood-flow:** the day's muscles with any soreness, light only. **Accessory:** up to 2 due muscles outside the day, longest waiting first.
+- **Illness** ([illness.md](illness.md)): sick or very sick is rest, mild is light only, nothing hard for 2 days after or while the watch flags possible illness.
 - **Alternatives:** the next two day types. **After that:** push, pull and legs (minus the pick) in the order they'll next have 2 due muscles as soreness fades.
 
 A first version the same day planned five dated days ahead by searching every order of push, pull and legs with points, caps and a session cost; the owner found it hard to follow, so this replaced it.

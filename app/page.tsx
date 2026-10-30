@@ -1,14 +1,18 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { addWaterAction, deleteCheckinAction, undoWaterAction } from "./actions";
-import { CheckinSummary } from "./checkin-card";
-import { Sparkline } from "./charts";
+import { BodyCard, type DayScore } from "./body-ui";
 import { DayStrip, type StripDay } from "./day-strip";
+import { TodayCheckin } from "./today-checkin";
 import { RefreshButton } from "./refresh-button";
 import { EntryCard } from "./entry-card";
 import { AppShell, GoalsForm, Login } from "./shared-ui";
 import { getSessionUser } from "@/lib/auth";
-import { addDays, isValidLocalDate, rollingDateWindow, todayLocalDate } from "@/lib/dates";
+import { addDays, isValidLocalDate, localDateTime, rollingDateWindow, todayLocalDate } from "@/lib/dates";
+import { getBodyState } from "@/lib/body-state/load";
+import { listBodyStates } from "@/lib/body-state/store";
+import { morningBrief, type Reply } from "@/lib/body-state/brief";
+import type { Status } from "@/lib/body-state/types";
 import { gramsFromPercentGoals, restingKcalPerMinute, withWorkoutCalories, workoutCalories } from "@/lib/goals";
 import { listJournalEntries, recordedRatings, type JournalEntry } from "@/lib/journal";
 import {
@@ -96,6 +100,11 @@ function dayTitle(date: string, today: string) {
   return ago < 7 ? weekdayLong.format(utcDate(date)) : monthDay.format(utcDate(date));
 }
 
+// Whoop's strain bands, in words.
+function strainWord(strain: number) {
+  return strain < 10 ? "light" : strain < 14 ? "moderate" : strain < 18 ? "strenuous" : "all out";
+}
+
 function formatDuration(minutes: number) {
   return `${Math.floor(minutes / 60)}h ${String(Math.round(minutes % 60)).padStart(2, "0")}m`;
 }
@@ -156,92 +165,26 @@ function DeltaText({ delta }: { delta: Delta | null }) {
   return delta ? <span className={`delta ${delta.tone}`}>{delta.text}</span> : null;
 }
 
-type Score = {
-  label: string;
-  percent: number | null;
-  color: string;
-  textColor: string;
-  value: string;
-  // Smaller lines under the bar.
-  notes: string[];
-};
-
-// Sleep, recovery and strain side by side: value, a thin bar toward its maximum, then details.
-function ScoreSummary({ scores }: { scores: Score[] }) {
+// Water at the bottom of the Body card: the day's ounces and quick adds.
+function WaterQuick({ ounces, goalOz, date }: { ounces: number; goalOz: number; date: string }) {
   return (
-    <section className="card score-summary" aria-label="Day scores">
-      {scores.map((score) => (
-        <div key={score.label}>
-          <span className="score-label" style={{ color: score.textColor }}>
-            {score.label}
-          </span>
-          <strong>{score.value}</strong>
-          <div className="score-bar" role="presentation" style={{ background: `color-mix(in srgb, ${score.color} 16%, transparent)` }}>
-            {score.percent != null && score.percent > 0 ? (
-              <div style={{ width: `${Math.min(100, score.percent)}%`, background: score.color }} />
-            ) : null}
-          </div>
-          {score.notes.map((note) => (
-            <span className="score-note" key={note}>
-              {note}
-            </span>
-          ))}
-        </div>
-      ))}
-    </section>
-  );
-}
-
-const BOTTLE_PATH = "M30 6 H50 V20 C50 28 72 30 72 46 V124 Q72 136 60 136 H20 Q8 136 8 124 V46 C8 30 30 28 30 20 Z";
-
-function wavePath(y: number, amplitude: number) {
-  let path = `M0 ${y.toFixed(1)}`;
-  for (let x = 0; x < 120; x += 20) {
-    path += ` q10 ${-amplitude} 20 0`;
-  }
-  return `${path} V140 H0 Z`;
-}
-
-function WaterRow({ ounces, goalOz, date }: { ounces: number; goalOz: number; date: string }) {
-  const level = Math.min(1, ounces / goalOz);
-  const surface = 134 - 104 * level;
-  const left = goalOz - ounces;
-  return (
-    <div className="water-row">
-      <svg className="water-bottle" viewBox="0 0 80 140" role="img" aria-label={`Water: ${integer.format(ounces)} of ${goalOz} oz`}>
-        <defs>
-          <clipPath id="bottle-inside">
-            <path d={BOTTLE_PATH} />
-          </clipPath>
-        </defs>
-        <path d={BOTTLE_PATH} fill="var(--water-soft)" />
-        {level > 0 ? (
-          <g clipPath="url(#bottle-inside)">
-            <path className="wave-back" d={wavePath(surface - 2, 3)} fill="var(--water)" fillOpacity="0.35" />
-            <path className="wave" d={wavePath(surface, 4)} fill="var(--water)" />
-          </g>
-        ) : null}
-        <path d={BOTTLE_PATH} fill="none" stroke="var(--water-ink)" strokeWidth="6" />
-      </svg>
-      <div className="water-figure">
-        <span>
-          <strong>{integer.format(ounces)}</strong> / {goalOz} oz
-        </span>
-        <small>{left > 0 ? `${integer.format(left)} oz to go` : "Goal reached"}</small>
-        {ounces > 0 ? (
-          <form action={undoWaterAction}>
-            <input type="hidden" name="entryDate" value={date} />
-            <button type="submit" className="text-button water-undo">
-              Undo last
-            </button>
-          </form>
-        ) : null}
-      </div>
-      <form className="water-buttons" action={addWaterAction}>
+    <div className="water-quick">
+      <span>
+        <strong>Water</strong> {integer.format(ounces)} of {goalOz} oz
+      </span>
+      {ounces > 0 ? (
+        <form action={undoWaterAction}>
+          <input type="hidden" name="entryDate" value={date} />
+          <button type="submit" className="text-button" aria-label="Undo the last water">
+            Undo
+          </button>
+        </form>
+      ) : null}
+      <form className="water-quick-buttons" action={addWaterAction}>
         <input type="hidden" name="entryDate" value={date} />
-        {[8, 16, 24].map((ounces) => (
-          <button key={ounces} type="submit" name="oz" value={ounces} aria-label={`Add ${ounces} ounces of water`}>
-            +{ounces}
+        {[8, 16, 24].map((amount) => (
+          <button key={amount} type="submit" name="oz" value={amount} aria-label={`Add ${amount} ounces of water`}>
+            +{amount}
           </button>
         ))}
       </form>
@@ -409,46 +352,6 @@ function Timeline({ title, events }: { title: string; events: TimelineEvent[] })
   );
 }
 
-type Tile = {
-  label: string;
-  textColor: string;
-  color: string;
-  value: string;
-  values: (number | null)[];
-  // How one day's value reads in the sparkline tooltip.
-  format: (value: number) => string;
-  delta: Delta | null;
-};
-
-function TrendTiles({ tiles, days }: { tiles: Tile[]; days: string[] }) {
-  return (
-    <section className="group" aria-label="Last 7 days">
-      <div className="group-heading">
-        <h2 className="group-title">Last 7 days</h2>
-        <span className="group-aside">vs the 7 days before</span>
-      </div>
-      <div className="trend-grid">
-        {tiles.map((tile) => (
-          <div className="card trend-tile" key={tile.label}>
-            <span className="trend-label" style={{ color: tile.textColor }}>
-              {tile.label}
-            </span>
-            <strong>{tile.value}</strong>
-            <Sparkline
-              values={tile.values}
-              days={days}
-              valueLabels={tile.values.map((value) => (value == null ? "No data" : tile.format(value)))}
-              color={tile.color}
-              label={`${tile.label}, last 7 days`}
-            />
-            {tile.delta ? <DeltaText delta={tile.delta} /> : <span className="delta neutral">&nbsp;</span>}
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 function SyncNote({ run }: { run: HealthSyncRun | null }) {
   if (!run) {
     return <p className="footnote">Fitbit hasn&apos;t synced yet.</p>;
@@ -514,13 +417,12 @@ export default async function Home({ searchParams }: PageProps) {
   // The strip ends today unless the chosen day is further back than it reaches.
   const stripEnd = daysBetween(date, today) < STRIP_DAYS ? today : addDays(date, 7);
   const stripDates = rollingDateWindow(stripEnd, STRIP_DAYS);
-  const trendDates = rollingDateWindow(date, 7);
   const priorDates = rollingDateWindow(addDays(date, -7), 7);
   // Each scored day needs a 30-day recovery baseline before it.
   const healthStart = addDays(stripDates[0] < priorDates[0] ? stripDates[0] : priorDates[0], -31);
 
   const db = getPool()!;
-  const [entries, goals, healthDays, rangeWorkouts, waterOunces, lastRun, journal] = await Promise.all([
+  const [entries, goals, healthDays, rangeWorkouts, waterOunces, lastRun, journal, body, stored] = await Promise.all([
     listEntriesForDateRange(user.name, priorDates[0], date),
     getUserGoals(user.name),
     listHealthDays(user.name, healthStart, stripEnd),
@@ -528,8 +430,13 @@ export default async function Home({ searchParams }: PageProps) {
     listHealthWorkouts(user.name, priorDates[0] < stripDates[0] ? priorDates[0] : stripDates[0], stripEnd),
     getWaterOunces(user.name, date),
     getLatestHealthSyncRun(user.name),
-    listJournalEntries(db, user.name, date, date)
+    listJournalEntries(db, user.name, date, date),
+    // The chosen day's body state, built fresh; other days come from storage.
+    getBodyState(db, user.name, date),
+    listBodyStates(db, user.name, stripDates[0], stripEnd)
   ]);
+  const statusByDay = new Map<string, Status>(stored.map((day) => [day.date, day.state.physical.status]));
+  statusByDay.set(date, body.physical.status);
 
   const healthByDay = new Map(healthDays.map((day) => [day.day, day]));
   const workoutsByDay = new Map<string, HealthWorkout[]>();
@@ -551,18 +458,9 @@ export default async function Home({ searchParams }: PageProps) {
   const sleepMinutesOn = (day: string) => pick(day, (health) => health.sleepMinutes);
   const strainOn = (day: string) => dayStrain(healthByDay.get(day), workoutsByDay.get(day));
 
-  const caloriesByDay = new Map<string, number>();
-  for (const entry of entries) {
-    caloriesByDay.set(entry.entry_date, (caloriesByDay.get(entry.entry_date) ?? 0) + Number(entry.calories));
-  }
-  // Days with nothing logged are gaps, not zeros.
-  const caloriesOn = (day: string) => caloriesByDay.get(day) ?? null;
 
   // Strip
   const stripDays: StripDay[] = stripDates.map((day) => {
-    const sleep = sleepPerformance(sleepMinutesOn(day));
-    const recovery = recoveryByDay.get(day);
-    const strain = strainOn(day);
     return {
       date: day,
       href: day === today ? "/" : `/?date=${day}`,
@@ -570,10 +468,7 @@ export default async function Home({ searchParams }: PageProps) {
       dayOfMonth: Number(day.slice(8)),
       label: fullDate.format(utcDate(day)),
       selected: day === date,
-      sleep: sleep == null ? null : sleep / 100,
-      recovery: recovery ? recovery.score / 100 : null,
-      recoveryColor: recovery ? BAND_COLORS[recovery.band] : "#8e8e93",
-      strain: strain == null ? null : strain / 21
+      status: statusByDay.get(day) ?? "unknown"
     };
   });
 
@@ -583,38 +478,45 @@ export default async function Home({ searchParams }: PageProps) {
   const sleepPercent = sleepPerformance(sleepMinutes);
   const recovery = recoveryByDay.get(date) ?? null;
   const strain = strainOn(date);
-  const scores: Score[] = [
+  const scores: DayScore[] = [
     {
       label: "Sleep",
-      percent: sleepPercent,
-      color: SLEEP_COLOR,
-      textColor: "var(--sleep-ink)",
+      color: "var(--sleep-ink)",
       value: sleepMinutes != null ? formatDuration(sleepMinutes) : "–",
-      notes: [sleepPercent != null ? `${sleepPercent}%` : "No data"]
+      note: sleepPercent != null ? `${sleepPercent}% of need` : "No data"
     },
     {
       label: "Recovery",
-      percent: recovery?.score ?? null,
-      color: recovery ? BAND_COLORS[recovery.band] : "#8e8e93",
-      textColor: recovery ? BAND_TEXT[recovery.band] : "var(--muted)",
-      value: recovery ? `${recovery.score}%` : "–",
-      // The bar color and the timeline carry the band; the notes show what drives the score.
-      notes: recovery
-        ? [
-            health?.hrvMs != null ? `HRV ${Math.round(health.hrvMs)} ms` : null,
-            health?.restingHr != null ? `RHR ${health.restingHr} bpm` : null
-          ].filter((note): note is string => note != null)
-        : ["No data"]
+      color: recovery ? BAND_TEXT[recovery.band] : "var(--muted)",
+      value: recovery ? `${recovery.score}` : "–",
+      note: recovery ? BAND_LABELS[recovery.band].toLowerCase() : "No data"
     },
     {
       label: "Strain",
-      percent: strain == null ? null : (strain / 21) * 100,
-      color: STRAIN_COLOR,
-      textColor: "var(--strain-ink)",
+      color: "var(--strain-ink)",
       value: strain == null ? "–" : strain.toFixed(1),
-      notes: strain == null ? ["No data"] : health?.steps != null ? [`${integer.format(health.steps)} steps`] : []
+      note: strain == null ? "No data" : `${isToday ? "so far" : "day"} · ${strainWord(strain)}`
     }
   ];
+
+  // The check-in at the top: the morning brief until 5 pm, then the evening.
+  const evening = isToday && Number(localDateTime().slice(11, 13)) >= 17;
+  const brief = morningBrief(body);
+  const answered = journal.find((entry) => entry.kind === (evening ? "evening" : "morning"));
+  const answeredAt = answered ? localWallClock(answered.createdAt) : null;
+  const checkin = evening
+    ? {
+        kicker: "Evening check-in",
+        text: "How did today go?",
+        call: null,
+        replies: [
+          { label: "Good day", message: "Evening check-in: good day." },
+          { label: "Okay", message: "Evening check-in: okay day." },
+          { label: "Rough day", message: "Evening check-in: rough day." }
+        ] as Reply[]
+      }
+    : { kicker: "Morning check-in", text: brief.text, call: brief.call, replies: brief.replies };
+  const checkinStatus = answered ? `Checked in${answeredAt ? ` ${formatClock(answeredAt)}` : ""}` : "Not answered";
 
   // Nutrition
   const dayEntries = entries.filter((entry) => entry.entry_date === date);
@@ -630,6 +532,19 @@ export default async function Home({ searchParams }: PageProps) {
     { key: "carbs", label: "Carbs", value: eaten.carbs_g, goal: gramGoals.carbs_g },
     { key: "fat", label: "Fat", value: eaten.fat_g, goal: gramGoals.fat_g }
   ];
+
+  scores.push({
+    label: "Fuel",
+    color: "var(--fuel-ink)",
+    value: dayEntries.length ? integer.format(eaten.calories) : "–",
+    note: `of ${integer.format(dayGoals.calories)}`
+  });
+  // Fuel's dot: over target or well short on protein by evening is a watch.
+  const fuelStatus: Status = !dayEntries.length
+    ? "unknown"
+    : caloriesLeft < 0 || (!isToday && gramGoals.protein_g - eaten.protein_g > 20)
+      ? "watch"
+      : "ok";
 
   // Timeline: last night's sleep, recovery on waking, then meals and workouts in clock order.
   const sleepDelta = (field: (day: HealthDay) => number | null, higherIsGood: boolean, unit: string, threshold: number) =>
@@ -739,54 +654,6 @@ export default async function Home({ searchParams }: PageProps) {
     events.push({ key: "activity", time: "",sort: 24 * 60 + 1, color: "#c7c7cc", title: activity.join(" · "), detail: "" });
   }
 
-  // Trends. Today's strain and calories are partial, so they get no comparison.
-  const tiles: Tile[] = [
-    {
-      label: "Sleep",
-      textColor: "var(--sleep-ink)",
-      color: SLEEP_COLOR,
-      value: sleepMinutes != null ? formatDuration(sleepMinutes) : "–",
-      values: trendDates.map(sleepMinutesOn),
-      format: formatDuration,
-      delta: deltaFrom(sleepMinutes, priorDates.map(sleepMinutesOn), true, 15, (value) => `${integer.format(value)}m`)
-    },
-    {
-      label: "Recovery",
-      textColor: recovery ? BAND_TEXT[recovery.band] : "var(--muted)",
-      color: recovery ? BAND_COLORS[recovery.band] : "#8e8e93",
-      value: recovery ? `${recovery.score}%` : "–",
-      values: trendDates.map((day) => recoveryByDay.get(day)?.score ?? null),
-      format: (value) => `${integer.format(value)}%`,
-      delta: deltaFrom(
-        recovery?.score ?? null,
-        priorDates.map((day) => recoveryByDay.get(day)?.score ?? null),
-        true,
-        5,
-        (value) => `${integer.format(value)} pts`
-      )
-    },
-    {
-      label: "Strain",
-      textColor: "var(--strain-ink)",
-      color: STRAIN_COLOR,
-      value: strain == null ? "–" : strain.toFixed(1),
-      values: trendDates.map(strainOn),
-      format: (value) => value.toFixed(1),
-      delta: isToday ? null : deltaFrom(strain, priorDates.map(strainOn), null, 1, (value) => value.toFixed(1))
-    },
-    {
-      label: "Calories",
-      textColor: "var(--fuel-ink)",
-      color: FUEL_COLOR,
-      value: caloriesOn(date) != null ? integer.format(caloriesOn(date) as number) : "–",
-      values: trendDates.map(caloriesOn),
-      format: (value) => `${integer.format(value)} kcal`,
-      delta: isToday
-        ? null
-        : deltaFrom(caloriesOn(date), priorDates.map(caloriesOn), null, 100, (value) => `${integer.format(value)} kcal`)
-    }
-  ];
-
   return (
     <AppShell user={user} date={date} active="home" title={dayTitle(date, today)} headerAction={headerAction}>
       <DayStrip days={stripDays} earlierHref={`/?date=${addDays(stripDates[0], -1)}`} />
@@ -797,51 +664,52 @@ export default async function Home({ searchParams }: PageProps) {
         </p>
       ) : null}
 
-      <ScoreSummary scores={scores} />
+      {isToday ? (
+        <TodayCheckin kicker={checkin.kicker} status={checkinStatus} text={checkin.text} call={checkin.call} replies={answered ? [] : checkin.replies} />
+      ) : null}
 
-      <section className="card nutrition-card" aria-label="Nutrition">
-        <div className="card-heading">
-          <h2 className="card-title">Nutrition</h2>
-          <span className={caloriesLeft < 0 ? "delta bad" : "card-aside"}>
-            {caloriesLeft >= 0 ? `${integer.format(caloriesLeft)} left` : `${integer.format(-caloriesLeft)} over`}
-          </span>
-        </div>
-        <div className="kcal-figure">
-          <strong>{integer.format(eaten.calories)}</strong>
-          <span>of {integer.format(dayGoals.calories)} kcal</span>
-          {workoutKcal ? (
-            <small className="kcal-workouts">
-              {integer.format(goals.calories)} + {integer.format(workoutKcal)} from workouts
-            </small>
-          ) : null}
-        </div>
-        <div className="macro-bars">
-          {macros.map((macro) => (
-            <div key={macro.key}>
-              <div className="macro-bar-label">
-                <span>{macro.label}</span>
-                <span>
-                  <strong>{integer.format(macro.value)}</strong> / {macro.goal}g
-                </span>
+      <BodyCard
+        state={body}
+        scores={scores}
+        fuel={{
+          status: fuelStatus,
+          value: dayEntries.length
+            ? caloriesLeft >= 0
+              ? `${integer.format(caloriesLeft)} kcal left · ${integer.format(eaten.protein_g)} / ${gramGoals.protein_g} g protein`
+              : `${integer.format(-caloriesLeft)} kcal over`
+            : "Nothing logged",
+          open: isToday && dayEntries.length > 0,
+          details: (
+            <>
+              <div className="macro-bars">
+                {macros.map((macro) => (
+                  <div key={macro.key}>
+                    <div className="macro-bar-label">
+                      <span>{macro.label}</span>
+                      <span>
+                        <strong>{integer.format(macro.value)}</strong> / {macro.goal}g
+                      </span>
+                    </div>
+                    <div className={`macro-bar ${macro.key}`} role="presentation">
+                      <div
+                        className={`macro-fill ${macro.key}`}
+                        style={{ width: `${macro.goal > 0 ? Math.min(100, (macro.value / macro.goal) * 100) : 0}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div className={`macro-bar ${macro.key}`} role="presentation">
-                <div
-                  className={`macro-fill ${macro.key}`}
-                  style={{ width: `${macro.goal > 0 ? Math.min(100, (macro.value / macro.goal) * 100) : 0}%` }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-        <p className={`nutrition-callout ${callout.tone}`}>{callout.text}</p>
-        <WaterRow ounces={waterOunces} goalOz={goals.waterOz} date={date} />
-      </section>
-
-      <CheckinSummary entries={journal} isToday={isToday} />
+              <span className="footnote">
+                {workoutKcal ? `${integer.format(goals.calories)} + ${integer.format(workoutKcal)} from workouts. ` : ""}
+                {isToday && body.physical.illness.phase === "sick" ? "While sick: fluids and easy protein matter most." : callout.text}
+              </span>
+            </>
+          )
+        }}
+        water={<WaterQuick ounces={waterOunces} goalOz={goals.waterOz} date={date} />}
+      />
 
       <Timeline title={isToday ? "Today so far" : "The day"} events={events} />
-
-      <TrendTiles tiles={tiles} days={trendDates} />
 
       <div className="sync-bar">
         <SyncNote run={lastRun} />

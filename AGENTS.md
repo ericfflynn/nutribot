@@ -4,7 +4,7 @@ Guidance for coding agents working in this repository. See [README.md](README.md
 
 ## Project
 
-NutriBot is a private, single-user (Eric) health and macro tracker: Next.js App Router, React, TypeScript, server actions. Meals and workouts are logged by chatting with Claude (the chat brain), reviewed as draft cards, then saved to Supabase Postgres. `/` (Today, any day via `?date=`) is the combined dashboard: Sleep / Recovery / Strain scores (scored in `lib/health/scores.ts`; formulas, calibration and limitations in [docs/scores.md](docs/scores.md), which must be updated whenever the scoring changes), nutrition, goals and water, a timeline of the day (meals open to edit or delete) and 7-day trends; `/chat` is the chat thread (`?prompt=` prefills the composer). Journal entries and habits ([docs/journal-habits-plan.md](docs/journal-habits-plan.md)) are logged through chat and shown in Today's Check-in card and timeline; an 8 pm web-push reminder (`lib/reminders.ts`) reaches the Home Screen app. `/profile` only redirects to `/chat`. The UI is iPhone-first: iOS-style shell with a large title and bottom tab bar (`AppShell` in `app/shared-ui.tsx`). Users come from `APP_USERS`; the code still scopes everything by user name.
+NutriBot is a private, single-user (Eric) health and macro tracker: Next.js App Router, React, TypeScript, server actions. Meals and workouts are logged by chatting with Claude (the chat brain), reviewed as draft cards, then saved to Supabase Postgres. `/` (Today, any day via `?date=`) is built around the body state: a day strip shaded by each day's status, the check-in (morning brief and call, evening after 5 pm), the Body card (Sleep / Recovery / Strain / Fuel tiles, scored in `lib/health/scores.ts` with formulas, calibration and limitations in [docs/scores.md](docs/scores.md), which must be updated whenever the scoring changes; then each area as a short value that opens, fuel with the macro bars among them, and water), a timeline of the day (meals open to edit or delete), and goals (`app/page.tsx`, `app/body-ui.tsx`, `app/today-checkin.tsx`); `/chat` is the chat thread (`?prompt=` prefills the composer). The **body state** ([docs/body-state.md](docs/body-state.md), `lib/body-state/`) is the core model: one daily picture of body and mind in domains (physical, mental, lifestyle), areas and signals, built by code from every source; the chat reads it through `get_body_state`. Read the spec before changing Home, Training, the chat or illness. Illness ([docs/illness.md](docs/illness.md)) is spotted from the watch (resting HR, sleep temperature, HRV, breathing against a personal baseline, `lib/health/illness.ts`), logged through chat as sick days, shown on Today and pushed once when likely, and makes Training's Next up rest. Journal entries and habits ([docs/journal-habits-plan.md](docs/journal-habits-plan.md)) are logged through chat and shown in Today's Check-in card and timeline; an 8 pm web-push reminder (`lib/reminders.ts`) reaches the Home Screen app. `/profile` only redirects to `/chat`. The UI is iPhone-first: iOS-style shell with a large title and bottom tab bar (`AppShell` in `app/shared-ui.tsx`). Users come from `APP_USERS`; the code still scopes everything by user name.
 
 The chat brain ([docs/brain.md](docs/brain.md)) is the floating **Chat** button on every tab: `/api/brain` runs Claude through the Agent SDK on the owner's subscription, and its tools build meal and workout drafts that are saved only when the owner taps Save. Workouts are matched to Fitbit workouts in `lib/workouts.ts`. Read brain.md before changing the prompt, tools or draft shapes.
 
@@ -20,11 +20,11 @@ npm run brain -- "chest and tris, hard"   # one chat turn in the terminal; write
 npm run db:backup   # replace the local database backup in backups/
 ```
 
-`npm test` runs the unit tests in `tests/` (Node's test runner with tsx): workout dedupe, habit edits and frequency, reminders, journal tags. Verify changes with `npm test` and `npm run build`, then exercise the affected page against the dev server.
+`npm test` runs the unit tests in `tests/` (Node's test runner with tsx): workout dedupe, habit edits and frequency, reminders, journal tags, training, illness, body state. Verify changes with `npm test` and `npm run build` (never while `npm run dev` is running: both write `.next`), then exercise the affected page against the dev server.
 
 **Feedback queue.** The owner tells the chat about bugs and ideas for the app; they're saved to `app_feedback`. At the start of a dev pass, run `npm run feedback` to see open items, and mark each one `-- --done <id> "what changed"` (or `--drop`) once it's handled.
 
-Other scripts: `npm run workouts:dedupe` (dry run; `-- --apply` writes), `npm run demo:seed` (fictional data into a **local** database only; [docs/demo.md](docs/demo.md)).
+Other scripts: `npm run body:states` (rebuild stored body states, a dry run; `-- --apply` writes, `-- --from YYYY-MM-DD` limits it), `npm run workouts:dedupe` (dry run; `-- --apply` writes), `npm run demo:seed` (fictional data into a **local** database only; [docs/demo.md](docs/demo.md)).
 
 ## Environment
 
@@ -88,6 +88,8 @@ psql "$DB" -c "select count(*) from macro_entries;"
 - If runs fail with `invalid_grant`, the Google refresh token was revoked: run `npm run health:auth`, then update `GOOGLE_REFRESH_TOKEN` in Vercel (`vercel env add GOOGLE_REFRESH_TOKEN production --sensitive`).
 
 ## Guidelines
+
+- **Decisions** the owner settles go in [docs/decisions.md](docs/decisions.md) (newest first: what, why, instead of). A change to the body state's stored shape needs a new `SCHEMA_VERSION`, an upgrade function and an entry in the spec's Schema versions table ([docs/body-state.md](docs/body-state.md#schema-versions)).
 
 - **Database writes need the owner's approval.** Read-only queries are fine. Ask before any `insert`, `update`, `delete`, or DDL. Production is the only live copy of the data, and the only backup is the local dump (see Backups). There is no migration runner.
 - **Schema changes:** update `supabase/schema.sql` (idempotent `create ... if not exists`) and show the SQL before running it.

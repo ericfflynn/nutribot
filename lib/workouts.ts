@@ -356,7 +356,7 @@ export function splitOf(workouts: readonly (readonly ActivityCategory[])[]): Spl
 // Next up: what to train next, from each muscle's soreness and last hit. Not
 // a strict push/pull/legs split: arm and shoulder days are in the mix, and
 // whatever was logged simply moves each muscle's last hit.
-const DAY_TYPES: { name: string; muscles: TrackedMuscle[] }[] = [
+export const DAY_TYPES: { name: string; muscles: TrackedMuscle[] }[] = [
   { name: "Push day", muscles: ["Chest", "Front Delts", "Side Delts", "Triceps"] },
   { name: "Pull day", muscles: ["Lats", "Upper Back", "Traps", "Rear Delts", "Biceps", "Forearms"] },
   { name: "Leg day", muscles: ["Quads", "Hamstrings", "Glutes", "Calves", "Lower Back"] },
@@ -486,7 +486,7 @@ function skippedOn(sessions: readonly TrainedSession[], date: string, rules: rea
 
 // Days since a muscle's last medium or hard work before `date`, and whether
 // that included a hard day in the last 7. NEVER when not in the sessions.
-function lastHitOf(sessions: readonly TrainedSession[], muscle: TrackedMuscle, date: string) {
+export function lastHitOf(sessions: readonly TrainedSession[], muscle: TrackedMuscle, date: string) {
   let since = NEVER;
   let hardThisWeek = false;
   for (const hit of hitsOf(sessions, muscle, date)) {
@@ -512,8 +512,19 @@ export type SuggestedDay = {
   heldBy: TrainingRule | null; // a rule that kept some of it below hard
 };
 
+// Being sick on the day Next up is for (docs/illness.md): rest when sick or
+// very sick, light only when mild, nothing hard while easing back or while
+// the watch flags possible illness.
+export type IllnessState =
+  | { kind: "sick"; severity: number; label: string }
+  | { kind: "easing" }
+  | { kind: "watch" }
+  | null;
+
 export type Suggestion = {
   date: string;
+  // Why illness changed the suggestion, for a line above it.
+  illness: { rest: boolean; note: string } | null;
   // Muscles with any soreness (slight or more), sorest first, then fresh ones
   // a not_after rule keeps out (`because` is its tag).
   out: { muscle: TrackedMuscle; level: number; because: string | null }[];
@@ -533,8 +544,21 @@ export function suggestNext(
   sessions: readonly TrainedSession[],
   date: string,
   soreness: readonly SorenessReport[] = [],
-  rules: readonly TrainingRule[] = DEFAULT_RULES
+  rules: readonly TrainingRule[] = DEFAULT_RULES,
+  illness: IllnessState = null
 ): Suggestion {
+  const rest = illness?.kind === "sick" && illness.severity >= 2;
+  const illnessCap: Intensity = illness?.kind === "sick" ? "light" : illness ? "medium" : "hard";
+  const illnessNote =
+    illness?.kind === "sick"
+      ? rest
+        ? `${illness.label}: rest. A short walk is fine if you feel up to it.`
+        : `${illness.label}: light work only, nothing that leaves you out of breath.`
+      : illness?.kind === "easing"
+        ? "Easing back after being sick: nothing hard yet."
+        : illness?.kind === "watch"
+          ? "The watch says you may be getting sick: nothing hard today."
+          : null;
   const state = new Map(
     TRACKED_MUSCLES.map((muscle) => {
       const level = sorenessOf(sessions, soreness, muscle, date);
@@ -558,7 +582,7 @@ export function suggestNext(
     .sort((a, b) => b.overdue - a.overdue || b.due.length - a.due.length);
 
   let pick: SuggestedDay | null = null;
-  const best = options[0];
+  const best = rest ? undefined : options[0];
   if (best) {
     const core = CORE.filter(isDue);
     const muscles = [...best.due, ...(core.length >= MIN_DUE ? core : [])];
@@ -573,6 +597,7 @@ export function suggestNext(
         intensity = cap.max;
         heldBy = cap.rule;
       }
+      if (RANK[illnessCap] < RANK[intensity]) intensity = illnessCap;
       return { muscle, intensity, since: item.since };
     });
     const accessory = TRACKED_MUSCLES.filter((muscle) => !best.type.muscles.includes(muscle) && !CORE.includes(muscle) && isDue(muscle))
@@ -605,6 +630,7 @@ export function suggestNext(
   const ruledOut = (item: (typeof all)[number]) => !isSore(item) && skipped.has(item.muscle);
   return {
     date,
+    illness: illnessNote ? { rest, note: illnessNote } : null,
     out: [
       ...all
         .filter(isSore)
@@ -620,7 +646,7 @@ export function suggestNext(
       .sort((a, b) => b.since - a.since)
       .map(({ muscle, level, since }) => ({ muscle, level, since })),
     pick,
-    alternatives: options.slice(1, 3).map((option) => option.type.name),
+    alternatives: rest ? [] : options.slice(1, 3).map((option) => option.type.name),
     after
   };
 }
@@ -962,6 +988,32 @@ export async function autoLinkPendingSessions(db: Pool, userName: string) {
     linked += rowCount ?? 0;
   }
   return linked;
+}
+
+// Each workout's kinds (strength, cardio, mobility, sport) for the split,
+// from `from` to `to`: every watch workout except ignored ones and unlabeled
+// walks, plus logged sessions with no watch workout. The Training tab's split
+// tiles and the body state both count this.
+export function splitKinds(
+  sessions: readonly Pick<WorkoutSession, "date" | "workoutType" | "muscleGroups" | "healthRecordKey" | "id">[],
+  fitbit: readonly Pick<FitbitWorkout, "id" | "day" | "type" | "sessionId" | "ignored">[],
+  from: string,
+  to: string
+): ActivityCategory[][] {
+  const inRange = (date: string) => date >= from && date <= to;
+  const fitbitIds = new Set(fitbit.map((workout) => workout.id));
+  const kinds: ActivityCategory[][] = [];
+  for (const workout of fitbit) {
+    if (workout.ignored || !inRange(workout.day)) continue;
+    const session = workout.sessionId ? sessions.find((item) => item.id === workout.sessionId) : undefined;
+    if (!session && workout.type === "WALKING") continue;
+    kinds.push(activityCategoriesOf(session?.workoutType ?? workoutTypeOf(workout.type), session?.muscleGroups));
+  }
+  for (const session of sessions) {
+    if (!inRange(session.date) || (session.healthRecordKey && fitbitIds.has(session.healthRecordKey))) continue;
+    kinds.push(activityCategoriesOf(session.workoutType, session.muscleGroups));
+  }
+  return kinds;
 }
 
 export type WorkoutSession = {
