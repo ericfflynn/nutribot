@@ -2435,6 +2435,29 @@ button.fab {
   white-space: pre-wrap;
 }
 
+.chat-bubble.formatted {
+  display: grid;
+  gap: 8px;
+  white-space: normal;
+}
+
+.chat-bubble.formatted p,
+.chat-bubble.formatted ul,
+.chat-bubble.formatted ol {
+  margin: 0;
+}
+
+.chat-bubble.formatted ul,
+.chat-bubble.formatted ol {
+  display: grid;
+  gap: 4px;
+  padding-left: 20px;
+}
+
+.chat-bubble.formatted strong {
+  font-weight: 600;
+}
+
 .chat-message.user .chat-bubble {
   justify-self: end;
   background: var(--ink);
@@ -4349,6 +4372,34 @@ details[open] .journal-preview {
   gap: 12px;
   color: var(--muted);
   font-size: 12px;
+}
+
+.checkin-swipe {
+  /* Vertical scrolling stays with the page; sideways drags swipe the card away. */
+  touch-action: pan-y;
+  --checkin-gap: 24px;
+}
+
+.checkin-dismiss {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin: -6px -8px -6px auto;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.checkin-dismiss svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
 }
 
 .checkin-prompt-head span:first-child {

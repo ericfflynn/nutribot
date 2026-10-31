@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import type { ReactNode } from "react";
 import { addWaterAction, deleteCheckinAction, undoWaterAction } from "./actions";
 import { RecoveryDetails, SickLine, SleepDetails, StrainDetails } from "./body-ui";
@@ -12,6 +13,8 @@ import { AppShell, GoalsForm, Login } from "./shared-ui";
 import { getSessionUser } from "@/lib/auth";
 import { addDays, isValidLocalDate, localDateTime, rollingDateWindow, todayLocalDate } from "@/lib/dates";
 import { getBodyState } from "@/lib/body-state/load";
+import { answeredCheckins } from "@/lib/chat";
+import { CHECKIN_DISMISSED_COOKIE, type CheckinKind } from "@/lib/checkin";
 import { morningBrief, type Reply } from "@/lib/body-state/brief";
 import { gramsFromPercentGoals, restingKcalPerMinute, withWorkoutCalories, workoutCalories } from "@/lib/goals";
 import { listJournalEntries, recordedRatings, type JournalEntry } from "@/lib/journal";
@@ -488,7 +491,7 @@ export default async function Home({ searchParams }: PageProps) {
   const healthStart = addDays(stripDates[0] < priorDates[0] ? stripDates[0] : priorDates[0], -31);
 
   const db = getPool()!;
-  const [entries, goals, healthDays, rangeWorkouts, waterOunces, lastRun, journal, body] = await Promise.all([
+  const [entries, goals, healthDays, rangeWorkouts, waterOunces, lastRun, journal, body, checkinReplies, cookieStore] = await Promise.all([
     listEntriesForDateRange(user.name, priorDates[0], date),
     getUserGoals(user.name),
     listHealthDays(user.name, healthStart, stripEnd),
@@ -498,7 +501,9 @@ export default async function Home({ searchParams }: PageProps) {
     getLatestHealthSyncRun(user.name),
     listJournalEntries(db, user.name, date, date),
     // The chosen day's body state: the check-in, the sick line, Recovery's trends.
-    getBodyState(db, user.name, date)
+    getBodyState(db, user.name, date),
+    answeredCheckins(db, user.name, date),
+    cookies()
   ]);
 
   const healthByDay = new Map(healthDays.map((day) => [day.day, day]));
@@ -587,10 +592,14 @@ export default async function Home({ searchParams }: PageProps) {
   ];
 
   // The check-in at the top: the morning brief until 5 pm, then the evening
-  // one. Each goes away once it's answered (a journal entry of its kind).
+  // one. Each goes away once it's answered (a reply in chat or a journal entry
+  // of its kind) or swiped away (a cookie of "date:kind" values).
   const evening = isToday && Number(localDateTime().slice(11, 13)) >= 17;
   const brief = morningBrief(body);
-  const answered = journal.some((entry) => entry.kind === (evening ? "evening" : "morning"));
+  const checkinKind: CheckinKind = evening ? "evening" : "morning";
+  const dismissed = (cookieStore.get(CHECKIN_DISMISSED_COOKIE)?.value ?? "").split("|").includes(`${date}:${checkinKind}`);
+  const answered =
+    dismissed || checkinReplies.has(checkinKind) || journal.some((entry) => entry.kind === checkinKind);
   const checkin = evening
     ? {
         kicker: "Evening check-in",
@@ -786,7 +795,7 @@ export default async function Home({ searchParams }: PageProps) {
       ) : null}
 
       {isToday && !answered ? (
-        <TodayCheckin kicker={checkin.kicker} text={checkin.text} call={checkin.call} replies={checkin.replies} allowMore={!evening} />
+        <TodayCheckin key={checkinKind} date={date} kind={checkinKind} kicker={checkin.kicker} text={checkin.text} call={checkin.call} replies={checkin.replies} allowMore={!evening} />
       ) : null}
 
       <ScoreSummary

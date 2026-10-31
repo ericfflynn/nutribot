@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { discardDraftAction, newChatAction, saveDraftAction } from "./actions";
+import { ChatText } from "./chat-text";
 import type { Draft, IgnoreDraft, MealDraft, WorkoutDraft } from "@/lib/brain";
 import type { HabitDraft, HabitsDraft, JournalDraft } from "@/lib/brain-checkin";
 import type { FeedbackDraft } from "@/lib/feedback";
@@ -507,7 +508,15 @@ export function ChatThread({
         ) : null}
         {messages.map((message) => (
           <div key={message.id} className={`chat-message ${message.role}`}>
-            {message.content ? <p className="chat-bubble">{message.content}</p> : null}
+            {message.content ? (
+              message.role === "assistant" ? (
+                <div className="chat-bubble formatted">
+                  <ChatText text={message.content} />
+                </div>
+              ) : (
+                <p className="chat-bubble">{message.content}</p>
+              )
+            ) : null}
             {message.drafts.map((draft) => {
               const handlers: DraftHandlers = {
                 today,

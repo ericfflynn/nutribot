@@ -247,7 +247,7 @@ ${BODY_PROMPT}
 
 ## Everything else
 - Answer general questions directly and briefly. You can see their saved meals, workouts, goals, water, journal, habits and watch data.
-- Write plain text in short sentences: no markdown, bullets, bold or headings. A blank line between topics is fine.`;
+- Write short sentences, with a blank line between topics. For a report with several numbers (a health breakdown, a meal's items), a short "- " list is fine, each item a sentence or two, optionally starting with a **bold** label ("- **Resting HR:** 71, usually 65."). The chat shows only paragraphs, "- " and "1. " lists and **bold**: no headings, tables, nested lists or other markdown.`;
 }
 
 // What was saved from this chat: the ids to edit, never to redo.

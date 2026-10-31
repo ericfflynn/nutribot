@@ -32,7 +32,7 @@ Model: `claude-sonnet-5-5` at low effort, overridable with `CLAUDE_MODEL`. A tur
 // response
 {
   message_id: string,                     // the assistant row in chat_messages
-  reply: string,                          // plain text for the thread
+  reply: string,                          // text for the thread: paragraphs, "- " lists, **bold**
   drafts: Draft[],
   meta: { model: string, durationMs: number, turns: number }
 }
