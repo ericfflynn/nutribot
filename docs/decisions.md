@@ -4,6 +4,15 @@ Product and design decisions, newest first. One entry per decision: what was dec
 
 ## 2026-10-30
 
+### Temperatures show in Fahrenheit
+- **Decided:** sleep temperature reads in °F everywhere it's shown (Today's vitals table, the body state's and illness detector's reasons, the chat's health lines), through `fahrenheitDelta` in `lib/health/units.ts`. Data and thresholds stay in °C, as Fitbit reports them (+0.4°C, shown as +0.7°F).
+- **Why:** the owner thinks in Fahrenheit.
+
+### Today goes back to its earlier layout, with three body-state pieces
+- **Decided:** after using the Body card, the owner preferred the earlier Today: the Sleep / Recovery / Strain score card, the Nutrition card (calories, macro bars, water), the timeline, the "Last 7 days" tiles and goals, with the day strip's sleep / recovery / strain dots. Kept from the body-state screen: the check-in card at the top (morning until 5 pm, then evening; each goes away as soon as it is answered, which replaced a close button; the evening one has quick replies only, no text box, since the chat has two other entry points), each score's trends opened by tapping it (Recovery first, then Sleep and Strain at his request), and a sick line under the scores while sick, easing back or showing early signs.
+- **Why:** the four small tiles didn't make his main numbers stand out, the closed area rows looked cluttered, and Load added nothing. Mockups of bigger tiles (https://claude.ai/artifact/8y8aZENqJwtXGc3wpTYsa7, options A to F) didn't win him over.
+- **Instead of:** the one Body card below (tiles, area rows, Fuel as an area, water quick-adds) and the day strip shaded by status. The body state itself is unchanged and still feeds the chat, the check-in and Training.
+
 ### One Body screen: week strip, check-in, the day's state, the month
 - **Decided:** the body state gets one screen, artboard 5 of https://claude.ai/artifact/5T38oJyMKqq3KZDvcahubW: a week strip shaded by status that picks the day; the morning check-in (the agent's brief and call, quick replies, a box to say more; the answer becomes the morning journal entry); the day's domains and areas, the area driving the status open with its trend and signals; the month calendar and "What happened" with Sick / Not sick / Not sure on unexplained early signs.
 - **Instead of:** separate drill-down, history and check-in screens (artboards 2-4), which the owner liked individually.

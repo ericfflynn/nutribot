@@ -6,6 +6,7 @@ import { z } from "zod";
 import { addDays } from "./dates";
 import { listHealthDays, listHealthWorkouts, type HealthDay, type HealthWorkout } from "./health/queries";
 import { dayStrain, recoveryScore, sleepPerformance, workoutStrain, type RecoveryScore } from "./health/scores";
+import { fahrenheitDelta } from "./health/units";
 
 export const HEALTH_TOOLS = ["get_health"];
 
@@ -67,7 +68,7 @@ function describeDay(day: HealthDay, recovery: RecoveryScore | undefined, workou
     day.breathsPerMin != null ? `breathing ${round(day.breathsPerMin, 1)}/min` : null,
     day.vo2Max != null ? `VO2 max ${day.vo2Max}` : null,
     day.sleepTempVsBaselineC != null
-      ? `skin temp ${day.sleepTempVsBaselineC >= 0 ? "+" : ""}${round(day.sleepTempVsBaselineC, 1)}°C vs baseline`
+      ? `skin temp ${fahrenheitDelta(day.sleepTempVsBaselineC)} vs baseline`
       : null,
     workouts.length ? `workouts: ${workouts.map(describeWorkout).join("; ")}` : null
   );

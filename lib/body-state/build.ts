@@ -49,6 +49,7 @@ import {
   type Vital,
   type VitalsArea
 } from "./types";
+import { fahrenheitDelta } from "../health/units";
 
 const WORST: Status[] = ["low", "watch", "ok", "good"];
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -234,7 +235,7 @@ const VITALS: Record<"restingHr" | "hrv" | "sleepTemp" | "breathing" | "spo2", V
     usual: mean,
     floor: 0.2,
     past: (value) => value >= 0.4,
-    describe: (value) => `Sleep temperature +${value.toFixed(1)}°C`
+    describe: (value) => `Sleep temperature ${fahrenheitDelta(value)}`
   },
   breathing: {
     pick: (day) => day.breathsPerMin,

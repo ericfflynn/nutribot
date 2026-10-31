@@ -1768,47 +1768,6 @@ button {
   color: #ffffff;
 }
 
-/* Status shading (body state): the strip, dots and chips */
-.day-strip a.status-good {
-  background: var(--status-good-soft);
-  color: var(--status-good-ink);
-}
-
-.day-strip a.status-ok {
-  background: var(--status-ok-soft);
-}
-
-.day-strip a.status-watch {
-  background: var(--status-watch-soft);
-  color: var(--status-watch-ink);
-}
-
-.day-strip a.status-low {
-  background: var(--status-low-soft);
-  color: var(--status-low-ink);
-}
-
-.day-strip a.selected.status-good {
-  background: var(--status-good);
-  color: #ffffff;
-}
-
-.day-strip a.selected.status-ok,
-.day-strip a.selected.status-unknown {
-  background: var(--ink);
-  color: #ffffff;
-}
-
-.day-strip a.selected.status-watch {
-  background: var(--status-watch);
-  color: #ffffff;
-}
-
-.day-strip a.selected.status-low {
-  background: var(--status-low);
-  color: #ffffff;
-}
-
 .day-weekday {
   font-size: 11px;
   font-weight: 600;
@@ -1818,6 +1777,21 @@ button {
 .day-strip strong {
   font-size: 17px;
   font-weight: 700;
+}
+
+.day-dots {
+  display: flex;
+  gap: 2px;
+}
+
+.day-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+}
+
+.day-dot.missing {
+  box-shadow: inset 0 0 0 1px #c7c7cc;
 }
 
 .day-strip .day-strip-earlier {
@@ -1855,7 +1829,7 @@ button {
   font-weight: 600;
 }
 
-.score-summary strong {
+.score-cell strong {
   font-size: 24px;
   font-weight: 700;
   letter-spacing: -0.01em;
@@ -1889,7 +1863,7 @@ button {
     padding: 16px 14px 14px;
   }
 
-  .score-summary strong {
+  .score-cell strong {
     font-size: 21px;
   }
 
@@ -4371,7 +4345,6 @@ details[open] .journal-preview {
 
 .checkin-prompt-head {
   display: flex;
-  justify-content: space-between;
   align-items: baseline;
   gap: 12px;
   color: var(--muted);
@@ -4453,61 +4426,7 @@ details[open] .journal-preview {
   stroke-linejoin: round;
 }
 
-/* Today: body-state cards (app/body-ui.tsx) */
-.body-card {
-  display: flex;
-  flex-direction: column;
-  padding: 4px 16px 6px;
-}
-
-.domain-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 0 12px;
-}
-
-.domain-head + .area-list,
-.area-list + .domain-head {
-  border-top: 1px solid var(--line);
-}
-
-.domain-head > div {
-  display: grid;
-  gap: 2px;
-}
-
-.domain-head > div span {
-  color: #3a3a3c;
-  font-size: 14px;
-}
-
-.status-chip {
-  flex: none;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: var(--status-ok-soft);
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.status-chip.good {
-  background: var(--status-good-soft);
-  color: var(--status-good-ink);
-}
-
-.status-chip.watch {
-  background: var(--status-watch-soft);
-  color: var(--status-watch-ink);
-}
-
-.status-chip.low {
-  background: var(--status-low-soft);
-  color: var(--status-low);
-}
-
+/* Today: the body state on the score card (app/body-ui.tsx, app/score-summary.tsx) */
 .status-dot {
   width: 8px;
   height: 8px;
@@ -4564,56 +4483,6 @@ details[open] .journal-preview {
   font-size: 12px;
 }
 
-.area-list {
-  display: flex;
-  flex-direction: column;
-}
-
-.area-row + .area-row {
-  border-top: 1px solid var(--line);
-}
-
-.area-row summary {
-  display: grid;
-  grid-template-columns: 14px 78px 1fr 14px;
-  align-items: baseline;
-  gap: 8px;
-  padding: 11px 0;
-  font-size: 14px;
-  list-style: none;
-  cursor: pointer;
-}
-
-.area-row summary::-webkit-details-marker {
-  display: none;
-}
-
-.area-name {
-  font-weight: 600;
-}
-
-.area-chevron {
-  width: 14px;
-  height: 14px;
-  align-self: center;
-  fill: none;
-  stroke: #aeaeb2;
-  stroke-width: 2.5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  transition: transform 0.15s;
-}
-
-.area-row[open] .area-chevron {
-  transform: rotate(180deg);
-}
-
-.area-body {
-  display: grid;
-  gap: 10px;
-  padding: 0 0 14px 22px;
-}
-
 .area-facts {
   display: grid;
   gap: 0;
@@ -4643,11 +4512,6 @@ details[open] .journal-preview {
   margin: 0;
   text-align: right;
   font-variant-numeric: tabular-nums;
-}
-
-.area-link {
-  justify-self: start;
-  font-size: 14px;
 }
 
 .vitals-table {
@@ -4688,65 +4552,11 @@ details[open] .journal-preview {
   font-weight: 700;
 }
 
-/* The Body card: four tiles, red numbers when off, water at the bottom */
-.body-scores.four {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.body-scores.four > div {
-  padding: 10px 8px;
-}
-
-.body-scores.four span,
-.body-scores.four small {
-  font-size: 11px;
-}
-
-.body-scores.four strong {
-  font-size: 18px;
-}
-
 .num-off {
   color: var(--status-low);
+  font-weight: 700;
 }
 
-.area-headline strong {
-  font-weight: 600;
-}
-
-.water-quick {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 0 8px;
-  border-top: 1px solid var(--line);
-  font-size: 14px;
-}
-
-.water-quick > span strong {
-  color: var(--water-ink);
-}
-
-.water-quick-buttons {
-  display: flex;
-  gap: 6px;
-  margin-left: auto;
-}
-
-.water-quick-buttons button {
-  min-height: 36px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: 10px;
-  background: var(--water-soft);
-  color: var(--water-ink);
-  font: inherit;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-/* Body card charts: reference lines, vitals panels, sleep stages, days since */
 .chart-reference {
   stroke: #aeaeb2;
   stroke-width: 1;
@@ -4769,6 +4579,84 @@ details[open] .journal-preview {
   font-weight: 400;
 }
 
+.body-scores.headline {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.body-scores.headline strong {
+  font-size: 26px;
+}
+
+.gap {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.gap.off {
+  color: var(--status-low);
+}
+
+/* Sleep, Recovery and Strain open from their scores; the sick line sits under the three */
+.score-toggle {
+  display: grid;
+  align-content: start;
+  gap: 3px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.score-chevron {
+  width: 12px;
+  height: 12px;
+  margin-left: 3px;
+  vertical-align: -1px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.15s;
+}
+
+.score-toggle.open .score-chevron {
+  transform: rotate(180deg);
+}
+
+.score-summary > .score-below,
+.score-summary > .score-open {
+  grid-column: 1 / -1;
+}
+
+.score-summary > .score-open {
+  display: grid;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.sick-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  color: #3a3a3c;
+  font-size: 14px;
+}
+
+.sick-line .status-dot {
+  flex: none;
+}
+
+/* Sleep's details: last night by stage */
 .stage-chart {
   display: grid;
   gap: 10px;
@@ -4819,76 +4707,4 @@ details[open] .journal-preview {
 .stage-legend small {
   color: var(--muted);
   font-size: 12px;
-}
-
-.days-since {
-  display: grid;
-  gap: 8px;
-}
-
-.days-since > div {
-  display: grid;
-  grid-template-columns: 44px 1fr 40px;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-}
-
-.days-since strong {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.days-since-track {
-  position: relative;
-  height: 8px;
-  border-radius: 4px;
-  background: var(--bg);
-}
-
-.days-since-track span {
-  display: block;
-  height: 8px;
-  border-radius: 4px;
-  background: #8e8e93;
-}
-
-.days-since-track span.over {
-  background: var(--status-watch);
-}
-
-.days-since-track i {
-  position: absolute;
-  top: -3px;
-  bottom: -3px;
-  width: 1.5px;
-  background: var(--ink);
-}
-
-.days-since small {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-/* Recovery's headline: three big numbers when the row opens */
-.body-scores.headline {
-  padding-bottom: 0;
-  border-bottom: 0;
-}
-
-.body-scores.headline strong {
-  font-size: 26px;
-}
-
-.gap {
-  color: var(--muted);
-  font-weight: 600;
-}
-
-.gap.off {
-  color: var(--status-low);
-}
-
-.num-off {
-  font-weight: 700;
 }
