@@ -1,7 +1,7 @@
 // Editing habit entries and habit frequency (lib/habits.ts).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { habitOutcome, normalizeDays, planHabitLogEdit, summarizeHabitDay, type Habit, type HabitLog } from "../lib/habits";
+import { bandsProblem, describeGoal, habitOutcome, normalizeDays, planHabitLogEdit, summarizeHabitDay, type Habit, type HabitLog } from "../lib/habits";
 
 const reading: Habit = {
   id: "h-read",
@@ -12,6 +12,7 @@ const reading: Habit = {
   direction: "build",
   scaleGuide: null,
   goal: 15,
+  bands: null,
   cutoff: null,
   cutoffWeeknights: false,
   days: [1, 2, 3, 4, 5], // weekdays
@@ -70,4 +71,34 @@ test("one of a counted unit reads singular", async () => {
   const { formatHabitAmount } = await import("../lib/habits");
   assert.equal(formatHabitAmount({ measure: "count", unit: "drinks" }, 1), "1 drink");
   assert.equal(formatHabitAmount({ measure: "count", unit: "drinks" }, 2), "2 drinks");
+});
+
+test("color bands pick the miss for a limit habit", () => {
+  const gaming: Habit = { ...reading, id: "h-game", name: "Gaming", direction: "limit", goal: 0, bands: { orange: 60, red: 90 }, days: null };
+  const outcome = (minutes: number) => habitOutcome(summarizeHabitDay([gaming], "2026-10-31", [log("g", gaming, "2026-10-31", minutes)])[0]);
+  assert.equal(outcome(0), "met");
+  assert.equal(outcome(30), "miss-1");
+  assert.equal(outcome(60), "miss-1");
+  assert.equal(outcome(75), "miss-2");
+  assert.equal(outcome(90), "miss-2");
+  assert.equal(outcome(91), "miss-3");
+  assert.equal(describeGoal(gaming), "None, orange over 1h, red over 1h 30m");
+});
+
+test("color bands pick the miss for a build habit", () => {
+  const banded: Habit = { ...reading, goal: 20, bands: { orange: 10, red: 1 }, days: null };
+  const outcome = (minutes: number) => habitOutcome(summarizeHabitDay([banded], "2026-10-31", [log("r", banded, "2026-10-31", minutes)])[0]);
+  assert.equal(outcome(20), "met");
+  assert.equal(outcome(15), "miss-1");
+  assert.equal(outcome(5), "miss-2");
+  assert.equal(outcome(0), "miss-3");
+});
+
+test("color bands must fit the goal", () => {
+  const limit = { measure: "minutes", direction: "limit", goal: 60 } as const;
+  assert.equal(bandsProblem({ ...limit, bands: { orange: 90, red: 120 } }), null);
+  assert.ok(bandsProblem({ ...limit, bands: { orange: 30, red: 120 } }));
+  assert.ok(bandsProblem({ ...limit, bands: { orange: 90, red: 90 } }));
+  assert.ok(bandsProblem({ ...limit, goal: null, bands: { orange: 90, red: 120 } }));
+  assert.ok(bandsProblem({ measure: "minutes", direction: "build", goal: 20, bands: { orange: 25, red: 1 } }));
 });

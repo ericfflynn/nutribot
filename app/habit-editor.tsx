@@ -42,6 +42,8 @@ function HabitForm({ habit, reminderHour, onClose }: { habit: Habit; reminderHou
   const [description, setDescription] = useState(habit.description ?? "");
   const [direction, setDirection] = useState(habit.direction);
   const [goal, setGoal] = useState(habit.goal == null ? "" : String(habit.goal));
+  const [orange, setOrange] = useState(habit.bands ? String(habit.bands.orange) : "");
+  const [red, setRed] = useState(habit.bands ? String(habit.bands.red) : "");
   const [unit, setUnit] = useState(habit.unit ?? "");
   const [scaleGuide, setScaleGuide] = useState(habit.scaleGuide ?? "");
   const [cutoff, setCutoff] = useState(habit.cutoff ?? "");
@@ -52,6 +54,10 @@ function HabitForm({ habit, reminderHour, onClose }: { habit: Habit; reminderHou
   const [error, setError] = useState<string | null>(null);
 
   async function save(active = habit.active) {
+    if ((orange === "") !== (red === "")) {
+      setError("Set both color bands, or leave both empty.");
+      return;
+    }
     setBusy(true);
     setError(null);
     const result = await updateHabitAction(
@@ -64,6 +70,7 @@ function HabitForm({ habit, reminderHour, onClose }: { habit: Habit; reminderHou
         direction,
         scaleGuide: scaleGuide || null,
         goal: goal === "" ? null : Number(goal),
+        bands: goal === "" || orange === "" ? null : { orange: Number(orange), red: Number(red) },
         cutoff: cutoff || null,
         cutoffWeeknights: weeknights,
         days: days.length === 7 ? null : days,
@@ -128,6 +135,32 @@ function HabitForm({ habit, reminderHour, onClose }: { habit: Habit; reminderHou
           onChange={(event) => setGoal(event.target.value)}
         />
       </label>
+      {goal !== "" ? (
+        <div className="habit-times">
+          {(
+            [
+              ["Orange", orange, setOrange],
+              ["Red", red, setRed]
+            ] as const
+          ).map(([color, value, setValue]) => (
+            <label key={color}>
+              <span>
+                {color} {direction === "limit" ? "over" : "under"}
+              </span>
+              <input
+                type="number"
+                inputMode="decimal"
+                min="0"
+                max={habit.measure === "intensity" ? 3 : 1440}
+                step={habit.measure === "minutes" ? "any" : 1}
+                value={value}
+                placeholder="Default"
+                onChange={(event) => setValue(event.target.value)}
+              />
+            </label>
+          ))}
+        </div>
+      ) : null}
       {habit.measure === "intensity" ? (
         <label className="workout-editor-field">
           <span>Scale (what light, moderate and heavy mean)</span>

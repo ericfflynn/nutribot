@@ -4,6 +4,11 @@ Product and design decisions, newest first. One entry per decision: what was dec
 
 ## 2026-10-31
 
+### Habits carry their own color bands
+- **Decided:** each habit can store where a missed day turns orange and red (`band_orange`, `band_red`, in the habit's measure), set through chat or the Habits tab. Yellow starts past the goal for limit habits and under it for build habits. Habits without bands keep the default steps. [journal-habits-plan.md](journal-habits-plan.md#goal-met-or-missed).
+- **Why:** the owner wanted gaming yellow for any time, orange to 90 minutes and red past it, and wants to tune habits like this without a code change.
+- **Instead of:** hard-coding gaming's thresholds.
+
 ### The chat talks first and logs when something is reported
 - **Decided:** the chat is a health assistant that also keeps records, not a logger that also chats. It decides per message: reports ("had eggs", "chest day, hard", "2 beers"), check-in answers and "log that" get drafts; questions, venting and conversation get a real answer, with observations from the owner's data and a recommendation when one helps, and no drafts. "Just chatting" or "don't log this" turns drafting off for the conversation. Feelings shared in conversation get a small **Save to journal** button (a journal draft with `offer: true`), one tap to keep, instead of a full card. Check-ins ask about missing habits once. [brain.md](brain.md#talking-and-logging).
 - **Why:** every message produced a card, so the chat felt like a data-entry form ("a glorified CRUD assistant"). In one evening it asked about unlogged habits five times and answered "I binged chasing dopamine" with a journal card and a request for what else to log.

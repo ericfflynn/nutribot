@@ -111,7 +111,7 @@ test("drinks last night explain a raised resting HR; work stress doesn't", () =>
   const raised = { [TODAY]: { restingHr: 61 } };
   const drinks: Habit = {
     id: "h1", name: "Drinks", description: null, measure: "count", unit: "drinks", direction: "limit",
-    scaleGuide: null, goal: 2, cutoff: null, cutoffWeeknights: false, days: null, active: true
+    scaleGuide: null, goal: 2, bands: null, cutoff: null, cutoffWeeknights: false, days: null, active: true
   };
   const log: HabitLog = { id: "l1", habitId: "h1", amount: 3, details: null, startedAt: "20:00", endedAt: "23:30", date: shift(TODAY, -1), createdAt: "" };
   const withDrinks = buildBodyState(sources({ health: health(raised), habits: [drinks], habitLogs: [log] }), TODAY);
