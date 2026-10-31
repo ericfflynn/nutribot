@@ -1970,20 +1970,6 @@ button {
   background: var(--fat);
 }
 
-.nutrition-limits {
-  display: grid;
-  gap: 6px;
-}
-
-.nutrition-limits small {
-  font-size: 13px;
-}
-
-.limit-bad,
-.macro-bar-label .limit-bad {
-  color: var(--bad);
-}
-
 .macro-extra {
   color: var(--muted);
 }
@@ -2782,15 +2768,6 @@ button.fab {
   border-radius: 2px;
 }
 
-/* Caffeine and added sugar: no color of their own (no bar to match). */
-.macro-chip.extra {
-  color: var(--muted);
-}
-
-.macro-chip.extra::before {
-  display: none;
-}
-
 /* An action's error on Today, e.g. a failed meal edit */
 .page-error {
   margin: 0;
@@ -3287,11 +3264,6 @@ button.fab {
   gap: 12px;
 }
 
-.training-week-note {
-  margin: 8px 0 0;
-  color: var(--muted);
-  font-size: 12px;
-}
 
 .workout-editor-error {
   margin: 0;

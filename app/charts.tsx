@@ -98,7 +98,8 @@ function Axes({
   ticks,
   y,
   days,
-  x
+  x,
+  suffix = ""
 }: {
   width: number;
   right?: number;
@@ -106,6 +107,7 @@ function Axes({
   y: (value: number) => number;
   days: string[];
   x: (index: number) => number;
+  suffix?: string; // after each y tick, e.g. "%"
 }) {
   const plotWidth = width - MARGIN.left - right;
   return (
@@ -115,6 +117,7 @@ function Axes({
           <line x1={MARGIN.left} x2={width - right} y1={y(tick)} y2={y(tick)} className="chart-grid" />
           <text x={MARGIN.left - 8} y={y(tick)} dy="0.32em" textAnchor="end" className="chart-tick">
             {tickFormat.format(tick)}
+            {suffix}
           </text>
         </g>
       ))}
@@ -286,6 +289,137 @@ export function ColumnChart({
         );
       }}
     </ChartFrame>
+  );
+}
+
+// Bars and a line on one axis, each as a percent of its own goal, so two
+// measures of different size (calories, protein grams) share the one y-axis.
+// The dashed line is the goal; the tooltip shows the real values.
+export type GoalSeries = { label: string; color: string; goal: number; format: ValueFormat; values: (number | null)[] };
+
+export function GoalComboChart({
+  days,
+  bars,
+  line,
+  partialDay,
+  label
+}: {
+  days: string[];
+  bars: GoalSeries;
+  line: GoalSeries;
+  partialDay?: string | null;
+  label: string;
+}) {
+  const [active, setActive] = useState<number | null>(null);
+  const pct = (series: GoalSeries, index: number) => {
+    const value = series.values[index];
+    return value == null || series.goal <= 0 ? null : (value / series.goal) * 100;
+  };
+  const barPcts = days.map((_, index) => pct(bars, index));
+  const linePcts = days.map((_, index) => pct(line, index));
+  const max = Math.max(100, ...barPcts.map((value) => value ?? 0), ...linePcts.map((value) => value ?? 0));
+  const { hi, ticks } = niceDomain(0, max);
+
+  return (
+    <>
+      <ChartLegend
+        series={[
+          { key: "bars", label: bars.label, color: bars.color },
+          { key: "line", label: line.label, color: line.color }
+        ]}
+      />
+      <ChartFrame label={label}>
+        {(width) => {
+          const plotWidth = width - MARGIN.left - MARGIN.right;
+          const plotHeight = HEIGHT - MARGIN.top - MARGIN.bottom;
+          const band = plotWidth / days.length;
+          const barWidth = Math.max(2, Math.min(24, band - 2));
+          const x = (index: number) => MARGIN.left + band * index + band / 2;
+          const y = (value: number) => MARGIN.top + plotHeight - (value / hi) * plotHeight;
+          // Missing days break the line into runs.
+          const runs: number[][] = [];
+          linePcts.forEach((value, index) => {
+            if (value == null) return;
+            const last = runs.at(-1);
+            if (last && last.at(-1) === index - 1) last.push(index);
+            else runs.push([index]);
+          });
+          const row = (series: GoalSeries, index: number) => {
+            const value = series.values[index];
+            const percent = pct(series, index);
+            return {
+              color: series.color,
+              label: series.label,
+              value: value == null ? "–" : `${FORMATTERS[series.format](value)} · ${Math.round(percent ?? 0)}%`
+            };
+          };
+          return (
+            <>
+              <svg width={width} height={HEIGHT}>
+                <Axes width={width} ticks={ticks} y={y} days={days} x={x} suffix="%" />
+                <g aria-hidden="true">
+                  <line x1={MARGIN.left} x2={width - MARGIN.right} y1={y(100)} y2={y(100)} className="chart-reference" />
+                  <text x={width - MARGIN.right} y={y(100) - 4} textAnchor="end" className="chart-reference-label">
+                    goal
+                  </text>
+                </g>
+                {barPcts.map((value, index) =>
+                  value == null || value <= 0 ? null : (
+                    <path
+                      key={days[index]}
+                      d={roundedTop(x(index) - barWidth / 2, y(value), barWidth, y(0) - y(value), 4)}
+                      fill={bars.color}
+                      opacity={(days[index] === partialDay ? 0.45 : 1) * (active != null && active !== index ? 0.55 : 1)}
+                    />
+                  )
+                )}
+                {runs.map((run) =>
+                  run.length === 1 ? null : (
+                    <path
+                      key={run[0]}
+                      d={run.map((index, step) => `${step ? "L" : "M"}${x(index)},${y(linePcts[index]!)}`).join("")}
+                      fill="none"
+                      stroke={line.color}
+                      strokeWidth={2}
+                      strokeLinejoin="round"
+                    />
+                  )
+                )}
+                {linePcts.map((value, index) =>
+                  value == null ? null : (
+                    <circle key={days[index]} cx={x(index)} cy={y(value)} r={4} fill={line.color} stroke={SURFACE} strokeWidth={2} />
+                  )
+                )}
+                {days.map((day, index) => (
+                  <rect
+                    key={day}
+                    x={MARGIN.left + band * index}
+                    y={MARGIN.top}
+                    width={band}
+                    height={plotHeight}
+                    fill="transparent"
+                    tabIndex={0}
+                    aria-label={`${formatDay(day, true)}: ${bars.label} ${row(bars, index).value}, ${line.label} ${row(line, index).value}`}
+                    onPointerEnter={() => setActive(index)}
+                    onPointerLeave={() => setActive(null)}
+                    onFocus={() => setActive(index)}
+                    onBlur={() => setActive(null)}
+                  />
+                ))}
+              </svg>
+              {active != null ? (
+                <Tooltip
+                  x={x(active)}
+                  width={width}
+                  title={`${formatDay(days[active], true)}${days[active] === partialDay ? " · so far" : ""}`}
+                  rows={[row(bars, active), row(line, active)]}
+                />
+              ) : null}
+            </>
+          );
+        }}
+      </ChartFrame>
+    </>
   );
 }
 

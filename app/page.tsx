@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import type { ReactNode } from "react";
 import { addWaterAction, deleteCheckinAction, undoWaterAction } from "./actions";
 import { Facts, RecoveryDetails, SickLine, SleepDetails, StrainDetails } from "./body-ui";
-import { ColumnChart } from "./charts";
+import { GoalComboChart } from "./charts";
 import { NutritionCard } from "./nutrition-toggle";
 import { DayStrip, type StripDay } from "./day-strip";
 import { ScoreSummary, type Score } from "./score-summary";
@@ -14,8 +14,6 @@ import { AppShell, GoalsForm, Login } from "./shared-ui";
 import { getSessionUser } from "@/lib/auth";
 import { addDays, isValidLocalDate, localDateTime, rollingDateWindow, todayLocalDate } from "@/lib/dates";
 import { getBodyState } from "@/lib/body-state/load";
-import { caffeineDay, sugarDay } from "@/lib/nutrients";
-import { formatClockTime } from "@/lib/habits";
 import { answeredCheckins } from "@/lib/chat";
 import { CHECKIN_DISMISSED_COOKIE, type CheckinKind } from "@/lib/checkin";
 import { morningBrief, type Reply } from "@/lib/body-state/brief";
@@ -256,18 +254,12 @@ function mealSlot(minute: number | null) {
 }
 
 // Grams per macro, each with the color of its bar in the Nutrition card.
-function MacroChips({
-  totals
-}: {
-  totals: { protein_g: number; carbs_g: number; fat_g: number; caffeine_mg?: number | null; added_sugar_g?: number | null };
-}) {
+function MacroChips({ totals }: { totals: { protein_g: number; carbs_g: number; fat_g: number } }) {
   return (
     <span className="macro-chips">
       <span className="macro-chip protein">{integer.format(totals.protein_g)}g protein</span>
       <span className="macro-chip carbs">{integer.format(totals.carbs_g)}g carbs</span>
       <span className="macro-chip fat">{integer.format(totals.fat_g)}g fat</span>
-      {totals.caffeine_mg ? <span className="macro-chip extra">{integer.format(totals.caffeine_mg)} mg caffeine</span> : null}
-      {totals.added_sugar_g ? <span className="macro-chip extra">{integer.format(totals.added_sugar_g)}g added sugar</span> : null}
     </span>
   );
 }
@@ -585,8 +577,6 @@ export default async function Home({ searchParams }: PageProps) {
   // Nutrition
   const dayEntries = entries.filter((entry) => entry.entry_date === date);
   const eaten = summarizeEntries(dayEntries);
-  const caffeine = caffeineDay(dayEntries, goals);
-  const sugar = sugarDay(dayEntries, goals);
   // The target grows by what the day's workouts burned beyond resting.
   const workoutKcal = workoutCalories(workouts, restingKcalPerMinute(healthDays, date));
   const dayGoals = withWorkoutCalories(goals, workoutKcal);
@@ -707,67 +697,36 @@ export default async function Home({ searchParams }: PageProps) {
     events.push({ key: "activity", time: "",sort: 24 * 60 + 1, color: "#c7c7cc", title: activity.join(" · "), detail: "" });
   }
 
-  // Nutrition's week, opened from its title: calories and protein against the
-  // base targets, caffeine and added sugar against their limits once tracked.
-  const weekMeals = trendDates.map((day) => entries.filter((entry) => entry.entry_date === day));
-  const baseGrams = gramsFromPercentGoals(goals);
-  const weekCaffeine = weekMeals.map((meals) => caffeineDay(meals, goals));
-  const weekSugar = weekMeals.map((meals) => sugarDay(meals, goals).g);
-  const weekProtein = weekMeals.map((meals) => (meals.length ? Math.round(summarizeEntries(meals).protein_g) : null));
+  // Nutrition's week, opened from its title: calories as bars and protein as a
+  // line, each against its base goal.
+  const weekProtein = trendDates.map((day) => {
+    const meals = entries.filter((entry) => entry.entry_date === day);
+    return meals.length ? Math.round(summarizeEntries(meals).protein_g) : null;
+  });
   const weekCalories = trendDates.map(caloriesOn);
+  const proteinGoal = gramsFromPercentGoals(goals).protein_g;
   const loggedDays = weekCalories.filter((value) => value != null).length;
   const averageOf = (values: (number | null)[]) => {
     const known = values.filter((value): value is number => value != null);
     return known.length ? Math.round(known.reduce((sum, value) => sum + value, 0) / known.length) : null;
   };
-  const weekData = (values: (number | null)[], key: string) =>
-    trendDates.map((day, index) => ({ day, values: { [key]: values[index] }, partial: isToday && day === date }));
+  const averageCalories = averageOf(weekCalories);
+  const averageProtein = averageOf(weekProtein);
   const nutritionTrends = (
     <>
-      <ColumnChart
-        label="Calories, last 7 days"
-        format="kcal"
-        series={[{ key: "calories", label: "Calories", color: FUEL_COLOR }]}
-        reference={{ value: goals.calories, label: `goal ${integer.format(goals.calories)}` }}
-        data={weekData(weekCalories, "calories")}
+      <GoalComboChart
+        label="Calories and protein, last 7 days"
+        days={trendDates}
+        partialDay={isToday ? date : null}
+        bars={{ label: "Calories", color: "#c4b2ec", goal: goals.calories, format: "kcal", values: weekCalories }}
+        line={{ label: "Protein", color: "#6038b5", goal: proteinGoal, format: "grams", values: weekProtein }}
       />
-      <ColumnChart
-        label="Protein, last 7 days"
-        format="grams"
-        series={[{ key: "protein", label: "Protein", color: FUEL_COLOR }]}
-        reference={{ value: baseGrams.protein_g, label: `goal ${baseGrams.protein_g} g` }}
-        data={weekData(weekProtein, "protein")}
-      />
-      {weekCaffeine.some((day) => day.mg != null) ? (
-        <ColumnChart
-          label="Caffeine, last 7 days"
-          format="mg"
-          series={[{ key: "caffeine", label: "Caffeine", color: FUEL_COLOR }]}
-          reference={{ value: goals.caffeineLimitMg, label: `limit ${goals.caffeineLimitMg} mg` }}
-          data={weekData(weekCaffeine.map((day) => day.mg), "caffeine")}
-        />
-      ) : null}
-      {weekSugar.some((value) => value != null) ? (
-        <ColumnChart
-          label="Added sugar, last 7 days"
-          format="grams"
-          series={[{ key: "sugar", label: "Added sugar", color: FUEL_COLOR }]}
-          reference={{ value: goals.addedSugarLimitG, label: `limit ${goals.addedSugarLimitG} g` }}
-          data={weekData(weekSugar, "sugar")}
-        />
-      ) : null}
       <Facts
         rows={[
           ["Days logged", `${loggedDays} of 7`],
-          ["Average calories", averageOf(weekCalories) == null ? "–" : `${integer.format(averageOf(weekCalories)!)} kcal`],
-          ["Average protein", averageOf(weekProtein) == null ? "–" : `${averageOf(weekProtein)} g`],
-          [
-            "Protein goal met",
-            `${weekProtein.filter((value) => value != null && value >= baseGrams.protein_g).length} of ${loggedDays} days`
-          ],
-          ...(weekCaffeine.some((day) => day.mg != null)
-            ? ([["Caffeine after the cutoff", `${weekCaffeine.filter((day) => day.late).length} days`]] as [string, string][])
-            : [])
+          ["Average calories", averageCalories == null ? "–" : `${integer.format(averageCalories)} of ${integer.format(goals.calories)} kcal`],
+          ["Average protein", averageProtein == null ? "–" : `${averageProtein} of ${proteinGoal} g`],
+          ["Protein goal met", `${weekProtein.filter((value) => value != null && value >= proteinGoal).length} of ${loggedDays} days`]
         ]}
       />
     </>
@@ -831,39 +790,6 @@ export default async function Home({ searchParams }: PageProps) {
               </div>
             </div>
           ))}
-        </div>
-        <div className="nutrition-limits">
-          <div className="macro-bar-label">
-            <span>Caffeine</span>
-            <span>
-              {caffeine.mg == null ? (
-                "–"
-              ) : (
-                <>
-                  <strong className={caffeine.over ? "limit-bad" : undefined}>{integer.format(caffeine.mg)}</strong> / {caffeine.limitMg} mg
-                </>
-              )}
-              {caffeine.last ? (
-                <small className={caffeine.late ? "limit-bad" : undefined}>
-                  {" "}
-                  · last {formatClock(`${date}T${caffeine.last}`)}
-                  {caffeine.late ? `, after ${formatClockTime(caffeine.cutoff)}` : ""}
-                </small>
-              ) : null}
-            </span>
-          </div>
-          <div className="macro-bar-label">
-            <span>Added sugar</span>
-            <span>
-              {sugar.g == null ? (
-                "–"
-              ) : (
-                <>
-                  <strong className={sugar.over ? "limit-bad" : undefined}>{integer.format(sugar.g)}</strong> / {sugar.limitG}g
-                </>
-              )}
-            </span>
-          </div>
         </div>
         <p className={`nutrition-callout ${callout.tone}`}>{callout.text}</p>
         <WaterRow ounces={waterOunces} goalOz={goals.waterOz} date={date} />

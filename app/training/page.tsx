@@ -396,10 +396,6 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
 
       <section className="card training-week-card" aria-label="Body map">
         <BodyMap muscles={muscleViews} />
-        <p className="training-week-note">
-          {WEEKLY_TARGET_POINTS} points per muscle in any 7 days: light {INTENSITY_RULES.light.points}, medium{" "}
-          {INTENSITY_RULES.medium.points}, hard {INTENSITY_RULES.hard.points}. Soreness: hard work leaves a muscle very sore for about 4 days, medium sore for 2; tap a muscle to set how it feels.
-        </p>
       </section>
 
       <section className="card training-week-card" aria-label="Next up">

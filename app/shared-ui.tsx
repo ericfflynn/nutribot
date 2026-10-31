@@ -6,7 +6,6 @@ import { ChatSheet } from "./chat-sheet";
 import { HealthAutoSync } from "./refresh-button";
 import { getAllowedUsers, type SessionUser } from "@/lib/auth";
 import { todayLocalDate } from "@/lib/dates";
-import { formatClockTime } from "@/lib/habits";
 
 export function ProgressMetric({
   label,
@@ -177,8 +176,7 @@ export function GoalsForm({ goals, redirectDate }: { goals: Goals; redirectDate?
         </div>
         <span className="goal-summary">
           {goals.calories} cal · Protein {goals.proteinPct}% · Carbs {goals.carbsPct}% · Fat {goals.fatPct}% · Water{" "}
-          {goals.waterOz} oz · Caffeine {goals.caffeineLimitMg} mg, none after {formatClockTime(goals.caffeineCutoff)} · Added sugar{" "}
-          {goals.addedSugarLimitG} g
+          {goals.waterOz} oz
         </span>
       </summary>
       <form className="goals-form" action={saveGoalsAction}>
