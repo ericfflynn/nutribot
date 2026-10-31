@@ -9,7 +9,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 export type ChartSeries = { key: string; label: string; color: string };
 export type ChartDatum = { day: string; values: Record<string, number | null>; partial?: boolean };
 
-export type ValueFormat = "steps" | "hours" | "integer" | "decimal" | "kcal";
+export type ValueFormat = "steps" | "hours" | "integer" | "decimal" | "kcal" | "grams" | "mg";
 
 const integerFormat = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 
@@ -20,6 +20,8 @@ const FORMATTERS: Record<ValueFormat, (value: number) => string> = {
   integer: (value) => integerFormat.format(value),
   decimal: (value) => value.toFixed(1),
   kcal: (value) => `${integerFormat.format(value)} kcal`,
+  grams: (value) => `${integerFormat.format(value)} g`,
+  mg: (value) => `${integerFormat.format(value)} mg`,
   hours: (value) => {
     const minutes = Math.round(value * 60);
     return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, "0")}m`;
@@ -96,7 +98,8 @@ function Axes({
   ticks,
   y,
   days,
-  x
+  x,
+  suffix = ""
 }: {
   width: number;
   right?: number;
@@ -104,6 +107,7 @@ function Axes({
   y: (value: number) => number;
   days: string[];
   x: (index: number) => number;
+  suffix?: string; // after each y tick, e.g. "%"
 }) {
   const plotWidth = width - MARGIN.left - right;
   return (
@@ -113,6 +117,7 @@ function Axes({
           <line x1={MARGIN.left} x2={width - right} y1={y(tick)} y2={y(tick)} className="chart-grid" />
           <text x={MARGIN.left - 8} y={y(tick)} dy="0.32em" textAnchor="end" className="chart-tick">
             {tickFormat.format(tick)}
+            {suffix}
           </text>
         </g>
       ))}
@@ -287,6 +292,137 @@ export function ColumnChart({
   );
 }
 
+// Bars and a line on one axis, each as a percent of its own goal, so two
+// measures of different size (calories, protein grams) share the one y-axis.
+// The dashed line is the goal; the tooltip shows the real values.
+export type GoalSeries = { label: string; color: string; goal: number; format: ValueFormat; values: (number | null)[] };
+
+export function GoalComboChart({
+  days,
+  bars,
+  line,
+  partialDay,
+  label
+}: {
+  days: string[];
+  bars: GoalSeries;
+  line: GoalSeries;
+  partialDay?: string | null;
+  label: string;
+}) {
+  const [active, setActive] = useState<number | null>(null);
+  const pct = (series: GoalSeries, index: number) => {
+    const value = series.values[index];
+    return value == null || series.goal <= 0 ? null : (value / series.goal) * 100;
+  };
+  const barPcts = days.map((_, index) => pct(bars, index));
+  const linePcts = days.map((_, index) => pct(line, index));
+  const max = Math.max(100, ...barPcts.map((value) => value ?? 0), ...linePcts.map((value) => value ?? 0));
+  const { hi, ticks } = niceDomain(0, max);
+
+  return (
+    <>
+      <ChartLegend
+        series={[
+          { key: "bars", label: bars.label, color: bars.color },
+          { key: "line", label: line.label, color: line.color }
+        ]}
+      />
+      <ChartFrame label={label}>
+        {(width) => {
+          const plotWidth = width - MARGIN.left - MARGIN.right;
+          const plotHeight = HEIGHT - MARGIN.top - MARGIN.bottom;
+          const band = plotWidth / days.length;
+          const barWidth = Math.max(2, Math.min(24, band - 2));
+          const x = (index: number) => MARGIN.left + band * index + band / 2;
+          const y = (value: number) => MARGIN.top + plotHeight - (value / hi) * plotHeight;
+          // Missing days break the line into runs.
+          const runs: number[][] = [];
+          linePcts.forEach((value, index) => {
+            if (value == null) return;
+            const last = runs.at(-1);
+            if (last && last.at(-1) === index - 1) last.push(index);
+            else runs.push([index]);
+          });
+          const row = (series: GoalSeries, index: number) => {
+            const value = series.values[index];
+            const percent = pct(series, index);
+            return {
+              color: series.color,
+              label: series.label,
+              value: value == null ? "–" : `${FORMATTERS[series.format](value)} · ${Math.round(percent ?? 0)}%`
+            };
+          };
+          return (
+            <>
+              <svg width={width} height={HEIGHT}>
+                <Axes width={width} ticks={ticks} y={y} days={days} x={x} suffix="%" />
+                <g aria-hidden="true">
+                  <line x1={MARGIN.left} x2={width - MARGIN.right} y1={y(100)} y2={y(100)} className="chart-reference" />
+                  <text x={width - MARGIN.right} y={y(100) - 4} textAnchor="end" className="chart-reference-label">
+                    goal
+                  </text>
+                </g>
+                {barPcts.map((value, index) =>
+                  value == null || value <= 0 ? null : (
+                    <path
+                      key={days[index]}
+                      d={roundedTop(x(index) - barWidth / 2, y(value), barWidth, y(0) - y(value), 4)}
+                      fill={bars.color}
+                      opacity={(days[index] === partialDay ? 0.45 : 1) * (active != null && active !== index ? 0.55 : 1)}
+                    />
+                  )
+                )}
+                {runs.map((run) =>
+                  run.length === 1 ? null : (
+                    <path
+                      key={run[0]}
+                      d={run.map((index, step) => `${step ? "L" : "M"}${x(index)},${y(linePcts[index]!)}`).join("")}
+                      fill="none"
+                      stroke={line.color}
+                      strokeWidth={2}
+                      strokeLinejoin="round"
+                    />
+                  )
+                )}
+                {linePcts.map((value, index) =>
+                  value == null ? null : (
+                    <circle key={days[index]} cx={x(index)} cy={y(value)} r={4} fill={line.color} stroke={SURFACE} strokeWidth={2} />
+                  )
+                )}
+                {days.map((day, index) => (
+                  <rect
+                    key={day}
+                    x={MARGIN.left + band * index}
+                    y={MARGIN.top}
+                    width={band}
+                    height={plotHeight}
+                    fill="transparent"
+                    tabIndex={0}
+                    aria-label={`${formatDay(day, true)}: ${bars.label} ${row(bars, index).value}, ${line.label} ${row(line, index).value}`}
+                    onPointerEnter={() => setActive(index)}
+                    onPointerLeave={() => setActive(null)}
+                    onFocus={() => setActive(index)}
+                    onBlur={() => setActive(null)}
+                  />
+                ))}
+              </svg>
+              {active != null ? (
+                <Tooltip
+                  x={x(active)}
+                  width={width}
+                  title={`${formatDay(days[active], true)}${days[active] === partialDay ? " · so far" : ""}`}
+                  rows={[row(bars, active), row(line, active)]}
+                />
+              ) : null}
+            </>
+          );
+        }}
+      </ChartFrame>
+    </>
+  );
+}
+
 export function LineChart({
   data,
   series,
@@ -440,181 +576,6 @@ export function LineChart({
         );
       }}
     </ChartFrame>
-  );
-}
-
-// Small trend line for a tile: no axes, missing days break the line, and the
-// latest value gets a dot. Hovering, or touching and dragging sideways, shows
-// the day under the pointer; a tap keeps it shown until the next tap elsewhere.
-export function Sparkline({
-  values,
-  days,
-  valueLabels,
-  color,
-  label
-}: {
-  values: (number | null)[];
-  days: string[];
-  // Each day's value as shown in the tooltip, formatted by the server.
-  valueLabels: string[];
-  color: string;
-  label: string;
-}) {
-  const width = 140;
-  const height = 40;
-  const pad = 5;
-  const ref = useRef<HTMLDivElement>(null);
-  const [active, setActive] = useState<number | null>(null);
-  const [pinned, setPinned] = useState(false);
-
-  useEffect(() => {
-    if (!pinned) {
-      return;
-    }
-    const clear = (event: PointerEvent) => {
-      if (!ref.current?.contains(event.target as Node)) {
-        setPinned(false);
-        setActive(null);
-      }
-    };
-    document.addEventListener("pointerdown", clear);
-    return () => document.removeEventListener("pointerdown", clear);
-  }, [pinned]);
-
-  const present = values.filter((value): value is number => value != null);
-  const lo = present.length ? Math.min(...present) : 0;
-  const hi = present.length ? Math.max(...present) : 0;
-  const x = (index: number) => pad + (index / Math.max(1, values.length - 1)) * (width - 2 * pad);
-  const y = (value: number) => (hi === lo ? height / 2 : height - pad - ((value - lo) / (hi - lo)) * (height - 2 * pad));
-
-  // The day whose column is under the pointer; the svg scales uniformly to its box.
-  function indexAt(clientX: number) {
-    const box = ref.current?.getBoundingClientRect();
-    if (!box || !box.width) {
-      return null;
-    }
-    const viewX = ((clientX - box.left) / box.width) * width;
-    const step = (width - 2 * pad) / Math.max(1, values.length - 1);
-    return Math.min(values.length - 1, Math.max(0, Math.round((viewX - pad) / step)));
-  }
-
-  const activeValue = active == null ? null : values[active];
-  const tooltipLeft = active == null ? 0 : Math.min(Math.max((x(active) / width) * 100, 22), 78);
-
-  return (
-    <div
-      ref={ref}
-      className="sparkline-frame"
-      onPointerDown={(event) => {
-        setActive(indexAt(event.clientX));
-        setPinned(false);
-      }}
-      onPointerMove={(event) => {
-        // Touch moves only arrive while the finger is down; mouse moves are hovers.
-        setActive(indexAt(event.clientX));
-      }}
-      onPointerUp={(event) => {
-        if (event.pointerType !== "mouse") {
-          setPinned(true);
-        }
-      }}
-      onPointerLeave={(event) => {
-        if (event.pointerType === "mouse") {
-          setActive(null);
-        }
-      }}
-      onPointerCancel={() => setActive(null)}
-    >
-      <SparklineSvg
-        values={values}
-        color={color}
-        label={label}
-        x={x}
-        y={y}
-        width={width}
-        height={height}
-        active={active}
-        hasData={present.length > 0}
-      />
-      {active != null ? (
-        <div className="sparkline-tooltip" style={{ left: `${tooltipLeft}%` }} role="status">
-          <span>{formatDay(days[active], true)}</span>
-          <strong style={activeValue == null ? undefined : { color }}>{valueLabels[active]}</strong>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function SparklineSvg({
-  values,
-  color,
-  label,
-  x,
-  y,
-  width,
-  height,
-  active,
-  hasData
-}: {
-  values: (number | null)[];
-  color: string;
-  label: string;
-  x: (index: number) => number;
-  y: (value: number) => number;
-  width: number;
-  height: number;
-  active: number | null;
-  hasData: boolean;
-}) {
-  if (!hasData) {
-    return <svg className="sparkline" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${label}: no data`} />;
-  }
-
-  const segments: { x: number; y: number }[][] = [];
-  let current: { x: number; y: number }[] = [];
-  values.forEach((value, index) => {
-    if (value == null) {
-      if (current.length) {
-        segments.push(current);
-      }
-      current = [];
-    } else {
-      current.push({ x: x(index), y: y(value) });
-    }
-  });
-  if (current.length) {
-    segments.push(current);
-  }
-  const lastIndex = values.length - 1;
-  const last = values[lastIndex];
-  const activeValue = active == null ? null : values[active];
-
-  return (
-    <svg className="sparkline" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={label}>
-      {active != null ? (
-        <line x1={x(active)} x2={x(active)} y1={0} y2={height} className="sparkline-guide" />
-      ) : null}
-      {segments.map((points) =>
-        points.length > 1 ? (
-          <polyline
-            key={`${points[0].x}`}
-            points={points.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ")}
-            fill="none"
-            stroke={color}
-            strokeWidth="2"
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
-        ) : (
-          <circle key={`${points[0].x}`} cx={points[0].x} cy={points[0].y} r="2" fill={color} />
-        )
-      )}
-      {last != null ? <circle cx={x(lastIndex)} cy={y(last)} r="4" fill={color} stroke={SURFACE} strokeWidth="2" /> : null}
-      {active != null && activeValue != null && active !== lastIndex ? (
-        <circle cx={x(active)} cy={y(activeValue)} r="4" fill={color} stroke={SURFACE} strokeWidth="2" />
-      ) : null}
-    </svg>
   );
 }
 

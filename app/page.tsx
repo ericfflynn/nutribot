@@ -2,8 +2,9 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import type { ReactNode } from "react";
 import { addWaterAction, deleteCheckinAction, undoWaterAction } from "./actions";
-import { RecoveryDetails, SickLine, SleepDetails, StrainDetails } from "./body-ui";
-import { Sparkline } from "./charts";
+import { Facts, RecoveryDetails, SickLine, SleepDetails, StrainDetails } from "./body-ui";
+import { GoalComboChart } from "./charts";
+import { NutritionCard } from "./nutrition-toggle";
 import { DayStrip, type StripDay } from "./day-strip";
 import { ScoreSummary, type Score } from "./score-summary";
 import { TodayCheckin } from "./today-checkin";
@@ -380,46 +381,6 @@ function Timeline({ title, events }: { title: string; events: TimelineEvent[] })
   );
 }
 
-type Tile = {
-  label: string;
-  textColor: string;
-  color: string;
-  value: string;
-  values: (number | null)[];
-  // How one day's value reads in the sparkline tooltip.
-  format: (value: number) => string;
-  delta: Delta | null;
-};
-
-function TrendTiles({ tiles, days }: { tiles: Tile[]; days: string[] }) {
-  return (
-    <section className="group" aria-label="Last 7 days">
-      <div className="group-heading">
-        <h2 className="group-title">Last 7 days</h2>
-        <span className="group-aside">vs the 7 days before</span>
-      </div>
-      <div className="trend-grid">
-        {tiles.map((tile) => (
-          <div className="card trend-tile" key={tile.label}>
-            <span className="trend-label" style={{ color: tile.textColor }}>
-              {tile.label}
-            </span>
-            <strong>{tile.value}</strong>
-            <Sparkline
-              values={tile.values}
-              days={days}
-              valueLabels={tile.values.map((value) => (value == null ? "No data" : tile.format(value)))}
-              color={tile.color}
-              label={`${tile.label}, last 7 days`}
-            />
-            {tile.delta ? <DeltaText delta={tile.delta} /> : <span className="delta neutral">&nbsp;</span>}
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 function SyncNote({ run }: { run: HealthSyncRun | null }) {
   if (!run) {
     return <p className="footnote">Fitbit hasn&apos;t synced yet.</p>;
@@ -736,53 +697,40 @@ export default async function Home({ searchParams }: PageProps) {
     events.push({ key: "activity", time: "",sort: 24 * 60 + 1, color: "#c7c7cc", title: activity.join(" · "), detail: "" });
   }
 
-  // Trends. Today's strain and calories are partial, so they get no comparison.
-  const tiles: Tile[] = [
-    {
-      label: "Sleep",
-      textColor: "var(--sleep-ink)",
-      color: SLEEP_COLOR,
-      value: sleepMinutes != null ? formatDuration(sleepMinutes) : "–",
-      values: trendDates.map(sleepMinutesOn),
-      format: formatDuration,
-      delta: deltaFrom(sleepMinutes, priorDates.map(sleepMinutesOn), true, 15, (value) => `${integer.format(value)}m`)
-    },
-    {
-      label: "Recovery",
-      textColor: recovery ? BAND_TEXT[recovery.band] : "var(--muted)",
-      color: recovery ? BAND_COLORS[recovery.band] : "#8e8e93",
-      value: recovery ? `${recovery.score}%` : "–",
-      values: trendDates.map((day) => recoveryByDay.get(day)?.score ?? null),
-      format: (value) => `${integer.format(value)}%`,
-      delta: deltaFrom(
-        recovery?.score ?? null,
-        priorDates.map((day) => recoveryByDay.get(day)?.score ?? null),
-        true,
-        5,
-        (value) => `${integer.format(value)} pts`
-      )
-    },
-    {
-      label: "Strain",
-      textColor: "var(--strain-ink)",
-      color: STRAIN_COLOR,
-      value: strain == null ? "–" : strain.toFixed(1),
-      values: trendDates.map(strainOn),
-      format: (value) => value.toFixed(1),
-      delta: isToday ? null : deltaFrom(strain, priorDates.map(strainOn), null, 1, (value) => value.toFixed(1))
-    },
-    {
-      label: "Calories",
-      textColor: "var(--fuel-ink)",
-      color: FUEL_COLOR,
-      value: caloriesOn(date) != null ? integer.format(caloriesOn(date) as number) : "–",
-      values: trendDates.map(caloriesOn),
-      format: (value) => `${integer.format(value)} kcal`,
-      delta: isToday
-        ? null
-        : deltaFrom(caloriesOn(date), priorDates.map(caloriesOn), null, 100, (value) => `${integer.format(value)} kcal`)
-    }
-  ];
+  // Nutrition's week, opened from its title: calories as bars and protein as a
+  // line, each against its base goal.
+  const weekProtein = trendDates.map((day) => {
+    const meals = entries.filter((entry) => entry.entry_date === day);
+    return meals.length ? Math.round(summarizeEntries(meals).protein_g) : null;
+  });
+  const weekCalories = trendDates.map(caloriesOn);
+  const proteinGoal = gramsFromPercentGoals(goals).protein_g;
+  const loggedDays = weekCalories.filter((value) => value != null).length;
+  const averageOf = (values: (number | null)[]) => {
+    const known = values.filter((value): value is number => value != null);
+    return known.length ? Math.round(known.reduce((sum, value) => sum + value, 0) / known.length) : null;
+  };
+  const averageCalories = averageOf(weekCalories);
+  const averageProtein = averageOf(weekProtein);
+  const nutritionTrends = (
+    <>
+      <GoalComboChart
+        label="Calories and protein, last 7 days"
+        days={trendDates}
+        partialDay={isToday ? date : null}
+        bars={{ label: "Calories", color: "#c4b2ec", goal: goals.calories, format: "kcal", values: weekCalories }}
+        line={{ label: "Protein", color: "#6038b5", goal: proteinGoal, format: "grams", values: weekProtein }}
+      />
+      <Facts
+        rows={[
+          ["Days logged", `${loggedDays} of 7`],
+          ["Average calories", averageCalories == null ? "–" : `${integer.format(averageCalories)} of ${integer.format(goals.calories)} kcal`],
+          ["Average protein", averageProtein == null ? "–" : `${averageProtein} of ${proteinGoal} g`],
+          ["Protein goal met", `${weekProtein.filter((value) => value != null && value >= proteinGoal).length} of ${loggedDays} days`]
+        ]}
+      />
+    </>
+  );
 
   return (
     <AppShell user={user} date={date} active="home" title={dayTitle(date, today)} headerAction={headerAction}>
@@ -808,13 +756,14 @@ export default async function Home({ searchParams }: PageProps) {
         }}
       />
 
-      <section className="card nutrition-card" aria-label="Nutrition">
-        <div className="card-heading">
-          <h2 className="card-title">Nutrition</h2>
+      <NutritionCard
+        trends={nutritionTrends}
+        aside={
           <span className={caloriesLeft < 0 ? "delta bad" : "card-aside"}>
             {caloriesLeft >= 0 ? `${integer.format(caloriesLeft)} left` : `${integer.format(-caloriesLeft)} over`}
           </span>
-        </div>
+        }
+      >
         <div className="kcal-figure">
           <strong>{integer.format(eaten.calories)}</strong>
           <span>of {integer.format(dayGoals.calories)} kcal</span>
@@ -844,11 +793,9 @@ export default async function Home({ searchParams }: PageProps) {
         </div>
         <p className={`nutrition-callout ${callout.tone}`}>{callout.text}</p>
         <WaterRow ounces={waterOunces} goalOz={goals.waterOz} date={date} />
-      </section>
+      </NutritionCard>
 
       <Timeline title={isToday ? "Today so far" : "The day"} events={events} />
-
-      <TrendTiles tiles={tiles} days={trendDates} />
 
       <div className="sync-bar">
         <SyncNote run={lastRun} />

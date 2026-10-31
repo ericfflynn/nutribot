@@ -4,6 +4,21 @@ Product and design decisions, newest first. One entry per decision: what was dec
 
 ## 2026-10-31
 
+### Today drops the "Last 7 days" tiles; Nutrition opens its week
+- **Decided:** the four trend tiles at the bottom of Today are gone. Sleep, Recovery and Strain already open their 7-day trends from their scores; tapping the Nutrition title now opens the week in one chart, calories as bars and protein as a line, each as a percent of its goal so they share one y-axis (the tooltip shows the real values), plus a few averages.
+- **Why:** the tiles repeated what the drill-downs show.
+
+### Training drops the due list under the body map
+- **Decided:** the "Due" chips and the points note under the body map are gone; Next up, right under it, says what to train.
+- **Why:** the list was always full and repeated Next up less concisely.
+
+### Caffeine and added sugar are part of nutrition
+- **Decided:** every meal item carries caffeine (mg) and added sugar (g), estimated by the chat with the macros and summed per meal (`macro_entries.caffeine_mg`, `added_sugar_g`). Goals add a caffeine limit (200 mg), a caffeine cutoff (2 PM) and an added sugar limit (36 g), set in the Goals panel. They're stored for tracking over time and analysis, not shown on Today (a first version with Nutrition card lines and meal chips was taken off the same day at the owner's request). The chat's meal card shows them, and the chat mentions late or heavy caffeine once; yesterday's late or heavy caffeine is a body-state explanation for poor sleep and low recovery.
+- **Why:** the owner wants caffeine and sugar tracked as nutrition, with caffeine's timing tied to sleep.
+- **Added, not total, sugar:** added sugar is what health guidance limits; fruit and plain dairy count as 0.
+- **No backfill:** meals saved before October 31, 2026 have neither (null), so their days show "–", never zero.
+- **Instead of:** tracking caffeine as a habit.
+
 ### Habits carry their own color bands
 - **Decided:** each habit can store where a missed day turns orange and red (`band_orange`, `band_red`, in the habit's measure), set through chat or the Habits tab. Yellow starts past the goal for limit habits and under it for build habits. Habits without bands keep the default steps. [journal-habits-plan.md](journal-habits-plan.md#goal-met-or-missed).
 - **Why:** the owner wanted gaming yellow for any time, orange to 90 minutes and red past it, and wants to tune habits like this without a code change.

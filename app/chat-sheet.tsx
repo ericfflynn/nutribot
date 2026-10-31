@@ -110,6 +110,8 @@ function MealCard({ draft, today, superseded, onSave, onDiscard }: { draft: Meal
         <span className="macro-protein">{estimate.protein_g}g protein</span>
         <span className="macro-carbs">{estimate.carbs_g}g carbs</span>
         <span className="macro-fat">{estimate.fat_g}g fat</span>
+        {estimate.caffeine_mg ? <span className="macro-extra">{estimate.caffeine_mg} mg caffeine</span> : null}
+        {estimate.added_sugar_g ? <span className="macro-extra">{estimate.added_sugar_g}g added sugar</span> : null}
       </div>
       <ul className="draft-items">
         {estimate.items.map((item, index) => (

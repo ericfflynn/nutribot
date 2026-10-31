@@ -201,6 +201,18 @@ export function GoalsForm({ goals, redirectDate }: { goals: Goals; redirectDate?
           <span>Water oz</span>
           <input name="waterOz" type="number" min="1" step="1" defaultValue={goals.waterOz} />
         </label>
+        <label>
+          <span>Caffeine mg</span>
+          <input name="caffeineLimitMg" type="number" min="0" step="1" defaultValue={goals.caffeineLimitMg} />
+        </label>
+        <label>
+          <span>No caffeine after</span>
+          <input name="caffeineCutoff" type="time" defaultValue={goals.caffeineCutoff} />
+        </label>
+        <label>
+          <span>Added sugar g</span>
+          <input name="addedSugarLimitG" type="number" min="0" step="1" defaultValue={goals.addedSugarLimitG} />
+        </label>
         <button className="button secondary" type="submit">
           Save goals
         </button>
