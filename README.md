@@ -1,144 +1,222 @@
 # NutriBot
 
-A personal health app that pairs a Fitbit with a Claude brain. Fitbit data flows in on its own: sleep, heart rate, HRV, steps and every workout. Logging is a chat: say what you ate or trained, and Claude turns it into structured records, matches workouts to the watch's sessions, and waits for you to tap Save.
+A personal health app built around one idea: **a single daily model of body and mind**, built from everything a person's watch records and everything they tell it.
 
-**Live:** https://nutribot-dusky.vercel.app · **Roadmap:** [docs/mvp-plan.md](docs/mvp-plan.md) · **Agent guidelines:** [AGENTS.md](AGENTS.md)
+A Fitbit supplies sleep, heart rate, HRV, temperature, breathing and every workout on its own. Meals, workouts, moods, habits and sick days are logged by chatting with Claude, which turns plain sentences into structured records and waits for a tap on Save. Code then combines all of it into the **body state**: one stored JSON picture per day, organized into domains, areas and signals. The Today screen, Training's suggestion, illness detection and the chat all read that same picture.
+
+**Live:** https://nutribot-dusky.vercel.app (private) · **Body state spec:** [docs/body-state.md](docs/body-state.md) · **Agent guidelines:** [AGENTS.md](AGENTS.md)
 
 <table>
   <tr>
-    <td align="center"><img src="docs/screenshots/today.png" width="240" alt="Today: sleep, recovery and strain scores, nutrition and water"><br><sub><b>Today</b>: scores from Fitbit, nutrition vs goals, water</sub></td>
-    <td align="center"><img src="docs/screenshots/today-timeline.png" width="240" alt="Today's timeline: sleep, recovery, meals with macros, a workout with strain"><br><sub><b>Timeline</b>: sleep, recovery, meals, workouts</sub></td>
-    <td align="center"><img src="docs/screenshots/chat.png" width="240" alt="Chat: one message describing dinner and a workout, and Claude's reply"><br><sub><b>Chat</b>: one message, a meal and a workout</sub></td>
+    <td align="center"><img src="docs/screenshots/today.png" width="240" alt="Today: the morning check-in with the day's call, sleep, recovery and strain scores, and nutrition"><br><sub><b>Today</b>: the morning brief and call, scores, nutrition</sub></td>
+    <td align="center"><img src="docs/screenshots/today-sick.png" width="240" alt="A sick day: red recovery, high resting heart rate and the sick line under the scores"><br><sub><b>A sick day</b>: red recovery, the illness line</sub></td>
+    <td align="center"><img src="docs/screenshots/today-recovery.png" width="240" alt="Recovery opened: 7 days of recovery, resting HR and HRV against their usual"><br><sub><b>Recovery</b>: 7 days, each vital against its usual</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/screenshots/chat-cards.png" width="240" alt="Draft cards from an evening check-in: a journal entry with mood, and the day's habits"><br><sub><b>Check-in</b>: a journal entry and habits, saved on tap</sub></td>
-    <td align="center"><img src="docs/screenshots/training.png" width="240" alt="Training: next strength day, activity mix by kind, unlabeled workouts"><br><sub><b>Training</b>: what to train next, the activity mix</sub></td>
-    <td align="center"><img src="docs/screenshots/training-coverage.png" width="240" alt="Strength coverage by muscle group with Legs expanded into muscles, and recent workouts"><br><sub><b>Coverage</b>: groups open into muscles; duplicates combined</sub></td>
+    <td align="center"><img src="docs/screenshots/chat.png" width="240" alt="Chat explaining a bad recovery week: a night of drinks, then a cold the watch saw coming"><br><sub><b>Chat</b>: answers from the stored body states</sub></td>
+    <td align="center"><img src="docs/screenshots/chat-cards.png" width="240" alt="A meal draft card with macros, caffeine and added sugar, waiting for Save"><br><sub><b>Logging</b>: a meal draft, saved on tap</sub></td>
+    <td align="center"><img src="docs/screenshots/today-timeline.png" width="240" alt="The day's timeline: sleep, recovery, meals with macros, and a workout with strain"><br><sub><b>The day</b>: watch data and logs on one timeline</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="docs/screenshots/habits.png" width="240" alt="Habits: check-in card and a 14-day grid colored by goal met or missed"><br><sub><b>Habits</b>: 14 days colored by goal met or missed</sub></td>
-    <td align="center"><img src="docs/screenshots/journal.png" width="240" alt="Journal history filtered by the work tag, with mood and stress compared"><br><sub><b>Journal</b>: tags by category; mood and stress by tag</sub></td>
-    <td align="center"><img src="docs/screenshots/reminders.png" width="240" alt="Tracked habits with edit buttons, and configurable reminders"><br><sub><b>Reminders</b>: editable habits and reminders</sub></td>
+    <td align="center"><img src="docs/screenshots/training.png" width="240" alt="Training: front and back body map shaded by soreness"><br><sub><b>Training</b>: soreness per muscle on a body map</sub></td>
+    <td align="center"><img src="docs/screenshots/training-next.png" width="240" alt="Next up: fresh and out muscles, a suggested leg day with intensities, and the weekly split"><br><sub><b>Next up</b>: what's fresh, what's out, the suggested day</sub></td>
+    <td align="center"><img src="docs/screenshots/habits.png" width="240" alt="Habits: a 14-day grid colored by each habit's own bands, and the journal's tags"><br><sub><b>Habits and journal</b>: per-habit color bands, tags</sub></td>
   </tr>
 </table>
 
-<sub>Screenshots show a fictional demo user ([docs/demo.md](docs/demo.md)).</sub>
+<sub>Screenshots show a fictional demo user with six weeks of generated data, including a cold and some weekend drinks ([docs/demo.md](docs/demo.md)).</sub>
 
-## What it does
+## The body state
 
-- **Today:** any day at a glance. Sleep, Recovery and Strain scores computed from Fitbit data, calories and macros against goals (the calorie target grows by what the day's workouts burned beyond resting), water, and a timeline of the day; tapping a score or Nutrition opens its 7-day trends. Caffeine and added sugar are stored with every meal for analysis.
-- **Chat:** "2 eggs and toast for breakfast", "chest and tris, hard", "Tuesday was back and bis, brutal". Claude answers with review cards. Meals come with item-level macro estimates. Workouts come with muscle groups and an effort score (RPE), already linked to the Fitbit workout they describe. Nothing is saved until you tap Save. Correct anything by just saying so ("actually 3 eggs").
-- **Training:** the last 14 days by muscle group, picked group first, then specific muscles (Back → Lats, Upper Back, Traps, Lower Back). It shows which groups haven't been trained in a week and suggests the next session, lists Fitbit workouts that still need a label (tap **Label** and finish the sentence in chat), and has a coverage grid shaded by effort and recent workouts with strain, filterable by type (strength, run, pilates, yoga…). Duplicate watch recordings of one workout are folded into one ([docs/workout-dedupe.md](docs/workout-dedupe.md)), with Merge and Separate for edge cases.
-- **Habits and journal:** a 14-day habit grid colored by goal met or missed, with habits and past entries editable in place; journal history filterable by tag, with mood and optional stress shown with labels. Check-ins happen in chat, one short question at a time.
-- **Reminders:** iPhone push reminders you configure (check-in, journal, habits, one habit, or a custom message), at any hour and on chosen days. They skip anything already logged, and you can snooze or dismiss them.
+Most health apps show each source on its own screen: a sleep chart here, a workout log there, a mood graph somewhere else. Nothing ties them together, so they can disagree. On October 30, 2026, NutriBot's workout planner suggested a hard pull day while the owner was sick and the watch showed it. The body state was built to fix that: **one model, every reader**. If two screens disagree, one of them is a bug.
 
-## How it works
+### Shape
+
+One JSON object per user per day, built by a pure function, `buildBodyState(sources, date)`, and unit-tested.
+
+```
+body state
+├── physical                 domain: status + headline
+│   ├── sleep                area: status + headline + signals
+│   ├── recovery
+│   ├── vitals               resting HR, HRV, sleep temperature, breathing, SpO2, each against a personal baseline
+│   ├── illness              well → early signs → sick → easing back
+│   ├── load                 strain, hard-day streaks, days since rest
+│   ├── training             which day types are due
+│   └── fuel                 calories, protein, water, caffeine, added sugar
+├── mental
+│   └── mood                 mood, stress and energy from the journal
+├── lifestyle
+│   ├── habits               goals met or missed, streaks
+│   ├── career               work stress and work tags
+│   └── relationships        family, partner, friends
+└── explanations[]           what else could explain today's numbers
+```
+
+Every domain and area has the same head: a `status` (`good`, `ok`, `watch`, `low` or `unknown`) and a one-line `headline` that names its evidence. An area's status comes from a simple rule a person can check in their head, such as "watch when resting HR is 2+ above usual". A domain takes its worst known area. So a day reads "Physical: low · Mental: ok · Lifestyle: watch", and any reader can drill down to the signal that set it.
+
+Here is the day before demo's cold, trimmed:
+
+```json
+{
+  "physical": {
+    "status": "low",
+    "headline": "20, red, not green 12 days running, after 2 hard days in a row",
+    "recovery": { "status": "low", "score": 20, "band": "red", "vsPrior7": -23 },
+    "vitals": {
+      "status": "low",
+      "headline": "Resting HR 62, usually 56 · HRV 34 ms, usually 49",
+      "restingHr": { "value": 62, "usual": 55.9, "delta": 6.1, "z": 3.8, "streak": 1 },
+      "sleepTemp": { "value": 0.79, "usual": 0, "delta": 0.7, "z": 3.7, "streak": 1 },
+      "breathing": { "value": 15.8, "usual": 14.6, "delta": 1.2, "z": 4, "streak": 1 }
+    },
+    "illness": {
+      "status": "watch",
+      "phase": "early_signs",
+      "signal": { "level": "likely", "points": 6 },
+      "headline": "Early signs: Resting HR 62, usually 56 · Sleep temperature +1.4°F (2 hard days in a row may explain some of it)"
+    }
+  },
+  "mental": { "status": "ok", "headline": "Mood 3 (neutral / okay)" },
+  "lifestyle": { "status": "watch", "headline": "Late screens: missed 3 of the last 5 days" },
+  "explanations": [
+    { "kind": "load", "detail": "2 hard days in a row", "affects": ["resting_hr", "hrv", "recovery"], "source": "physical.load" }
+  ]
+}
+```
+
+The next morning demo logged a fever. The watch had flagged it a day early.
+
+### Principles
+
+- **Code builds facts; Claude judges; the owner's word wins.** Numbers, baselines, streaks and statuses are computed deterministically. Claude reads them and talks about them, but never invents them. What the owner reports (sick, sore, "it was just drinks") overrides what the data suggests.
+- **Every judgment shows its evidence.** A headline points at fields ("resting HR 62, usually 56"), never at a vibe.
+- **Missing is null.** No guessed values and no zeros for "no data". Charts show missing days as gaps.
+- **Personal baselines, not population norms.** Each vital is compared with the same person's days −31 to −4. Logged sick days are left out of that window, so an illness can't hide itself.
+- **Explanations before alarms.** A raised resting HR after three drinks, a late coffee, a hard training block or a stressful week is not an illness. The state collects those explanations first, and the illness and recovery headlines name them.
+
+### Stored as versions
+
+Each day's state is saved in Postgres as JSONB, in `body_states`. JSONB keeps the model free to grow while it's young, and Postgres can still query inside it.
+
+```sql
+body_states (user_name, state_date, version, trigger, schema_version, state jsonb, state_hash, built_at)
+body_state_current   -- view: each day's newest version
+```
+
+- **Days aren't final when they end.** Meals get logged late and the watch syncs late. A save rebuilds that day and every day after it, since streaks, baselines and sick-day episodes reach forward. Each health sync rebuilds the last three days.
+- **Versions, not overwrites.** The newest version is the day's truth. Older ones remain a record of what the app believed at the time, which is how early warnings can later be checked against what actually happened.
+- **No empty versions.** A rebuild is saved only when `state_hash` changes, so the table grows by real changes rather than by rebuilds.
+- **Schema versions with upgrade-on-read.** Each row carries the shape it was written in, and readers upgrade old rows in code. Nothing in the database is ever migrated.
+- **Full rebuilds** after a rule change take seconds: `npm run body:states -- --apply` rebuilds every day since June.
+
+The chat reads it through two tools: `get_body_state` for one day, and `list_body_states` for a range ("why was my recovery bad two weeks ago?").
+
+### What's next for it
+
+The spec ([docs/body-state.md](docs/body-state.md#build-order)) has six steps. Steps 1 and 2, the model and its storage, are built:
+
+3. **Causes and effects:** measure from the owner's own history how much drinks, late caffeine or work stress actually move sleep, resting HR and HRV.
+4. **Guardrails and the call:** code sets what's allowed today (rest, the most intensity, which muscles are out), and Claude makes the day's call within those limits.
+5. **Morning push:** the brief and call arrive as a notification that opens the chat.
+6. **Tuning:** check early warnings against the sick days that were logged, and adjust the thresholds.
+
+## How the data flows
 
 ```mermaid
 flowchart LR
-  subgraph Wrist
-    F[Fitbit]
+  subgraph Sources
+    F[Fitbit via Google Health API]
+    C[Chat with Claude]
+    T[Taps: water, soreness, habits]
   end
-  subgraph Google
-    GH[Google Health API]
+  subgraph Raw["Stored as received"]
+    HR[(health_records<br/>raw JSONB)]
+    LOGS[(meals · workouts · journal<br/>habits · sick days · soreness)]
   end
-  subgraph Vercel["Vercel (Next.js)"]
-    CRON[Cron: 6 syncs a day]
-    API["/api/brain"]
-    SDK[Agent SDK → Claude Code binary]
-    TOOLS["Tools: draft_meal · draft_workout · list_fitbit_workouts"]
-    MATCH[Workout matcher]
-    UI[Today · Training · Chat]
+  subgraph Derived["Derived in SQL and code"]
+    V[(health_daily · health_workouts<br/>views)]
+    S[scores · illness signal<br/>workout dedupe · soreness]
   end
-  subgraph Supabase["Supabase Postgres"]
-    RAW[(health_records JSONB)]
-    VIEWS[(health_daily · health_workouts views)]
-    LOGS[(macro_entries · workout_sessions · chat_messages)]
+  BS[(body_states<br/>one versioned JSON per day)]
+  subgraph Readers
+    TODAY[Today]
+    TRAIN[Training]
+    CHAT[Chat]
+    PUSH[Pushes]
   end
-  CL[Claude Sonnet]
 
-  F --> GH --> CRON --> RAW --> VIEWS
-  VIEWS --> UI
-  LOGS --> UI
-  UI -- message --> API --> SDK <--> CL
-  SDK --> TOOLS --> MATCH --> VIEWS
-  TOOLS -- drafts --> UI
-  UI -- Save --> LOGS
-  CRON -. links waiting workouts .-> LOGS
+  F -- 6 syncs a day --> HR --> V --> S
+  C -- drafts, saved on tap --> LOGS
+  T --> LOGS
+  LOGS --> S
+  S --> BS
+  BS --> TODAY & TRAIN & CHAT & PUSH
 ```
 
-### 1. Fitbit data → Postgres
+### 1. Watch data: raw in, views out
 
-The watch syncs to Fitbit, and Fitbit's data is available through the **Google Health API**. NutriBot holds a Google OAuth refresh token with three read-only scopes (activity and fitness, health metrics, sleep) and pulls data on a schedule.
+The watch's data comes through the **Google Health API**, read with a read-only OAuth token.
 
-- **What comes in:** daily totals (steps, distance, calories, active and zone minutes), daily metrics (resting heart rate, HRV, SpO2, breathing rate, VO2 max), each sleep session with its stages, and each workout with its type, times, average heart rate and minutes in each heart-rate zone. Fitbit only: Apple Health records and minute-level samples are never stored.
-- **How it's stored:** raw API payloads go into one JSONB table, `health_records`. Two SQL views, `health_daily` and `health_workouts`, unpack them into plain columns, so new fields need a view change, not a migration.
-- **When:** six Vercel Cron jobs a day. One full run replaces whole months in a single transaction, which also drops anything Fitbit deleted. Five light runs upsert the last three days. Every run is logged in `health_sync_runs`. A Refresh button on Today runs one on demand.
-- **Scores:** `lib/health/scores.ts` turns the views into Sleep (hours vs an 8-hour need), Recovery (today's HRV and resting heart rate against a 30-day baseline, plus sleep) and Strain (heart-rate zone minutes weighted by intensity, plus steps, per day and per workout). These are NutriBot's own estimates, not Whoop's formulas. The formulas are in [docs/scores.md](docs/scores.md).
+- **Raw payloads, one table.** Every daily total, metric, sleep session and workout lands in `health_records` exactly as the API returned it (JSONB, keyed by type and record). Two SQL views, `health_daily` and `health_workouts`, unpack the JSON into plain columns with local times. A new field is a view change, not a migration.
+- **Syncs.** Six Vercel Cron jobs a day: one full run replaces whole months in a single transaction, which also drops anything Fitbit deleted, and five light runs upsert the last three days. Opening the app runs a light sync too. Every run is logged in `health_sync_runs`.
+- **Duplicates folded at the data layer.** The watch sometimes records one workout twice. `health_workout_merges` records which recordings are the same workout, and `health_workouts` shows one row per workout ([docs/workout-dedupe.md](docs/workout-dedupe.md)).
+- **Scores.** `lib/health/scores.ts` computes Sleep (hours against an 8-hour need), Recovery (HRV and resting HR against a 30-day baseline, plus sleep) and Strain (heart-rate zone minutes and steps). These are NutriBot's own formulas, documented with their limitations in [docs/scores.md](docs/scores.md).
+- **Illness signal.** `lib/health/illness.ts` scores each morning on resting HR, sleep temperature, HRV and breathing against the personal baseline, and pushes once when illness is likely ([docs/illness.md](docs/illness.md)).
 
-### 2. The Claude brain
+### 2. Logged data: chat in, structured records out
 
-Chat runs **Claude through the [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk/overview)**, inside the same Vercel function that serves the app, signed in with the owner's Claude subscription.
+Chat runs **Claude through the [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk/overview)** inside the app's Vercel function. Claude Code's built-in tools are switched off (no files, no shell, no web), and Claude gets only NutriBot's own tools, served in-process and validated with Zod:
 
-1. The chat posts your message to `/api/brain`. The route loads the current conversation (last 10 messages) and any drafts still open on screen.
-2. The Agent SDK starts the Claude Code binary as a subprocess (it ships with the function, about 260 MB) with NutriBot's own system prompt. All of Claude Code's built-in tools are switched off: no files, no shell, no web. Claude gets exactly three tools, served by an in-process MCP server, so the tool code runs right there in the function:
-
-   | Tool | What it does |
-   | --- | --- |
-   | `draft_meal` | Builds a meal card: one row per food with calories, protein, carbs, fat and the portion it assumed, plus a meal type and a confidence. Totals are summed in code, not by the model. |
-   | `draft_workout` | Builds a workout card: muscle groups, RPE ("hard" ≈ 8), and the Fitbit workout it matches. |
-   | `list_fitbit_workouts` | Read-only: the watch's workouts in a date range, so Claude can pick out "the 6 PM lift on Tuesday". |
-
-3. Claude calls the tools as often as the message needs. One message can be two meals and a workout, or just a question, which gets a plain answer. Every tool input is validated with Zod; an invalid call returns the error to Claude, which fixes it and tries again.
-4. The reply and its drafts are stored in `chat_messages` and shown as cards. **Tools never write records.** Save writes the server's stored copy of the draft, never data sent from the browser, inside a transaction that also marks the draft saved so it can't be saved twice.
-5. Revisions keep the same draft: "actually 3 eggs" calls `draft_meal` again with `replaces: <id>`, and the card updates in place.
-
-A turn takes about 3–15 seconds on Sonnet. The full contract (draft shapes, the prompt rules, production setup) is in [docs/brain.md](docs/brain.md).
-
-### 3. Matching a chat to a Fitbit workout
-
-The watch records almost every workout, but it doesn't know what was trained. The chat supplies that, and the app has to work out which recorded session you mean. Some days have three or four, mostly auto-detected walks. Claude supplies the clues: the activity type, the day, and a time window if you gave one ("this morning"). **Plain code does the matching**, so it's deterministic and testable:
-
-1. **Candidates:** that day's Fitbit workouts of a fitting type that aren't already labeled. Strength fits WEIGHTLIFTING, WEIGHTS, CORE_TRAINING and AEROBIC_WORKOUT; sport fits TENNIS, GOLF and SPORT; and so on.
-2. **Time:** a time hint narrows the list to sessions overlapping that window. A same-day message with no hint picks the session that most recently ended ("just did chest" means the one that just finished).
-3. **Result:** one candidate is a match. Several is a best guess, and the card's **Change** button lists the others.
-4. **Not synced yet?** If today's workout hasn't arrived, the brain triggers a quick workout-only sync and tries again. If it's still missing, the workout is saved as *pending*, and every later sync links pending workouts that have exactly one candidate.
-5. **Backfill:** each draft carries its own date, so "Monday chest and tris hard, Wednesday legs" makes two drafts, each matched on its own day. The Training tab lists unlabeled sessions with a **Label** button that opens the chat with the session already filled in.
-
-Tested against the real Fitbit history (June–October 2026): after the type filter, 43 of 45 lifting days had exactly one candidate. Every sport, class and run day did too.
-
-### 4. Meal logging
-
-`draft_meal` estimates each food separately, states the portion it assumed, and sets a confidence. When confidence is low it asks the single most useful follow-up ("Which toppings did you get?"). It never pads the notes with "values may vary". Saved meals land in `macro_entries` with their meal type, appear in Today's timeline grouped by meal, and can be edited or deleted there.
-
-### Data model
-
-| Table | Holds |
+| Kind | Tools |
 | --- | --- |
-| `health_records` | Raw Fitbit payloads (JSONB), one row per daily total, metric, sleep session or workout |
-| `health_daily`, `health_workouts` | Views over `health_records` with plain columns and local times; `health_workouts` has one row per workout, duplicates folded |
-| `health_workout_records`, `health_workout_merges` | Every raw watch recording, and which ones are duplicates of which (auto or by hand) |
-| `macro_entries` | Saved meals: items, macro totals, confidence, meal type |
-| `workout_sessions` | Saved workouts: muscle groups, RPE, per-muscle intensity, link to a Fitbit workout (`linked`, `pending` or `untracked`) |
-| `journal_entries`, `habits`, `habit_logs` | Journal entries (mood, optional stress, tags) and tracked habits with their logs |
-| `reminders`, `reminder_sends`, `push_subscriptions` | Configured reminders, what was sent each day, and the phones that get them |
-| `chat_conversations`, `chat_messages` | Conversations (New chat or a new day starts one), each message, and the drafts shown with it |
-| `user_macro_goals`, `water_entries` | Goals and water |
+| **Drafts** (cards the owner saves) | `draft_meal` (items with macros, caffeine and added sugar), `draft_workout` (muscles, intensity, the matching watch workout), `draft_journal`, `draft_habits`, `draft_habit`, `draft_illness`, `draft_ignore_workout`, `draft_feedback` |
+| **Reads** | `get_body_state`, `list_body_states`, `get_health`, `get_goals`, `list_meals`, `list_workouts`, `list_journal`, `list_habits`, `list_habit_logs`, `list_illness`, `list_feedback` |
 
-Everything is in [`supabase/schema.sql`](supabase/schema.sql), written to be safe to rerun.
+- **Tools never write.** A draft is shown as a card, and Save writes the server's stored copy inside a transaction that also marks it saved, so it can't be saved twice.
+- **Talking comes first.** Not every message is a log. "Log that" and "just chatting" override the chat's guess. Feelings get a one-tap "Save to journal" offer instead of a form, and questions get answers from the data.
+- **Totals in code.** Claude estimates each food; code sums the meal.
+- **Workout matching is plain code.** Claude supplies clues (type, day, a time window); deterministic code picks the watch's recording from that day's candidates, or saves the workout as *pending* until the recording syncs.
 
-## Roadmap
+The full contract is in [docs/brain.md](docs/brain.md).
 
-- **Habit and journal trends vs. health:** compare habits, mood and stress tags against sleep and recovery once there are a few weeks of data.
+### 3. Training
 
-Details and open questions: [docs/mvp-plan.md](docs/mvp-plan.md).
+Training reads logged workouts and the owner's soreness taps ([docs/training-plan.md](docs/training-plan.md)):
+
+- **Soreness per muscle**, 0 to 3. Workouts set it (light 1, medium 2, hard 3) and it fades 0.75 a day. A tap on the body map overrides it in either direction.
+- **Volume:** 4 points per muscle per rolling week. A hard session is worth 3 points, medium 2 and light 1.
+- **Next up:** which muscles are fresh and which are out, then the day type (push, pull, legs, arms, shoulders) whose fresh muscles are most overdue. It applies rules stored as data, such as "no back the day after forearms" and "at most 2 hard days in a row", and takes illness from the body state.
+
+### 4. Habits and journal
+
+Habits are a goal plus a direction (build or limit) with optional cutoffs, weekdays and **per-habit color bands** (for example, alcohol is orange over 2 and red over 3). They're all set from the chat or the Habits tab, with no code change. Journal entries carry mood, optional stress and tags in categories such as Work, Relationships and Health, which feed the mental and lifestyle domains.
+
+## Data model
+
+| Layer | Table or view | Holds |
+| --- | --- | --- |
+| Raw | `health_records` | Watch payloads as received (JSONB): daily totals, metrics, sleep sessions, workouts |
+| Raw | `health_sync_runs` | Every sync: scope, status, records, failed types |
+| Derived | `health_daily`, `health_workouts`, `health_workout_records` | Views with plain columns and local times; workouts with duplicates folded |
+| Derived | `health_workout_merges`, `workout_ignores` | Which recordings are one workout; recordings to leave out |
+| Logged | `macro_entries` | Meals: items, macros, caffeine, added sugar, meal type, time |
+| Logged | `workout_sessions` | Workouts: muscles, per-muscle intensity, RPE, link to a watch recording |
+| Logged | `journal_entries`, `habits`, `habit_logs` | Mood, stress, tags; habits with goals and bands; daily amounts |
+| Logged | `illness_days`, `body_log` | Sick days with severity and symptoms; soreness per muscle |
+| Logged | `water_entries`, `user_macro_goals` | Water; calorie, macro, water, caffeine and sugar goals |
+| Model | `body_states`, `body_state_current` | The body state, one versioned JSON per day |
+| App | `chat_conversations`, `chat_messages`, `app_feedback` | Chat threads with their drafts; bugs and ideas told to the chat |
+| App | `reminders`, `reminder_sends`, `push_subscriptions` | Push reminders and the phones that get them |
+
+Everything is in [`supabase/schema.sql`](supabase/schema.sql), written to be safe to rerun. Every table is scoped by `user_name`.
 
 ## Stack
 
 - Next.js App Router, React, TypeScript, Server Actions; hand-rolled SVG charts
-- Claude Agent SDK (Claude Sonnet), with in-process MCP tools validated by Zod
+- Claude Agent SDK (Claude Sonnet) with in-process MCP tools validated by Zod
 - Supabase Postgres, accessed server-side with `pg`
-- Google Health API for Fitbit data
+- Google Health API for Fitbit data; Web Push for reminders
 - Vercel hosting and Vercel Cron
 
 ## Developer setup
@@ -165,6 +243,10 @@ GOOGLE_CLIENT_SECRET=...
 GOOGLE_REFRESH_TOKEN=...   # written by npm run health:auth
 GOOGLE_HEALTH_USER=Eric
 CRON_SECRET=...            # any long random string; Vercel Cron sends it
+
+# Push reminders
+VAPID_PUBLIC_KEY=...
+VAPID_PRIVATE_KEY=...
 ```
 
 Create or update tables (safe to rerun):
@@ -173,12 +255,24 @@ Create or update tables (safe to rerun):
 psql "$DATABASE_URL" -f supabase/schema.sql
 ```
 
-Run and build:
+Run, test and build:
 
 ```bash
 npm run dev
+npm test           # unit tests: body state, illness, training, habits, workout dedupe, ...
 npm run build
 ```
+
+Other scripts:
+
+| Command | Does |
+| --- | --- |
+| `npm run brain -- "chest and tris, hard"` | One chat turn in the terminal; writes nothing |
+| `npm run health:sync` | Sync now (`--recent` for the last 3 days) |
+| `npm run body:states` | Rebuild stored body states (dry run; `-- --apply` writes) |
+| `npm run demo:seed -- --main` | Fictional demo user for screenshots ([docs/demo.md](docs/demo.md)) |
+| `npm run db:backup` | Dump the database to `backups/` |
+| `npm run feedback` | Open bugs and ideas told to the chat |
 
 ### Claude token
 
@@ -186,10 +280,9 @@ npm run build
 claude setup-token                          # prints a token that lasts about a year
 # put it in .env.local as CLAUDE_CODE_OAUTH_TOKEN, and in Vercel:
 vercel env add CLAUDE_CODE_OAUTH_TOKEN production,preview --sensitive
-npm run brain -- "chest and tris, hard"     # one turn in the terminal; writes nothing
 ```
 
-In Vercel, `VERCEL_SUPPORT_LARGE_FUNCTIONS=1` is also set, because the function that runs Claude is over the standard 250 MB limit.
+In Vercel, `VERCEL_SUPPORT_LARGE_FUNCTIONS=1` is also set, because the function that runs Claude ships the Claude Code binary and is over the standard 250 MB limit.
 
 ### Authorizing Google
 
@@ -197,70 +290,47 @@ In Vercel, `VERCEL_SUPPORT_LARGE_FUNCTIONS=1` is also set, because the function 
 npm run health:auth
 ```
 
-Opens Google's consent page, then asks for the redirected URL and saves `GOOGLE_REFRESH_TOKEN` to `.env.local`. The OAuth app is published but unverified, so Google shows an "unverified app" warning: choose **Advanced → Go to NutriBot**. After re-authorizing, copy the token to Vercel:
+This opens Google's consent page, asks for the redirected URL, and saves `GOOGLE_REFRESH_TOKEN` to `.env.local`. The OAuth app is published but unverified, so Google warns about an unverified app; choose **Advanced → Go to NutriBot**. Then copy the token to Vercel with `vercel env add GOOGLE_REFRESH_TOKEN production --sensitive`.
 
-```bash
-vercel env add GOOGLE_REFRESH_TOKEN production --sensitive
-```
+### Scheduled jobs
 
-### Syncing
-
-- **Scheduled:** six Vercel Cron jobs in `vercel.json` call `/api/cron/health-sync`, each once a day (the Hobby plan limit), ±59 minutes:
-  - 13:00 UTC (9 AM Eastern in summer, 8 AM in winter): **full** run, replacing whole months.
-  - 16:00, 19:00, 22:00, 01:00, 04:00 UTC: **recent** runs (`?mode=recent`), upserting the last 3 days.
-  - The route requires `Authorization: Bearer $CRON_SECRET`.
-- **Manual:** `npm run health:sync`. Options: `--recent` for a light run, `--types daily-steps sleep`, `--start 2026-06-01` to replay from a date.
-
-Every run is logged in `health_sync_runs`:
-
-```sql
-select id, trigger, scope, status, records, failed_types, error,
-       started_at at time zone 'America/New_York' as started_et
-from health_sync_runs
-order by id desc
-limit 5;
-```
-
-`failed_types` lists data types that failed while the rest continued. An `invalid_grant` error means the Google token needs re-authorizing.
+- **Health sync:** six Vercel Cron jobs call `/api/cron/health-sync`: a full run at 13:00 UTC and `?mode=recent` runs at 16:00, 19:00, 22:00, 01:00 and 04:00 UTC. The Hobby plan allows each job once a day. An `invalid_grant` error in `health_sync_runs` means the Google token needs re-authorizing.
+- **Reminders:** 24 hourly jobs call `/api/cron/reminders`, and each sends the reminders due in that local hour.
+- Both routes require `Authorization: Bearer $CRON_SECRET`.
 
 ## Project map
 
 ```text
 app/
-  page.tsx                       Today: day strip, scores, nutrition, goals, water, timeline, trends
-  training/page.tsx              Training: missing groups, unlabeled workouts, coverage, sessions, recent workouts
-  training-ui.tsx                Label button and workout editor
-  chat/page.tsx                  Chat tab
-  chat-sheet.tsx                 chat thread, draft cards, floating Chat button and sheet
-  api/brain/route.ts             chat turns (POST) and the current conversation (GET)
-  api/cron/health-sync/route.ts  health sync endpoint (Vercel Cron)
-  actions.ts                     server actions: save/discard drafts, meal and workout edits, goals, water
-  entry-card.tsx                 saved meal edit and delete
-  charts.tsx                     inline SVG charts
-  day-strip.tsx                  scrolling day picker
-  refresh-button.tsx             manual Fitbit sync
-  shared-ui.tsx                  iOS shell (title, tab bar), login, goals form
-  privacy/page.tsx               public privacy policy (linked from Google OAuth)
-  profile/page.tsx               redirects old Log links to /chat
+  page.tsx                Today: day strip, check-in, scores, nutrition, timeline, goals
+  today-checkin.tsx       morning brief and evening check-in card (swipe to dismiss)
+  score-summary.tsx       Sleep / Recovery / Strain with their 7-day drill-downs
+  nutrition-toggle.tsx    Nutrition card that opens its week
+  training/page.tsx       Training: body map, Next up, week grid, recent workouts
+  body-map.tsx            front and back muscle map shaded by soreness
+  habits/page.tsx         Habits: habit grid, check-in, journal, reminders
+  chat/page.tsx           Chat tab
+  chat-sheet.tsx          chat thread, draft cards, floating Chat button
+  charts.tsx              hand-rolled SVG charts
+  actions.ts              server actions: save drafts, edits, goals, water, soreness
+  api/brain/route.ts      chat turns
+  api/cron/               health sync and reminders
 
 lib/
-  brain.ts                       chat brain: system prompt and tools (docs/brain.md)
-  claude-brain.ts                runs Claude through the Agent SDK
-  chat.ts                        conversations, messages, draft saving
-  workouts.ts                    logged workouts and Fitbit matching
-  macros.ts                      meal macro schema and totals
-  health/google.ts               Google Health API client
-  health/sync.ts                 full and recent sync, run logging, workout auto-linking
-  health/queries.ts              reads from health_daily / health_workouts
-  health/scores.ts               sleep, recovery and strain scores
-  supabase.ts                    database access and summaries
-  auth.ts, dates.ts, goals.ts, macro-adjust.ts
+  body-state/             the body state: types, build (pure), load, store (versions), brief
+  health/                 Google Health client, sync, views, scores, illness signal, dedupe
+  brain.ts                chat brain: system prompt and tools (docs/brain.md)
+  brain-*.ts              tool groups: body, health, check-in (journal and habits)
+  claude-brain.ts         runs Claude through the Agent SDK
+  workouts.ts             workouts, soreness, volume, Next up, Fitbit matching
+  habits.ts, journal.ts   habits with bands; journal entries and tags
+  illness.ts              sick days and their chat tools
+  nutrients.ts            caffeine and added sugar per day
+  auth.ts, dates.ts, goals.ts, supabase.ts
 
-scripts/
-  brain.ts                       npm run brain: one chat turn in the terminal, writes nothing
-  health-auth.ts                 npm run health:auth
-  health-sync.ts                 npm run health:sync
-
-supabase/schema.sql              all tables and views (safe to rerun)
-docs/                            brain.md, training-plan.md, workout-dedupe.md, journal-habits-plan.md, demo.md, scores.md, mvp-plan.md, screenshots/
+scripts/                  sync, auth, brain, body-states, demo-seed, backup, feedback
+supabase/schema.sql       all tables and views (safe to rerun)
+tests/                    unit tests (Node test runner + tsx)
+docs/                     body-state.md, brain.md, scores.md, illness.md, training-plan.md,
+                          journal-habits-plan.md, workout-dedupe.md, decisions.md, demo.md
 ```

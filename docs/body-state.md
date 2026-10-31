@@ -1,6 +1,6 @@
 # Body state
 
-Status: step 1 of the build order built October 30, 2026 (`lib/body-state/`: built on demand, read by the chat through `get_body_state`; nothing stored yet). The rest is spec. This is the core model of NutriBot: one daily picture of the owner's body and mind, in domains (physical, mental, lifestyle), areas and signals, that every part of the app reads, from the Home card to Training's Next up, the chat and the morning check-in.
+Status: steps 1 and 2 of the build order built October 30, 2026 (`lib/body-state/`: built from every source, stored daily as versions in `body_states`, read by Today, Training and the chat through `get_body_state` and `list_body_states`). Steps 3 to 6 are spec. This is the core model of NutriBot: one daily picture of the owner's body and mind, in domains (physical, mental, lifestyle), areas and signals, that every part of the app reads, from the Home card to Training's Next up, the chat and the morning check-in.
 
 ## Why
 
