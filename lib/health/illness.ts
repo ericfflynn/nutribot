@@ -4,6 +4,7 @@
 // compared with the owner's own baseline. Rules and calibration:
 // docs/illness.md (keep it in sync).
 import type { HealthDay } from "./queries";
+import { fahrenheitDelta } from "./units";
 
 // The baseline is days -31 to -4: the 3 days before are left out so a signal
 // that's been building doesn't hide itself. Logged sick days are left out too.
@@ -75,7 +76,7 @@ function dayPoints(byDay: Map<string, HealthDay>, date: string, sick: ReadonlySe
   const temp = day.sleepTempVsBaselineC;
   if (temp != null && temp >= 0.4) {
     points += temp >= 1 ? 2 : 1;
-    reasons.push(`Sleep temperature +${temp.toFixed(1)}°C`);
+    reasons.push(`Sleep temperature ${fahrenheitDelta(temp)}`);
   }
 
   const hrvs = base.map((item) => item.hrvMs).filter((value): value is number => value != null);

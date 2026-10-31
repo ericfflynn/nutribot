@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useRef } from "react";
-import type { Status } from "@/lib/body-state/types";
 
 export type StripDay = {
   date: string;
@@ -11,12 +10,22 @@ export type StripDay = {
   dayOfMonth: number;
   label: string;
   selected: boolean;
-  // The day's physical status from the body state, which shades it.
-  status: Status;
+  // 0-1 for each dot; null when that day has no data.
+  sleep: number | null;
+  recovery: number | null;
+  recoveryColor: string;
+  strain: number | null;
 };
 
-// Horizontally scrolling row of days, newest on the right, each shaded by its
-// physical status (docs/body-state.md). The selected day is
+function Dot({ value, color }: { value: number | null; color: string }) {
+  return value == null ? (
+    <span className="day-dot missing" />
+  ) : (
+    <span className="day-dot" style={{ background: color, opacity: 0.25 + 0.75 * Math.min(1, value) }} />
+  );
+}
+
+// Horizontally scrolling row of days, newest on the right. The selected day is
 // scrolled into view on load; the leading arrow jumps further back.
 export function DayStrip({ days, earlierHref }: { days: StripDay[]; earlierHref: string }) {
   const scroller = useRef<HTMLElement>(null);
@@ -40,12 +49,17 @@ export function DayStrip({ days, earlierHref }: { days: StripDay[]; earlierHref:
         <Link
           key={day.date}
           href={day.href}
-          className={`status-${day.status}${day.selected ? " selected" : ""}`}
+          className={day.selected ? "selected" : ""}
           aria-current={day.selected ? "date" : undefined}
           aria-label={day.label}
         >
           <span className="day-weekday">{day.weekday}</span>
           <strong>{day.dayOfMonth}</strong>
+          <span className="day-dots" aria-hidden="true">
+            <Dot value={day.sleep} color="var(--sleep)" />
+            <Dot value={day.recovery} color={day.recoveryColor} />
+            <Dot value={day.strain} color="var(--strain)" />
+          </span>
         </Link>
       ))}
     </nav>
