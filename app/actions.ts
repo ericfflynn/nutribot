@@ -7,7 +7,7 @@ import { clearSession, createSession, getSessionUser } from "@/lib/auth";
 import { addDays, isValidLocalDate, todayLocalDate } from "@/lib/dates";
 import { refreshBodyStates, refreshRecentBodyStates } from "@/lib/body-state/store";
 import { parseGoals } from "@/lib/goals";
-import { parseMacroObject, type ParsedMacros } from "@/lib/macros";
+import { parseMacroObject } from "@/lib/macros";
 import { HEALTH_DATA_TYPES } from "@/lib/health/google";
 import { runHealthSync } from "@/lib/health/sync";
 import type { Draft } from "@/lib/brain";
@@ -66,7 +66,8 @@ import {
   getPool,
   saveMacroEntry,
   saveUserGoals,
-  updateMacroEntry
+  updateMacroEntry,
+  type StoredMacros
 } from "@/lib/supabase";
 
 // Rebuilds the stored body state from `from` through today once the response
@@ -138,7 +139,7 @@ export async function updateMacroEntryAction(formData: FormData) {
     redirect(todayPath(redirectDate, "Time eaten must be a valid time."));
   }
 
-  let parsed: ParsedMacros;
+  let parsed: StoredMacros;
   try {
     parsed = parseMacroObject({
       calories: formData.get("calories"),
@@ -162,8 +163,22 @@ export async function updateMacroEntryAction(formData: FormData) {
       current &&
       (["calories", "protein_g", "carbs_g", "fat_g"] as const).every((key) => Math.round(current[key]) === Math.round(parsed[key]))
     ) {
-      parsed = { ...parsed, items: current.items.map((item) => ({ ...item, assumption: item.assumption ?? "" })) };
+      parsed = {
+        ...parsed,
+        items: current.items.map((item) => ({
+          ...item,
+          caffeine_mg: item.caffeine_mg ?? 0,
+          added_sugar_g: item.added_sugar_g ?? 0,
+          assumption: item.assumption ?? ""
+        }))
+      };
     }
+    // The form has no caffeine or sugar fields: keep the meal's (null on older meals).
+    parsed = {
+      ...parsed,
+      caffeine_mg: current?.caffeine_mg ?? null,
+      added_sugar_g: current?.added_sugar_g ?? null
+    };
     await updateMacroEntry({
       id,
       userName: user.name,
@@ -215,7 +230,10 @@ export async function saveGoalsAction(formData: FormData) {
     proteinPct: Number(formData.get("proteinPct")),
     carbsPct: Number(formData.get("carbsPct")),
     fatPct: Number(formData.get("fatPct")),
-    waterOz: Number(formData.get("waterOz"))
+    waterOz: Number(formData.get("waterOz")),
+    caffeineLimitMg: Number(formData.get("caffeineLimitMg")),
+    caffeineCutoff: String(formData.get("caffeineCutoff") ?? ""),
+    addedSugarLimitG: Number(formData.get("addedSugarLimitG"))
   });
 
   await saveUserGoals(user.name, goals);

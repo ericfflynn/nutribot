@@ -1970,6 +1970,24 @@ button {
   background: var(--fat);
 }
 
+.nutrition-limits {
+  display: grid;
+  gap: 6px;
+}
+
+.nutrition-limits small {
+  font-size: 13px;
+}
+
+.limit-bad,
+.macro-bar-label .limit-bad {
+  color: var(--bad);
+}
+
+.macro-extra {
+  color: var(--muted);
+}
+
 .nutrition-callout {
   margin: 0;
   font-size: 14px;
@@ -2177,76 +2195,6 @@ button {
 
 .timeline-value span {
   font-size: 12px;
-}
-
-/* Trend tiles */
-.trend-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.trend-tile {
-  gap: 2px;
-  padding: 14px;
-}
-
-.trend-label {
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.trend-tile strong {
-  font-size: 24px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-.sparkline {
-  display: block;
-  width: 100%;
-  height: auto;
-  margin: 4px 0;
-}
-
-/* Sideways drags scrub the days; vertical drags still scroll the page. */
-.sparkline-frame {
-  position: relative;
-  touch-action: pan-y;
-  cursor: crosshair;
-  -webkit-user-select: none;
-  user-select: none;
-  -webkit-touch-callout: none;
-}
-
-.sparkline-guide {
-  stroke: var(--line);
-  stroke-width: 1;
-}
-
-.sparkline-tooltip {
-  position: absolute;
-  bottom: calc(100% + 2px);
-  transform: translateX(-50%);
-  display: grid;
-  gap: 1px;
-  border-radius: 8px;
-  background: var(--surface);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
-  padding: 5px 8px;
-  white-space: nowrap;
-  pointer-events: none;
-  z-index: 2;
-}
-
-.sparkline-tooltip span {
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.trend-tile .sparkline-tooltip strong {
-  font-size: 14px;
-  font-weight: 600;
 }
 
 .app-content > .sync-bar {
@@ -2570,7 +2518,8 @@ button.fab {
 
 .draft-macros {
   display: flex;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 4px 12px;
   font-size: 14px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
@@ -2831,6 +2780,15 @@ button.fab {
   width: 8px;
   height: 8px;
   border-radius: 2px;
+}
+
+/* Caffeine and added sugar: no color of their own (no bar to match). */
+.macro-chip.extra {
+  color: var(--muted);
+}
+
+.macro-chip.extra::before {
+  display: none;
 }
 
 /* An action's error on Today, e.g. a failed meal edit */
@@ -3327,56 +3285,6 @@ button.fab {
 .training-week {
   display: grid;
   gap: 12px;
-}
-
-.training-week-bucket {
-  display: grid;
-  gap: 6px;
-}
-
-.training-week-label {
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.training-week-label small {
-  color: var(--muted);
-  font-weight: 500;
-}
-
-.training-week-bucket.due .training-week-label {
-  color: var(--strain-ink);
-}
-
-.training-week-bucket.covered .training-week-label {
-  color: var(--good);
-}
-
-.training-week-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.training-week-chips span {
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: var(--bg);
-  font-size: 13px;
-}
-
-.training-week-chips small {
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.training-week-bucket.due .training-week-chips span {
-  background: #fdebe3;
-  color: #7a3410;
-}
-
-.training-week-bucket.covered .training-week-chips span {
-  color: var(--muted);
 }
 
 .training-week-note {
@@ -4700,6 +4608,29 @@ details[open] .journal-preview {
   transition: transform 0.15s;
 }
 
+.card-toggle {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.card-toggle .score-chevron {
+  width: 14px;
+  height: 14px;
+}
+
+.nutrition-trends {
+  display: grid;
+  gap: 10px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.card-toggle.open .score-chevron,
 .score-toggle.open .score-chevron {
   transform: rotate(180deg);
 }

@@ -15,7 +15,6 @@ import {
   INTENSITIES,
   INTENSITY_RULES,
   WEEKLY_TARGET_POINTS,
-  weekStatus,
   intensityOf,
   muscleWeekOf,
   splitOf,
@@ -39,7 +38,6 @@ import {
   type FitbitWorkout,
   type Intensity,
   type MuscleGroup,
-  type MuscleStatus,
   type Suggestion,
   SORENESS_LEVELS,
   sorenessStep,
@@ -216,8 +214,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
   const nextDate = loggedToday || Number(localDateTime().slice(11, 13)) >= PLAN_DAY_OVER_HOUR ? addDays(today, 1) : today;
   const next = suggestNext(sessions, nextDate, soreness, undefined, illnessStateOf(body.physical.illness));
   // This week: every strength muscle as due, recovering or covered, on the
-  // body map, with the due ones listed by how short they are.
-  const week = weekStatus(sessions, today, soreness);
+  // body map. Next up says what to train, so the map has no due list.
   const muscleViews: MuscleView[] = TRACKED_MUSCLES.map((muscle) => {
     const view = muscleWeekOf(sessions, soreness, muscle, today);
     return {
@@ -399,24 +396,6 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
 
       <section className="card training-week-card" aria-label="Body map">
         <BodyMap muscles={muscleViews} />
-        {week.due.length ? (
-          <div className="training-week-bucket due">
-            <span className="training-week-label">
-              Due <small>{week.due.length}</small>
-            </span>
-            <div className="training-week-chips">
-              {week.due.map((item: MuscleStatus) => (
-                <span key={item.muscle}>
-                  {item.muscle}
-                  <small>
-                    {" "}
-                    {item.points}/{WEEKLY_TARGET_POINTS}
-                  </small>
-                </span>
-              ))}
-            </div>
-          </div>
-        ) : null}
         <p className="training-week-note">
           {WEEKLY_TARGET_POINTS} points per muscle in any 7 days: light {INTENSITY_RULES.light.points}, medium{" "}
           {INTENSITY_RULES.medium.points}, hard {INTENSITY_RULES.hard.points}. Soreness: hard work leaves a muscle very sore for about 4 days, medium sore for 2; tap a muscle to set how it feels.

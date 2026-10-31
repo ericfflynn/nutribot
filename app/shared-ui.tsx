@@ -6,6 +6,7 @@ import { ChatSheet } from "./chat-sheet";
 import { HealthAutoSync } from "./refresh-button";
 import { getAllowedUsers, type SessionUser } from "@/lib/auth";
 import { todayLocalDate } from "@/lib/dates";
+import { formatClockTime } from "@/lib/habits";
 
 export function ProgressMetric({
   label,
@@ -176,7 +177,8 @@ export function GoalsForm({ goals, redirectDate }: { goals: Goals; redirectDate?
         </div>
         <span className="goal-summary">
           {goals.calories} cal · Protein {goals.proteinPct}% · Carbs {goals.carbsPct}% · Fat {goals.fatPct}% · Water{" "}
-          {goals.waterOz} oz
+          {goals.waterOz} oz · Caffeine {goals.caffeineLimitMg} mg, none after {formatClockTime(goals.caffeineCutoff)} · Added sugar{" "}
+          {goals.addedSugarLimitG} g
         </span>
       </summary>
       <form className="goals-form" action={saveGoalsAction}>
@@ -200,6 +202,18 @@ export function GoalsForm({ goals, redirectDate }: { goals: Goals; redirectDate?
         <label>
           <span>Water oz</span>
           <input name="waterOz" type="number" min="1" step="1" defaultValue={goals.waterOz} />
+        </label>
+        <label>
+          <span>Caffeine mg</span>
+          <input name="caffeineLimitMg" type="number" min="0" step="1" defaultValue={goals.caffeineLimitMg} />
+        </label>
+        <label>
+          <span>No caffeine after</span>
+          <input name="caffeineCutoff" type="time" defaultValue={goals.caffeineCutoff} />
+        </label>
+        <label>
+          <span>Added sugar g</span>
+          <input name="addedSugarLimitG" type="number" min="0" step="1" defaultValue={goals.addedSugarLimitG} />
         </label>
         <button className="button secondary" type="submit">
           Save goals

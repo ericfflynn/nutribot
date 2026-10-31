@@ -75,7 +75,7 @@ function VitalsTable({ vitals }: { vitals: BodyState["physical"]["vitals"] }) {
   );
 }
 
-function Facts({ rows }: { rows: [string, ReactNode][] }) {
+export function Facts({ rows }: { rows: [string, ReactNode][] }) {
   return (
     <dl className="area-facts">
       {rows.map(([term, value]) => (

@@ -17,6 +17,7 @@ import { addDays, isValidLocalDate, localDateTime } from "./dates";
 import { HEALTH_DATA_TYPES } from "./health/google";
 import { runHealthSync } from "./health/sync";
 import { normalizeGeneratedMacroEstimate, type ParsedMacros } from "./macros";
+import { caffeineDay, sugarDay } from "./nutrients";
 import { gramsFromPercentGoals, restingKcalPerMinute, withWorkoutCalories, workoutCalories } from "./goals";
 import { listHealthDays, listHealthWorkouts } from "./health/queries";
 import {
@@ -148,6 +149,8 @@ const mealItem = z.object({
   protein_g: z.number().nonnegative(),
   carbs_g: z.number().nonnegative(),
   fat_g: z.number().nonnegative(),
+  caffeine_mg: z.number().nonnegative().describe("Caffeine in mg; 0 for most foods."),
+  added_sugar_g: z.number().nonnegative().describe("Added sugar in g (not sugar naturally in fruit, milk or plain dairy); 0 when none."),
   assumption: z.string().describe("Portion assumption for this item.")
 });
 
@@ -175,8 +178,9 @@ function describeMeal(entry: MacroEntry) {
   const logged = new Date(entry.created_at.replace(" ", "T").replace(/([+-]\d{2})$/, "$1:00"));
   const at = Number.isNaN(logged.getTime()) ? "" : ` logged ${localDateTime(logged).slice(0, 10)} ${clockFormat.format(logged)}`;
   const eaten = entry.eaten_at ? `, eaten ${entry.eaten_at}` : "";
-  const macros = (m: { calories: number; protein_g: number; carbs_g: number; fat_g: number }) =>
-    `${m.calories} cal, ${m.protein_g}P/${m.carbs_g}C/${m.fat_g}F`;
+  // Caffeine and added sugar show when known and above zero; older meals have neither.
+  const macros = (m: { calories: number; protein_g: number; carbs_g: number; fat_g: number; caffeine_mg?: number | null; added_sugar_g?: number | null }) =>
+    `${m.calories} cal, ${m.protein_g}P/${m.carbs_g}C/${m.fat_g}F${m.caffeine_mg ? `, ${m.caffeine_mg} mg caffeine` : ""}${m.added_sugar_g ? `, ${m.added_sugar_g}g added sugar` : ""}`;
   const items = entry.items
     .map((item) => `  - ${item.name}: ${macros(item)}${item.assumption ? ` (${item.assumption})` : ""}`)
     .join("\n");
@@ -211,6 +215,8 @@ Today is ${today}; local time is ${nowLocal.slice(11)}. The person is looking at
 
 ## Meals
 - Estimate each food item separately. The app sums the totals.
+- Every item also gets caffeine_mg and added_sugar_g, usually 0. Caffeine: brewed coffee about 95 mg per 8 oz, espresso shot about 64, cold brew about 150-200 per 12-16 oz, black tea about 47 per 8 oz, green tea about 28, a 12 oz cola about 34, energy drinks and pre-workout from the label (often 150-300); decaf about 3. Use the brand's figure when you know it (a Starbucks grande drip is about 310 mg). Added sugar is sugar added in making or serving (syrups, sweetened drinks, desserts, candy, sweetened yogurt, most cereals and granola, ketchup and sauces, honey and maple syrup); sugar naturally in fruit, milk and plain dairy is 0. A drink like a latte is its own item with its caffeine and any syrup's sugar.
+- Meals saved before Oct 31, 2026 have no caffeine or added sugar recorded. When reusing one, estimate them fresh.
 - Use reasonable portions when quantities are missing, and state the portion in the item's assumption.
 - notes holds a concrete assumption only when it matters ("Assumed 4 oz chicken"). Never write generic caveats like "values may vary".
 - If confidence is below 0.75, accuracy_suggestion asks for the single most useful missing detail (portion, brand, cooking fat, weight, count). Otherwise it's empty.
@@ -219,6 +225,7 @@ Today is ${today}; local time is ${nowLocal.slice(11)}. The person is looking at
 - They eat many of the same meals. Before drafting a meal, call list_meals with search set to its main food or place in a word or two ("smoothie", "buttermilks", "overnight oats"), over the last 90 days, unless it's plainly a one-off. When a past entry is the same meal, reuse its items, portions and macros, adjusted for anything they say is different, and mention which day you matched ("same as your Oct 3 smoothie"). Prefer their most recent version.
 - list_meals also answers questions about what they ate on a day or over a week.
 - get_goals gives their daily targets and a day's progress. Use it for "how much do I have left", whether a meal fits, or what to eat to hit protein. Goals are changed in the Goals panel on Today, not here.
+- Caffeine has a daily limit and a cutoff time (get_goals). When a draft puts caffeine after the cutoff or the day over its limit, say so in a few words ("that's 250 mg after your 2 PM cutoff, which can cost you deep sleep"); once, not a lecture. Same for added sugar going over its limit. Caffeine late in the day is a likely cause when sleep or recovery is off; get_body_state's explanations say when it was.
 
 ## Fixing saved meals
 - To correct a meal that's already saved (wrong type, portion, day, macros, or a missing item), find it with list_meals, then call draft_meal with edits set to its id and the whole corrected meal: keep its items as they are unless the fix changes them. Leave date out to keep its day.
@@ -412,6 +419,8 @@ export async function runBrain(message: string, context: BrainContext): Promise<
         protein_g: 0,
         carbs_g: 0,
         fat_g: 0,
+        caffeine_mg: 0,
+        added_sugar_g: 0,
         items: args.items,
         confidence: args.confidence,
         notes: args.notes,
@@ -433,7 +442,14 @@ export async function runBrain(message: string, context: BrainContext): Promise<
         date: day.date,
         eaten_at: eatenAt,
         ...(edits ? { corrects: `saved meal ${edits.id} (${edits.date} ${edits.meal_type ?? "untyped"}, ${edits.calories} cal)` } : {}),
-        totals: { calories: estimate.calories, protein_g: estimate.protein_g, carbs_g: estimate.carbs_g, fat_g: estimate.fat_g }
+        totals: {
+          calories: estimate.calories,
+          protein_g: estimate.protein_g,
+          carbs_g: estimate.carbs_g,
+          fat_g: estimate.fat_g,
+          caffeine_mg: estimate.caffeine_mg,
+          added_sugar_g: estimate.added_sugar_g
+        }
       });
     }
   );
@@ -635,7 +651,7 @@ export async function runBrain(message: string, context: BrainContext): Promise<
 
   const getGoals = tool(
     "get_goals",
-    "Daily targets (calories, macros in grams and percent, water) and one day's saved totals against them. The calorie target is the base goal plus what that day's watch workouts burned beyond resting; macro grams scale with it. Open drafts aren't counted.",
+    "Daily targets (calories, macros in grams and percent, water, the caffeine limit and cutoff, the added sugar limit) and one day's saved totals against them. The calorie target is the base goal plus what that day's watch workouts burned beyond resting; macro grams scale with it. Open drafts aren't counted.",
     { date: localDate.optional() },
     async (args) => {
       const day = checkDate(args.date);
@@ -651,6 +667,8 @@ export async function runBrain(message: string, context: BrainContext): Promise<
       const goals = withWorkoutCalories(baseGoals, workoutKcal);
       const grams = gramsFromPercentGoals(goals);
       const eaten = summarizeEntries(entries);
+      const caffeine = caffeineDay(entries, baseGoals);
+      const sugar = sugarDay(entries, baseGoals);
       const row = (target: number, done: number) => ({ target, done: Math.round(done), left: Math.round(target - done) });
       return text({
         date: day.date,
@@ -659,7 +677,10 @@ export async function runBrain(message: string, context: BrainContext): Promise<
         protein_g: { ...row(grams.protein_g, eaten.protein_g), pct_of_calories: goals.proteinPct },
         carbs_g: { ...row(grams.carbs_g, eaten.carbs_g), pct_of_calories: goals.carbsPct },
         fat_g: { ...row(grams.fat_g, eaten.fat_g), pct_of_calories: goals.fatPct },
-        water_oz: row(goals.waterOz, waterOz)
+        water_oz: row(goals.waterOz, waterOz),
+        // Null when that day's meals predate caffeine and sugar tracking.
+        caffeine_mg: { limit: caffeine.limitMg, done: caffeine.mg, last_at: caffeine.last, cutoff: caffeine.cutoff, after_cutoff: caffeine.late },
+        added_sugar_g: { limit: sugar.limitG, done: sugar.g }
       });
     },
     { annotations: { readOnlyHint: true } }

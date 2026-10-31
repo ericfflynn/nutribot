@@ -1,5 +1,7 @@
 // Meal macro estimates: the shape stored in macro_entries and produced by the
-// chat brain's draft_meal tool, with totals summed from the items.
+// chat brain's draft_meal tool, with totals summed from the items. Caffeine
+// (mg) and added sugar (g) ride along with the macros; meals saved before
+// Oct 31, 2026 have neither (null in macro_entries).
 import { z } from "zod";
 
 const macroItemSchema = z.object({
@@ -8,6 +10,8 @@ const macroItemSchema = z.object({
   protein_g: z.coerce.number().nonnegative().default(0),
   carbs_g: z.coerce.number().nonnegative().default(0),
   fat_g: z.coerce.number().nonnegative().default(0),
+  caffeine_mg: z.coerce.number().nonnegative().default(0),
+  added_sugar_g: z.coerce.number().nonnegative().default(0),
   assumption: z.string().optional().default("")
 });
 
@@ -16,6 +20,8 @@ const macroSchema = z.object({
   protein_g: z.coerce.number().nonnegative().default(0),
   carbs_g: z.coerce.number().nonnegative().default(0),
   fat_g: z.coerce.number().nonnegative().default(0),
+  caffeine_mg: z.coerce.number().nonnegative().default(0),
+  added_sugar_g: z.coerce.number().nonnegative().default(0),
   items: z.array(macroItemSchema).default([]),
   confidence: z.coerce.number().min(0).max(1).default(0.6),
   notes: z.string().optional().default(""),
@@ -30,7 +36,7 @@ export function parseMacroObject(input: unknown): ParsedMacros {
 }
 
 
-type MacroTotalKey = "calories" | "protein_g" | "carbs_g" | "fat_g";
+type MacroTotalKey = "calories" | "protein_g" | "carbs_g" | "fat_g" | "caffeine_mg" | "added_sugar_g";
 
 function roundMacro(value: number) {
   return Math.max(0, Math.round(Number(value) || 0));
@@ -47,7 +53,9 @@ export function normalizeGeneratedMacroEstimate(parsed: ParsedMacros): ParsedMac
       calories: roundMacro(parsed.calories),
       protein_g: roundMacro(parsed.protein_g),
       carbs_g: roundMacro(parsed.carbs_g),
-      fat_g: roundMacro(parsed.fat_g)
+      fat_g: roundMacro(parsed.fat_g),
+      caffeine_mg: roundMacro(parsed.caffeine_mg),
+      added_sugar_g: roundMacro(parsed.added_sugar_g)
     };
   }
 
@@ -57,12 +65,16 @@ export function normalizeGeneratedMacroEstimate(parsed: ParsedMacros): ParsedMac
     protein_g: sumItemMacro(parsed.items, "protein_g"),
     carbs_g: sumItemMacro(parsed.items, "carbs_g"),
     fat_g: sumItemMacro(parsed.items, "fat_g"),
+    caffeine_mg: sumItemMacro(parsed.items, "caffeine_mg"),
+    added_sugar_g: sumItemMacro(parsed.items, "added_sugar_g"),
     items: parsed.items.map((item) => ({
       ...item,
       calories: roundMacro(item.calories),
       protein_g: roundMacro(item.protein_g),
       carbs_g: roundMacro(item.carbs_g),
-      fat_g: roundMacro(item.fat_g)
+      fat_g: roundMacro(item.fat_g),
+      caffeine_mg: roundMacro(item.caffeine_mg),
+      added_sugar_g: roundMacro(item.added_sugar_g)
     }))
   };
 }

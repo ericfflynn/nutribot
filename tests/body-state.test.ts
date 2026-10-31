@@ -59,7 +59,7 @@ function sources(overrides: Partial<BodySources> = {}): BodySources {
     habitLogs: [],
     meals: [],
     water: {},
-    goals: { calories: 2200, proteinPct: 30, carbsPct: 40, fatPct: 30, waterOz: 100 },
+    goals: { calories: 2200, proteinPct: 30, carbsPct: 40, fatPct: 30, waterOz: 100, caffeineLimitMg: 400, caffeineCutoff: "14:00", addedSugarLimitG: 36 },
     lastSync: null,
     ...overrides
   };

@@ -9,6 +9,9 @@ export type MacroFoodItem = {
   protein_g: number;
   carbs_g: number;
   fat_g: number;
+  // Missing on items saved before caffeine and sugar were tracked.
+  caffeine_mg?: number;
+  added_sugar_g?: number;
   assumption?: string;
 };
 
@@ -23,6 +26,9 @@ export type MacroEntry = {
   protein_g: number;
   carbs_g: number;
   fat_g: number;
+  // Null for meals saved before Oct 31, 2026, when these weren't estimated.
+  caffeine_mg: number | null;
+  added_sugar_g: number | null;
   items: MacroFoodItem[];
   confidence: number;
   notes: string | null;
@@ -33,6 +39,13 @@ export type MacroEntry = {
 };
 
 type Queryable = Pick<Pool, "query">;
+
+// What a save writes: an estimate, where caffeine and added sugar can be
+// unknown (an older meal edited by its totals, or a draft from before them).
+export type StoredMacros = Omit<ParsedMacros, "caffeine_mg" | "added_sugar_g"> & {
+  caffeine_mg?: number | null;
+  added_sugar_g?: number | null;
+};
 
 let pool: Pool | null = null;
 
@@ -98,6 +111,8 @@ function normalizeItems(items: unknown): MacroFoodItem[] {
         protein_g: Number(obj.protein_g || 0),
         carbs_g: Number(obj.carbs_g || 0),
         fat_g: Number(obj.fat_g || 0),
+        ...(obj.caffeine_mg != null ? { caffeine_mg: Number(obj.caffeine_mg) } : {}),
+        ...(obj.added_sugar_g != null ? { added_sugar_g: Number(obj.added_sugar_g) } : {}),
         assumption: String(obj.assumption || "")
       });
     }
@@ -122,6 +137,8 @@ const ENTRY_COLUMNS = `
   protein_g::float8,
   carbs_g::float8,
   fat_g::float8,
+  caffeine_mg::float8,
+  added_sugar_g::float8,
   items,
   confidence::float8,
   notes,
@@ -194,7 +211,7 @@ export async function saveMacroEntry(params: {
   userName: string;
   entryDate: string;
   rawText: string;
-  parsed: ParsedMacros;
+  parsed: StoredMacros;
   mealType?: MealType;
   eatenAt?: string | null;
   // A transaction's client, when the insert is part of a larger write.
@@ -215,9 +232,11 @@ export async function saveMacroEntry(params: {
       confidence,
       notes,
       meal_type,
-      eaten_at
+      eaten_at,
+      caffeine_mg,
+      added_sugar_g
     )
-    values ($1, $2::date, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12::time)
+    values ($1, $2::date, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $11, $12::time, $13, $14)
     returning id::text
     `,
     [
@@ -232,7 +251,9 @@ export async function saveMacroEntry(params: {
       parsed.confidence,
       parsed.notes || null,
       params.mealType ?? null,
-      params.eatenAt ?? null
+      params.eatenAt ?? null,
+      optionalAmount(parsed.caffeine_mg),
+      optionalAmount(parsed.added_sugar_g)
     ]
   );
   return rows[0].id;
@@ -242,7 +263,7 @@ export async function updateMacroEntry(params: {
   id: string;
   userName: string;
   rawText: string;
-  parsed: ParsedMacros;
+  parsed: StoredMacros;
   // Left unchanged when omitted.
   mealType?: MealType;
   entryDate?: string;
@@ -265,7 +286,9 @@ export async function updateMacroEntry(params: {
       notes = $10,
       meal_type = coalesce($11, meal_type),
       entry_date = coalesce($12::date, entry_date),
-      eaten_at = case when $13 then $14::time else eaten_at end
+      eaten_at = case when $13 then $14::time else eaten_at end,
+      caffeine_mg = $15,
+      added_sugar_g = $16
     where id = $1::uuid and user_name = $2
     `,
     [
@@ -282,7 +305,9 @@ export async function updateMacroEntry(params: {
       params.mealType ?? null,
       params.entryDate ?? null,
       params.eatenAt !== undefined,
-      params.eatenAt ?? null
+      params.eatenAt ?? null,
+      optionalAmount(parsed.caffeine_mg),
+      optionalAmount(parsed.added_sugar_g)
     ]
   );
 
@@ -353,7 +378,10 @@ export async function getUserGoals(userName: string, db: Queryable = requirePool
       protein_pct::float8,
       carbs_pct::float8,
       fat_pct::float8,
-      water_oz::float8
+      water_oz::float8,
+      caffeine_limit_mg::float8,
+      to_char(caffeine_cutoff, 'HH24:MI') as caffeine_cutoff,
+      added_sugar_limit_g::float8
     from public.user_macro_goals
     where user_name = $1
     limit 1
@@ -369,7 +397,10 @@ export async function getUserGoals(userName: string, db: Queryable = requirePool
     proteinPct: rows[0].protein_pct,
     carbsPct: rows[0].carbs_pct,
     fatPct: rows[0].fat_pct,
-    waterOz: rows[0].water_oz
+    waterOz: rows[0].water_oz,
+    caffeineLimitMg: rows[0].caffeine_limit_mg,
+    caffeineCutoff: rows[0].caffeine_cutoff,
+    addedSugarLimitG: rows[0].added_sugar_limit_g
   });
 }
 
@@ -384,9 +415,12 @@ export async function saveUserGoals(userName: string, goals: Goals) {
       carbs_pct,
       fat_pct,
       water_oz,
+      caffeine_limit_mg,
+      caffeine_cutoff,
+      added_sugar_limit_g,
       updated_at
     )
-    values ($1, $2, $3, $4, $5, $6, now())
+    values ($1, $2, $3, $4, $5, $6, $7, $8::time, $9, now())
     on conflict (user_name)
     do update set
       calories = excluded.calories,
@@ -394,11 +428,29 @@ export async function saveUserGoals(userName: string, goals: Goals) {
       carbs_pct = excluded.carbs_pct,
       fat_pct = excluded.fat_pct,
       water_oz = excluded.water_oz,
+      caffeine_limit_mg = excluded.caffeine_limit_mg,
+      caffeine_cutoff = excluded.caffeine_cutoff,
+      added_sugar_limit_g = excluded.added_sugar_limit_g,
       updated_at = now()
     `,
-    [userName, normalized.calories, normalized.proteinPct, normalized.carbsPct, normalized.fatPct, normalized.waterOz]
+    [
+      userName,
+      normalized.calories,
+      normalized.proteinPct,
+      normalized.carbsPct,
+      normalized.fatPct,
+      normalized.waterOz,
+      normalized.caffeineLimitMg,
+      normalized.caffeineCutoff,
+      normalized.addedSugarLimitG
+    ]
   );
   return normalized;
+}
+
+// A draft saved from before caffeine and sugar were estimated has neither.
+function optionalAmount(value: number | null | undefined) {
+  return value == null || !Number.isFinite(Number(value)) ? null : Math.round(Number(value));
 }
 
 export function summarizeEntries(entries: MacroEntry[]) {

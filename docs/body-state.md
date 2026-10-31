@@ -193,7 +193,7 @@ Status: **watch** when push, pull or legs (the main day types; arms and shoulder
 
 | Signal | Meaning |
 | --- | --- |
-| `yesterday` | Calories, protein (g) and water (oz), each with its target (`get_goals` math, workouts included), or null when nothing was logged. |
+| `yesterday` | Calories, protein (g) and water (oz), each with its target (`get_goals` math, workouts included), or null when nothing was logged. Since October 31, 2026 also caffeine (`caffeineMg`, `caffeineLast` "HH:MM", `caffeineLate` past the cutoff) and `addedSugarG` (`lib/nutrients.ts`); null when the day's meals predate them, missing on older stored states. |
 | `today` | The same so far, for the evening check-in. |
 | `proteinStreak` | Days in a row under 80% of the protein target, with logged meals. |
 
@@ -254,7 +254,7 @@ A low recovery or a raised resting heart rate isn't always illness. Drinking, a 
 
 ```ts
 type Explanation = {
-  kind: "habit" | "late_night" | "load" | "stress";
+  kind: "habit" | "late_night" | "load" | "stress" | "caffeine";
   detail: string;             // "3 drinks, until 11:40 pm", "work stress 4, deadline"
   affects: ("sleep" | "resting_hr" | "hrv" | "recovery")[];
   source: string;             // the field it came from: "lifestyle.habits", "lifestyle.career"
@@ -265,6 +265,7 @@ type Explanation = {
 | --- | --- |
 | `habit` | A habit flagged as affecting the body (`affects` on the habit, set from chat or the Habits tab) was used yesterday or last night. Drinking first. |
 | `late_night` | Bedtime 90+ minutes past the 7-night median (`physical.sleep.bedtimeDrift7n`). |
+| `caffeine` | Yesterday's caffeine after the cutoff (goals, 2 PM by default) or over the daily limit (200 mg by default): affects last night's sleep and today's recovery. |
 | `load` | `physical.load` on watch (sharp ramp or hard streak). |
 | `stress` | `lifestyle.career` work stress 4+, or any journal stress 4+, in the last 2 days. |
 

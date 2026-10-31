@@ -115,6 +115,11 @@ export type FuelDay = {
   proteinTarget: number;
   waterOz: number | null;
   waterTarget: number;
+  // Added Oct 31, 2026; null when the day's meals predate tracking them.
+  caffeineMg?: number | null;
+  caffeineLast?: string | null; // local "HH:MM" of the latest caffeine
+  caffeineLate?: boolean; // any caffeine after the cutoff
+  addedSugarG?: number | null;
 } | null;
 
 export type FuelArea = Head & {
@@ -148,7 +153,7 @@ export type RelationshipsArea = Head & {
   social7: number;
 };
 
-export const EXPLANATION_KINDS = ["habit", "late_night", "load", "stress"] as const;
+export const EXPLANATION_KINDS = ["habit", "late_night", "load", "stress", "caffeine"] as const;
 export type Explanation = {
   kind: (typeof EXPLANATION_KINDS)[number];
   detail: string;

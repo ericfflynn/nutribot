@@ -11,6 +11,7 @@ import { SEVERITY_LABELS, SYMPTOMS, easingOn, sickOn, type IllnessDay, type Symp
 import { ENERGY_LABELS, MOOD_LABELS, type JournalEntry } from "../journal";
 import { TAG_CATEGORIES } from "../journal-tags";
 import { summarizeEntries } from "../supabase";
+import { caffeineDay, sugarDay } from "../nutrients";
 import {
   DAY_TYPES,
   DUE_AFTER_DAYS,
@@ -502,13 +503,18 @@ function fuelArea(c: Context): FuelArea {
       restingKcalPerMinute(health, date)
     );
     const target = withWorkoutCalories(goals, kcal);
+    const caffeine = caffeineDay(entries, goals);
     return {
       calories: Math.round(totals.calories),
       caloriesTarget: target.calories,
       proteinG: Math.round(totals.protein_g),
       proteinTarget: gramsFromPercentGoals(target).protein_g,
       waterOz: water[date] ?? null,
-      waterTarget: goals.waterOz
+      waterTarget: goals.waterOz,
+      caffeineMg: caffeine.mg,
+      caffeineLast: caffeine.last,
+      caffeineLate: caffeine.late,
+      addedSugarG: sugarDay(entries, goals).g
     };
   };
   const yesterday = dayOf(c.yesterday);
@@ -668,8 +674,14 @@ function relationshipsArea(c: Context): RelationshipsArea {
 
 // ---------- Explanations ----------
 
-function otherExplanations(c: Context, sleep: SleepArea, load: LoadArea, career: CareerArea): Explanation[] {
+function otherExplanations(c: Context, sleep: SleepArea, load: LoadArea, career: CareerArea, fuel: FuelArea): Explanation[] {
   const list: Explanation[] = [];
+  // Last night's sleep follows yesterday's caffeine: late, or over the limit.
+  const yesterday = fuel.yesterday;
+  if (yesterday?.caffeineMg != null && (yesterday.caffeineLate || yesterday.caffeineMg > c.sources.goals.caffeineLimitMg)) {
+    const late = yesterday.caffeineLate && yesterday.caffeineLast ? ` until ${formatClockTime(yesterday.caffeineLast)}` : "";
+    list.push({ kind: "caffeine", detail: `${yesterday.caffeineMg} mg of caffeine yesterday${late}`, affects: ["sleep", "recovery"], source: "physical.fuel" });
+  }
   if ((sleep.bedtimeDrift7n ?? 0) >= 90) {
     list.push({ kind: "late_night", detail: `a late night (${hm(sleep.bedtimeDrift7n!)} past your usual bedtime)`, affects: ["sleep", "recovery"], source: "physical.sleep" });
   }
@@ -720,7 +732,7 @@ export function buildBodyState(
   const { area: habits, explanations: habitExplanations } = habitsArea(c);
   const career = careerArea(c);
   const relationships = relationshipsArea(c);
-  const explanations = [...habitExplanations, ...otherExplanations(c, sleep, load, career)];
+  const explanations = [...habitExplanations, ...otherExplanations(c, sleep, load, career, fuel)];
   // A low recovery or short sleep says what likely caused it.
   const recoveryCause = explanations.find((item) => item.affects.includes("recovery"));
   if (recoveryCause && (recovery.status === "low" || recovery.status === "watch")) recovery.headline += `, after ${recoveryCause.detail}`;

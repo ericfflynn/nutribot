@@ -331,6 +331,22 @@ alter table public.macro_entries
 alter table public.macro_entries
   add column if not exists eaten_at time;
 
+-- Caffeine (mg) and added sugar (g) per meal, estimated by the chat with the
+-- macros. Null for meals saved before Oct 31, 2026, which have neither.
+alter table public.macro_entries
+  add column if not exists caffeine_mg numeric check (caffeine_mg >= 0);
+alter table public.macro_entries
+  add column if not exists added_sugar_g numeric check (added_sugar_g >= 0);
+
+-- Daily limits for caffeine and added sugar, and the caffeine cutoff: caffeine
+-- after it counts as late, for sleep.
+alter table public.user_macro_goals
+  add column if not exists caffeine_limit_mg numeric not null default 200 check (caffeine_limit_mg >= 0);
+alter table public.user_macro_goals
+  add column if not exists caffeine_cutoff time not null default '14:00';
+alter table public.user_macro_goals
+  add column if not exists added_sugar_limit_g numeric not null default 36 check (added_sugar_limit_g >= 0);
+
 -- One row per logged workout: what was trained and how hard. Linked to the
 -- matching Fitbit workout (health_workouts.id) when there is one; 'pending'
 -- sessions are linked after a later sync, 'untracked' ones never are.
