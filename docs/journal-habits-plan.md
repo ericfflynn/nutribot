@@ -72,6 +72,7 @@ Habits are rows, not code, so new ones are added by telling the chat "start trac
 | `direction` | `limit` (less is better) or `build` (more is better). |
 | `scale_guide` | For `intensity` habits: what light, moderate and heavy mean, so every log is rated the same way. Claude drafts it when the habit is added; the owner can change it. |
 | `goal` | The day's target. Limit habits: the most that's OK (0 = none). Build habits: the least. |
+| `band_orange`, `band_red` | Optional color bands, in the habit's measure: where a missed day turns orange and red. Both or neither; null uses the default steps below. |
 | `cutoff` | Optional local time after which any use is a miss (Gaming: 20:00). |
 | `cutoff_weeknights` | The cutoff applies Sunday–Thursday only. |
 | `active` | Archived habits keep their history. |
@@ -105,6 +106,7 @@ A day's level per habit: the highest intensity (or the total drinks or minutes) 
 
 Each logged day is judged against the habit's goal (`habitOutcome` in `lib/habits.ts`) and colored in the Habits tab's grid: green when met, yellow, orange or red for a small, medium or big miss, gray when not logged.
 
+- **Color bands**, when a habit has them, decide the color from the day's amount, so the owner tunes a habit in chat ("over an hour of gaming is bad, over 90 is really bad") or on the Habits tab without a code change. Limit habits are yellow past the goal, orange past `band_orange`, red past `band_red` (Gaming: goal 0, bands 60 and 90: 1–60 minutes yellow, 61–90 orange, over 90 red). Build habits are yellow under the goal, orange under `band_orange`, red under `band_red` (Reading: goal 20, bands 10 and 1). Bands must fit the goal (`bandsProblem`). Without bands:
 - **Limit habits:** over the goal by 1, 2 or 3+ intensity steps or drinks; for minutes, up to 25%, 75% or more over.
 - **Cutoff:** minutes past the cutoff, under 30, up to 90, or more. Needs start and end times; a weeknight use without them shows as "can't tell".
 - **Build habits:** at least half the goal is a small miss, less is medium, an explicit zero is big.

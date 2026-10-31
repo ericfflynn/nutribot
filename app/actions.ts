@@ -16,6 +16,7 @@ import {
   HABIT_DIRECTIONS,
   HABIT_MEASURES,
   HabitError,
+  bandsProblem,
   deleteHabitLog,
   listHabits,
   saveHabit,
@@ -693,6 +694,7 @@ const habitSchema = z
     direction: z.enum(HABIT_DIRECTIONS),
     scaleGuide: z.string().trim().max(600).nullable(),
     goal: z.number().min(0).max(24 * 60).nullable(),
+    bands: z.object({ orange: z.number().min(0).max(24 * 60), red: z.number().min(0).max(24 * 60) }).nullable(),
     cutoff: hhmmSchema.nullable(),
     cutoffWeeknights: z.boolean(),
     days: z.array(z.number().int().min(0).max(6)).nullable(),
@@ -702,7 +704,11 @@ const habitSchema = z
   .refine((habit) => habit.measure !== "intensity" || habit.goal == null || (Number.isInteger(habit.goal) && habit.goal <= 3), {
     message: "An intensity goal is 0 to 3."
   })
-  .refine((habit) => !habit.days || habit.days.length > 0, { message: "Pick at least one day." });
+  .refine((habit) => !habit.days || habit.days.length > 0, { message: "Pick at least one day." })
+  .superRefine((habit, context) => {
+    const problem = bandsProblem(habit);
+    if (problem) context.addIssue({ code: "custom", message: problem });
+  });
 
 // Habits tab: change a habit's name, description, goal, days or cutoff, or
 // archive it. Its logs stay attached, so history is kept.

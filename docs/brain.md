@@ -2,6 +2,10 @@
 
 Status: in production since October 10, 2026. This is the contract between the chat (the Chat tab and the floating sheet), `/api/brain` and Claude.
 
+## Talking and logging
+
+The chat is a health assistant first and a logger second (decided Oct 31, [decisions.md](decisions.md)). Each message is judged: a report of something that happened, a check-in answer or a request to log gets drafts; questions, venting and conversation about their body or life get an answer, observations from their data and recommendations, and no drafts. "Log that" and "just chatting" override. Feelings shared in conversation get a journal offer (`offer: true`), not a card. Check-ins ask about missing habits once and let the rest go.
+
 ## How a turn runs
 
 1. The chat sheet (`app/chat-sheet.tsx`) posts `{ message, date }` to `/api/brain`.
@@ -32,7 +36,7 @@ Model: `claude-sonnet-5-5` at low effort, overridable with `CLAUDE_MODEL`. A tur
 // response
 {
   message_id: string,                     // the assistant row in chat_messages
-  reply: string,                          // plain text for the thread
+  reply: string,                          // text for the thread: paragraphs, "- " lists, **bold**
   drafts: Draft[],
   meta: { model: string, durationMs: number, turns: number }
 }
@@ -52,7 +56,7 @@ Claude remembers nothing between requests. Each turn it sees only what the route
 | `draft_workout` | Creates or revises a workout draft and matches it to a Fitbit workout. One call per activity. |
 | `list_meals` | Read-only: saved meals in a date range, newest first, at most 40, with ids, totals and each item's macros and portion. `search` keeps meals whose text or item names contain every word, and allows ranges up to 365 days (31 without). The prompt has Claude search past meals before estimating one, and reuse a matching meal's items and macros, since the owner repeats meals often. Also how Claude finds a saved meal to edit. |
 | `get_goals` | Read-only: daily targets (calories, macros in grams and percent, water oz) and one day's saved totals against them (`target`, `done`, `left`). The calorie target includes that day's workouts (`base_target` + `from_workouts`, as on Today). Open drafts aren't counted. Goals are changed in the Goals panel on Today, not through chat. |
-| `draft_journal` | A journal entry draft: kind (morning, evening, other), body in their words, ratings, tags. Mood (1 Very low – 5 Excellent) is the main rating; stress (1 None / relaxed – 5 Overwhelming), energy and soreness are optional. Each is null when unsaid, and stress is never derived from mood or the other way round. Tags are normalized in code (`normalizeTags` in `lib/journal-tags.ts`) against a categorized vocabulary and the owner's earlier tags. With `edits: <journal_entries.id>` the draft rewrites that saved entry instead (the card says Update): saving overwrites its date, kind, text, ratings and tags. A day can hold several entries of one kind: follow-up notes become new entries, and the chat edits a saved entry only when the owner asks to change it. |
+| `draft_journal` | A journal entry draft: kind (morning, evening, other), body in their words, ratings, tags. Mood (1 Very low – 5 Excellent) is the main rating; stress (1 None / relaxed – 5 Overwhelming), energy and soreness are optional. Each is null when unsaid, and stress is never derived from mood or the other way round. Tags are normalized in code (`normalizeTags` in `lib/journal-tags.ts`) against a categorized vocabulary and the owner's earlier tags. With `edits: <journal_entries.id>` the draft rewrites that saved entry instead (the card says Update): saving overwrites its date, kind, text, ratings and tags. With `offer: true` (something shared in conversation, not asked to be journaled) the sheet shows a small **Save to journal** button instead of the card, with **Review** to open the card; a passed-over offer disappears once the reply is revised or discarded. A day can hold several entries of one kind: follow-up notes become new entries, and the chat edits a saved entry only when the owner asks to change it. |
 | `draft_habits` | One card with a day's habit logs: each use (intensity 1–3, count or minutes, details, optional start and end times) and each explicit zero. Saving adds the card's logs to the day ("1 more later" is a new card). With `replace_logs: [habit_logs.id]` the card is a correction: saving deletes those logs first, in the same transaction, so "it was 3, not 2" doesn't count 5. The result lists the logs already saved that day with ids, and active habits not logged yet, so Claude can ask. |
 | `draft_habit` | Adds a tracked habit or changes one: name, description, measure, direction, scale guide (required for intensity), goal, cutoff, days tracked, archived. A change keeps the habit's logs; the measure can't change once a habit has logs. The owner can also edit habits on the Habits tab. |
 | `list_habits`, `list_journal`, `list_habit_logs` | Read-only: tracked habits with descriptions, days and scale guides; journal entries with ids, labeled ratings and tags; each day's habit status (level, uses with log ids, minutes past cutoff, unlogged, or not tracked that day). Ranges up to 92 days. |

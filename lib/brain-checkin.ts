@@ -9,6 +9,7 @@ import {
   HABIT_DIRECTIONS,
   HABIT_MEASURES,
   describeDays,
+  bandsProblem,
   describeGoal,
   formatHabitAmount,
   formatMinutes,
@@ -44,6 +45,9 @@ export type JournalDraft = JournalInput & {
   id: string;
   // Set when saving overwrites a saved entry instead of adding one.
   edits?: JournalEditTarget | null;
+  // Offered in conversation, not asked for: the chat shows a small "Save to
+  // journal" button instead of the full card.
+  offer?: boolean;
   saved_id: string | null;
   discarded?: boolean;
 };
@@ -77,7 +81,8 @@ export type CheckinDraft = JournalDraft | HabitsDraft | HabitDraft;
 export const CHECKIN_TOOLS = ["draft_journal", "draft_habits", "draft_habit", "list_habits", "list_journal", "list_habit_logs"];
 
 export const CHECKIN_PROMPT = `## Journal
-- When they write about how they feel or how the day or night went, call draft_journal. Keep body in their words, lightly cleaned up (typos, filler); never shorten it into a summary.
+- Call draft_journal for a check-in answer, or when they ask to journal something ("put that in my journal"). Keep body in their words, lightly cleaned up (typos, filler); never shorten it into a summary.
+- When they share how they feel or how their day is going in conversation, without asking to journal it, talk with them first. If it says how they feel or what's going on with them (a mood, a struggle, a stressor, an event, a binge), also call draft_journal with offer true; skip it only for small talk and plain questions, and when unsure, offer, since it costs them nothing. It shows as a small "Save to journal" button under your reply, so don't mention it, call it a draft or ask them to review it. At most one offer per reply, and don't offer again for the same thing.
 - Mood is the main rating: ${MOOD_LABELS.map((label, index) => `${index + 1} ${label}`).join(", ")}. It's how they feel emotionally.
 - Stress is optional and separate: ${STRESS_LABELS.map((label, index) => `${index + 1} ${label}`).join(", ")}. It's pressure or strain, not mood. Set it only when they talk about pressure, worry or calm; never work it out from mood, and never set mood from stress. A great mood can come with high stress.
 - energy (1 drained, 5 energized) and soreness (1 none, 5 very sore) are optional too. Every rating the text doesn't support is null, never a guess.
@@ -89,6 +94,7 @@ export const CHECKIN_PROMPT = `## Journal
 ## Check-ins
 - A check-in is a short conversation, not a form. Nothing is required; skip whatever they don't want to answer.
 - If they start with no details ("evening check-in", "morning check-in", or a reminder's prompt), first call list_habit_logs and list_workouts for today, then ask one short, friendly question that covers what's missing: how they feel (morning: how they slept), any habits tracked today with no log yet, and an unlabeled workout if there is one. Example: "How was today, mood-wise? And any nicotine or drinks, and did you get your reading in?"
+- Ask about missing habits and unlabeled workouts once per check-in. If they answer only part of it, draft what they gave and let the rest go; never ask the same thing again in that conversation (the history shows what you already asked).
 - From their answer, draft what applies in one reply: the journal entry (mood if they gave a sense of it), the day's habits, a workout. If mood is still unclear after they answered, you may ask once ("Would you call today a 3 or more like a 4?"); never ask about stress, energy or soreness.
 - Close with one useful line when the data supports it: a habit streak, a goal met, or an observation from list_journal over recent weeks ("third evening this week tagged work with mood 2"). Keep it to one sentence and never lecture.
 
@@ -99,9 +105,9 @@ export const CHECKIN_PROMPT = `## Journal
 - amount 0 means they said they didn't do it today. Only record 0 when they say so. A habit never mentioned stays unlogged.
 - One draft_habits call per day holds all of that day's habit logs, uses and zeros together.
 - Saving a card adds its logs to the day. To log more uses later in the day, make a new card. To correct a saved log ("it was 3 drinks, not 2"), call draft_habits with replace_logs set to the ids of the logs that change (list_habit_logs and draft_habits show them) and the corrected logs; never send a correction as an extra log, or the day counts both.
-- In an evening check-in, call list_habit_logs for today and ask in one short sentence about active habits tracked today with no log yet, so missing days get their zeros ("Any weed, nicotine or drinks today? Read or play Xbox?").
-- To start tracking something new, or change a habit's name, description, scale, goal, cutoff or days, call draft_habit with the habit's current values for everything that isn't changing (list_habits has them). The owner can also edit habits on the Habits tab. A habit's measure can't change once it has logs; suggest a new habit instead. Intensity habits need a scale_guide that says what 1, 2 and 3 mean.
-- Each habit can have a goal: for limit habits the most that's OK in a day (0 means none), for build habits the least. A cutoff makes any use after that time a miss, optionally on weeknights (Sun-Thu) only. list_habit_logs says whether each day met the goal; use it for "how am I doing".
+- In an evening check-in, call list_habit_logs for today and ask once, in one short sentence, about active habits tracked today with no log yet, so missing days get their zeros ("Any weed, nicotine or drinks today? Read or play Xbox?").
+- To start tracking something new, or change a habit's name, description, scale, goal, color bands, cutoff or days, call draft_habit with the habit's current values for everything that isn't changing (list_habits has them). The owner can also edit habits on the Habits tab. A habit's measure can't change once it has logs; suggest a new habit instead. Intensity habits need a scale_guide that says what 1, 2 and 3 mean.
+- Each habit can have a goal: for limit habits the most that's OK in a day (0 means none), for build habits the least. A day meeting the goal is green; a miss is yellow, orange or red. Color bands set where orange and red start, in the habit's measure: gaming with goal 0 and bands orange 60, red 90 is yellow for 1-60 minutes, orange to 90, red past 90; reading with goal 20 and bands orange 10, red 1 is yellow under 20, orange under 10, red at none. Without bands the app steps from the goal. When they describe colors or levels ("over an hour is bad, over 2 hours is really bad"), set goal and bands with draft_habit. A cutoff makes any use after that time a miss, optionally on weeknights (Sun-Thu) only. list_habit_logs says whether each day met the goal; use it for "how am I doing".
 - An evening check-in usually ends with two drafts: the journal entry and the day's habits. Mention them in a sentence or two, not a list; the cards show the details.`;
 
 const localDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("Local date, YYYY-MM-DD.");
@@ -166,7 +172,11 @@ export function checkinTools(context: {
       edits: z
         .string()
         .optional()
-        .describe("Id of a saved entry (from list_journal) this draft rewrites: saving overwrites its date, kind, text, ratings and tags.")
+        .describe("Id of a saved entry (from list_journal) this draft rewrites: saving overwrites its date, kind, text, ratings and tags."),
+      offer: z
+        .boolean()
+        .optional()
+        .describe("True when they shared this in conversation without asking to journal it: shown as a small Save to journal button.")
     },
     async (args) => {
       const target = resolveDraftId(args.replaces);
@@ -193,6 +203,7 @@ export function checkinTools(context: {
         ratings,
         tags: normalizeTags(args.tags, known),
         edits,
+        ...(args.offer && !edits ? { offer: true } : {}),
         saved_id: null
       });
       return text({
@@ -307,6 +318,10 @@ export function checkinTools(context: {
         .min(0)
         .nullable()
         .describe("Daily target in the habit's measure: the most that's OK for limit habits (0 = none), the least for build habits."),
+      bands: z
+        .object({ orange: z.number().min(0), red: z.number().min(0) })
+        .nullable()
+        .describe("Color bands in the habit's measure: limit habits turn orange past orange and red past red; build habits orange under orange and red under red. Null for the default steps. Keep the current bands when changing something else."),
       cutoff: hhmm.nullable().describe("Local time after which any use is a miss."),
       cutoff_weeknights: z.boolean().describe("The cutoff applies Sunday-Thursday nights only."),
       active: z.boolean(),
@@ -317,6 +332,8 @@ export function checkinTools(context: {
       if ("error" in target) return errorText(target.error);
       if (args.measure === "intensity" && !args.scale_guide) return errorText("Intensity habits need a scale_guide.");
       if (args.measure === "count" && !args.unit) return errorText("Count habits need a unit.");
+      const bandError = bandsProblem({ measure: args.measure, direction: args.direction, goal: args.goal, bands: args.bands });
+      if (bandError) return errorText(bandError);
       const habits = await listHabits(db, userName, true);
       if (args.habit_id && !habits.some((habit) => habit.id === args.habit_id)) {
         return errorText(`No habit with id ${args.habit_id}.`);
@@ -334,6 +351,7 @@ export function checkinTools(context: {
           direction: args.direction,
           scaleGuide: args.measure === "intensity" ? args.scale_guide : null,
           goal: args.goal,
+          bands: args.bands,
           cutoff: args.cutoff,
           cutoffWeeknights: Boolean(args.cutoff) && args.cutoff_weeknights,
           description: args.description?.trim() || null,

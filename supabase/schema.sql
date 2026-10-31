@@ -529,6 +529,15 @@ alter table public.habits
 alter table public.habits
   add column if not exists days smallint[];
 
+-- Color bands: where a day turns orange and red, in the habit's measure. A
+-- limit habit is orange past band_orange and red past band_red; a build habit
+-- orange under band_orange and red under band_red. Null for the default steps
+-- from the goal (lib/habits.ts, habitOutcome).
+alter table public.habits
+  add column if not exists band_orange numeric check (band_orange >= 0);
+alter table public.habits
+  add column if not exists band_red numeric check (band_red >= 0);
+
 -- Reminders the owner edits (lib/reminder-rules.ts). Each fires at most once a
 -- day in its local hour, plus once after a snooze; reminder_sends.kind holds
 -- the reminder id. 'habit' reminders belong to one habit.

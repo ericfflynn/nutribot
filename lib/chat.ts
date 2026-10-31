@@ -4,6 +4,7 @@
 // the draft so it can't be saved twice.
 import type { Pool } from "pg";
 import type { BrainReply, Draft, Turn } from "./brain";
+import type { CheckinKind } from "./checkin";
 import { todayLocalDate } from "./dates";
 
 export type ChatMessage = {
@@ -170,4 +171,21 @@ export async function withDraft<T>(
   } finally {
     client.release();
   }
+}
+
+// The check-ins the owner has answered in chat on a date: Today's card sends
+// its answers as "Morning check-in: …" or "Evening check-in: …".
+export async function answeredCheckins(db: Pool, userName: string, date: string): Promise<Set<CheckinKind>> {
+  const { rows } = await db.query<{ kind: CheckinKind }>(
+    `
+    select distinct case when content ilike 'morning check-in%' then 'morning' else 'evening' end as "kind"
+    from public.chat_messages
+    where user_name = $1
+      and role = 'user'
+      and (content ilike 'morning check-in%' or content ilike 'evening check-in%')
+      and (created_at at time zone $2)::date = $3::date
+    `,
+    [userName, process.env.APP_TIME_ZONE || "America/New_York", date]
+  );
+  return new Set(rows.map((row) => row.kind));
 }

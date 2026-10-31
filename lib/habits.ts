@@ -26,6 +26,9 @@ export type HabitInput = {
   // The day's target: for limit habits the most that's OK (0 = none), for
   // build habits the least. Null means no amount target.
   goal: number | null;
+  // Where the day turns orange and red, in the habit's measure (see
+  // habitOutcome). Null uses the default steps from the goal.
+  bands: HabitBands | null;
   cutoff: string | null; // local "HH:MM" after which any use is a miss
   cutoffWeeknights: boolean; // the cutoff applies Sunday-Thursday only
   // Frequency: the weekdays (0 Sunday-6 Saturday) the habit is tracked.
@@ -35,6 +38,29 @@ export type HabitInput = {
 };
 
 export type Habit = HabitInput & { id: string };
+
+// A limit habit is yellow past its goal, orange past `orange` and red past
+// `red` (gaming: goal 0, orange 60, red 90). A build habit is yellow under its
+// goal, orange under `orange` and red under `red` (reading: goal 20, orange 10,
+// red 1).
+export type HabitBands = { orange: number; red: number };
+
+// Why a habit's bands don't fit its goal, or null when they do.
+export function bandsProblem(habit: Pick<HabitInput, "direction" | "goal" | "measure" | "bands">): string | null {
+  const { bands, goal } = habit;
+  if (!bands) return null;
+  if (goal == null) return "Color bands need a goal.";
+  if (habit.measure !== "minutes" && (!Number.isInteger(bands.orange) || !Number.isInteger(bands.red))) {
+    return "Color bands are whole numbers for this habit.";
+  }
+  if (habit.measure === "intensity" && Math.max(bands.orange, bands.red) > 3) return "Intensity bands are 0 to 3.";
+  if (habit.direction === "limit") {
+    if (bands.orange < goal || bands.red <= bands.orange) return "For a limit habit, orange starts at or past the goal and red past orange.";
+  } else if (bands.orange > goal || bands.red >= bands.orange || bands.red < 0) {
+    return "For a build habit, orange starts at or under the goal and red under orange.";
+  }
+  return null;
+}
 
 export type HabitLogInput = {
   habitId: string;
@@ -73,6 +99,8 @@ const HABIT_COLUMNS = `
   direction,
   scale_guide as "scaleGuide",
   goal::float8,
+  case when band_orange is null then null
+    else json_build_object('orange', band_orange::float8, 'red', band_red::float8) end as bands,
   to_char(cutoff, 'HH24:MI') as cutoff,
   cutoff_weeknights as "cutoffWeeknights",
   days::int[] as days,
@@ -117,8 +145,12 @@ export async function saveHabit(db: Queryable, userName: string, input: HabitInp
     input.cutoffWeeknights,
     input.active,
     input.description ?? null,
-    normalizeDays(input.days)
+    normalizeDays(input.days),
+    input.bands?.orange ?? null,
+    input.bands?.red ?? null
   ];
+  const bandError = bandsProblem({ ...input, bands: input.bands ?? null });
+  if (bandError) throw new HabitError(bandError);
   try {
     if (id) {
       const { rows: current } = await db.query<{ measure: string; logs: number }>(
@@ -138,16 +170,17 @@ export async function saveHabit(db: Queryable, userName: string, input: HabitInp
           `
           update public.habits
           set name = $2, measure = $3, unit = $4, direction = $5, scale_guide = $6, goal = $7,
-            cutoff = $8::time, cutoff_weeknights = $9, active = $10, description = $11, days = $12::smallint[]
-          where user_name = $1 and id = $13::uuid
+            cutoff = $8::time, cutoff_weeknights = $9, active = $10, description = $11, days = $12::smallint[],
+            band_orange = $13, band_red = $14
+          where user_name = $1 and id = $15::uuid
           returning id::text
           `,
           [...values, id]
         )
       : await db.query<{ id: string }>(
           `
-          insert into public.habits (user_name, name, measure, unit, direction, scale_guide, goal, cutoff, cutoff_weeknights, active, description, days)
-          values ($1, $2, $3, $4, $5, $6, $7, $8::time, $9, $10, $11, $12::smallint[])
+          insert into public.habits (user_name, name, measure, unit, direction, scale_guide, goal, cutoff, cutoff_weeknights, active, description, days, band_orange, band_red)
+          values ($1, $2, $3, $4, $5, $6, $7, $8::time, $9, $10, $11, $12::smallint[], $13, $14)
           returning id::text
           `,
           values
@@ -341,10 +374,11 @@ function missFrom(severity: number): HabitOutcome {
   return severity <= 0 ? "met" : severity === 1 ? "miss-1" : severity === 2 ? "miss-2" : "miss-3";
 }
 
-// Judges a day against the habit's goal and cutoff. Limit habits miss by how
-// far over the goal they went (intensity steps, drinks, or minutes); late use
-// misses by how late (under 30 minutes, under 90, more). Build habits miss by
-// how short they fell; an explicit zero is the biggest miss.
+// Judges a day against the habit's goal and cutoff. With color bands, the
+// amount picks the miss (HabitBands). Without them, limit habits miss by how
+// far over the goal they went (intensity steps, drinks, or minutes) and build
+// habits by how short they fell, an explicit zero the biggest miss. Late use
+// misses by how late (under 30 minutes, under 90, more).
 export function habitOutcome(day: HabitDay): HabitOutcome {
   const { habit } = day;
   if (day.status === "unknown") return trackedOn(habit, day.date) ? "unknown" : "off";
@@ -355,6 +389,7 @@ export function habitOutcome(day: HabitDay): HabitOutcome {
 
   if (habit.direction === "build") {
     if (habit.goal == null || day.level >= habit.goal) return "met";
+    if (habit.bands) return day.level < habit.bands.red ? "miss-3" : day.level < habit.bands.orange ? "miss-2" : "miss-1";
     if (day.level <= 0) return "miss-3";
     return day.level >= habit.goal / 2 ? "miss-1" : "miss-2";
   }
@@ -362,7 +397,9 @@ export function habitOutcome(day: HabitDay): HabitOutcome {
   let severity = 0;
   if (habit.goal != null && day.level > habit.goal) {
     const over = day.level - habit.goal;
-    if (habit.measure === "minutes") {
+    if (habit.bands) {
+      severity = day.level > habit.bands.red ? 3 : day.level > habit.bands.orange ? 2 : 1;
+    } else if (habit.measure === "minutes") {
       const ratio = habit.goal > 0 ? over / habit.goal : over / 60;
       severity = ratio <= 0.25 ? 1 : ratio <= 0.75 ? 2 : 3;
     } else {
@@ -386,6 +423,10 @@ export function describeGoal(habit: HabitInput) {
   if (habit.goal != null) {
     if (habit.direction === "limit" && habit.goal === 0) parts.push("None");
     else parts.push(`${formatHabitAmount(habit, habit.goal)} or ${habit.direction === "limit" ? "less" : "more"}`);
+  }
+  if (habit.goal != null && habit.bands) {
+    const word = habit.direction === "limit" ? "over" : "under";
+    parts.push(`orange ${word} ${formatHabitAmount(habit, habit.bands.orange)}, red ${word} ${formatHabitAmount(habit, habit.bands.red)}`);
   }
   if (habit.cutoff) {
     parts.push(`not after ${formatClockTime(habit.cutoff)}${habit.cutoffWeeknights ? " on weeknights" : ""}`);
