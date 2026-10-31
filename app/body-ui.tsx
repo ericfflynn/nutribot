@@ -1,7 +1,7 @@
 // Pieces of the body state (docs/body-state.md) shown on Today: the sick
 // line under the day scores, and the trends each score opens.
 import type { ReactNode } from "react";
-import { ColumnChart, VitalsChart } from "./charts";
+import { ColumnChart, SleepWindowChart, VitalsChart } from "./charts";
 import { addDays, todayLocalDate } from "@/lib/dates";
 import { formatClockTime } from "@/lib/habits";
 import type { BodyState, Status, Vital } from "@/lib/body-state/types";
@@ -202,13 +202,31 @@ function SleepStages({ sleep }: { sleep: BodyState["physical"]["sleep"] }) {
   );
 }
 
-// Sleep's trends: last night by stage, then 7 nights of stages against the 8-hour need.
+// Tonight's need and what raised it: "8:24 (8:00 + 0:24 strain)".
+function needLine(need: NonNullable<BodyState["physical"]["sleep"]["need"]>) {
+  const extras = [
+    need.strain ? `${hm(need.strain)} strain` : null,
+    need.debt ? `${hm(need.debt)} debt` : null,
+    need.illness ? `${hm(need.illness)} sick` : null
+  ].filter(Boolean);
+  return extras.length ? `${hm(need.minutes)} (${hm(need.baseline)} + ${extras.join(" + ")})` : hm(need.minutes);
+}
+
+// Sleep's trends: last night by stage, then 7 nights of bed and wake times over
+// the usual night (stored states from before Oct 31, 2026 show stages instead).
 export function SleepDetails({ state }: { state: BodyState }) {
   const { sleep } = state.physical;
   return (
     <>
       <SleepStages sleep={sleep} />
-      {sleep.nights7?.length ? (
+      {sleep.nights7?.some((night) => night.bedtime !== undefined) ? (
+        <SleepWindowChart
+          label="Bed and wake times, last 7 nights"
+          color={STAGES[1].color}
+          nights={sleep.nights7.map((night) => ({ date: night.date, bedtime: night.bedtime ?? null, wakeTime: night.wakeTime ?? null, minutes: night.minutes }))}
+          usual={sleep.usualBedtime && sleep.usualWakeTime ? { bedtime: sleep.usualBedtime, wakeTime: sleep.usualWakeTime } : null}
+        />
+      ) : sleep.nights7?.length ? (
         <ColumnChart
           label="Sleep by stage, last 7 nights"
           format="hours"
@@ -231,7 +249,11 @@ export function SleepDetails({ state }: { state: BodyState }) {
       <Facts
         rows={[
           ["In bed", sleep.bedtime && sleep.wakeTime ? `${formatClockTime(sleep.bedtime)} – ${formatClockTime(sleep.wakeTime)}` : "–"],
-          ["Short over 3 nights", (sleep.debt3n ?? 0) > 0 ? `${sleep.debt3n} min` : "–"]
+          ["Short over 3 nights", (sleep.debt3n ?? 0) > 0 ? `${sleep.debt3n} min` : "–"],
+          ["Sleep score", sleep.score == null ? "–" : `${sleep.score}%`],
+          ["Need", sleep.need ? needLine(sleep.need) : "–"],
+          ["Duration vs need", sleep.pct == null ? "–" : `${sleep.pct}%`],
+          ["Consistency, 7 nights", sleep.consistency7n == null ? "–" : `${sleep.consistency7n}%`]
         ]}
       />
     </>

@@ -99,7 +99,8 @@ function Axes({
   y,
   days,
   x,
-  suffix = ""
+  suffix = "",
+  formatTick = (tick: number) => tickFormat.format(tick)
 }: {
   width: number;
   right?: number;
@@ -108,6 +109,7 @@ function Axes({
   days: string[];
   x: (index: number) => number;
   suffix?: string; // after each y tick, e.g. "%"
+  formatTick?: (tick: number) => string;
 }) {
   const plotWidth = width - MARGIN.left - right;
   return (
@@ -116,7 +118,7 @@ function Axes({
         <g key={tick}>
           <line x1={MARGIN.left} x2={width - right} y1={y(tick)} y2={y(tick)} className="chart-grid" />
           <text x={MARGIN.left - 8} y={y(tick)} dy="0.32em" textAnchor="end" className="chart-tick">
-            {tickFormat.format(tick)}
+            {formatTick(tick)}
             {suffix}
           </text>
         </g>
@@ -284,6 +286,140 @@ export function ColumnChart({
                       })
                 }
               />
+            ) : null}
+          </>
+        );
+      }}
+    </ChartFrame>
+  );
+}
+
+// Each night as a bar from bedtime (top) to wake time (bottom) on a clock
+// axis, so its length is time in bed, over a band for the usual night.
+// Missing nights are gaps.
+export type SleepNight = { date: string; bedtime: string | null; wakeTime: string | null; minutes: number | null };
+
+// Clock "HH:MM" as minutes after 6 pm, so 1 am sorts after 11 pm.
+const eveningOf = (time: string) => (Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5)) - 18 * 60 + 1440) % 1440;
+
+function clockLabel(evening: number, withMinutes = false) {
+  const total = Math.round(evening + 18 * 60) % 1440;
+  const hour = Math.floor(total / 60);
+  const minutes = total % 60;
+  const h12 = hour % 12 || 12;
+  return `${h12}${withMinutes ? `:${String(minutes).padStart(2, "0")}` : ""} ${hour < 12 ? "am" : "pm"}`;
+}
+
+export function SleepWindowChart({
+  nights,
+  usual,
+  color,
+  label
+}: {
+  nights: SleepNight[];
+  usual: { bedtime: string; wakeTime: string } | null;
+  color: string;
+  label: string;
+}) {
+  const [active, setActive] = useState<number | null>(null);
+  const spans = nights.map((night) => {
+    if (!night.bedtime || !night.wakeTime) return null;
+    const start = eveningOf(night.bedtime);
+    let end = eveningOf(night.wakeTime);
+    if (end < start) end += 1440;
+    return { start, end };
+  });
+  const band = usual ? { start: eveningOf(usual.bedtime), end: eveningOf(usual.wakeTime) } : null;
+  const edges = [...spans.flatMap((span) => (span ? [span.start, span.end] : [])), ...(band ? [band.start, band.end] : [])];
+  if (!edges.length) return null;
+  const range = Math.max(...edges) - Math.min(...edges);
+  const step = range > 6 * 60 ? 120 : 60;
+  const lo = Math.floor((Math.min(...edges) - 20) / step) * step;
+  const hi = Math.ceil((Math.max(...edges) + 20) / step) * step;
+  const ticks = Array.from({ length: (hi - lo) / step + 1 }, (_, index) => lo + index * step);
+
+  return (
+    <ChartFrame label={label}>
+      {(width) => {
+        const plotWidth = width - MARGIN.left - MARGIN.right;
+        const plotHeight = HEIGHT - MARGIN.top - MARGIN.bottom;
+        const slot = plotWidth / nights.length;
+        const barWidth = Math.max(2, Math.min(24, slot - 2));
+        const x = (index: number) => MARGIN.left + slot * index + slot / 2;
+        const y = (value: number) => MARGIN.top + ((value - lo) / (hi - lo)) * plotHeight;
+        const activeNight = active == null ? null : nights[active];
+
+        return (
+          <>
+            <svg width={width} height={HEIGHT}>
+              {band ? (
+                <rect
+                  x={MARGIN.left}
+                  y={y(band.start)}
+                  width={plotWidth}
+                  height={Math.max(0, y(band.end) - y(band.start))}
+                  fill={color}
+                  opacity={0.1}
+                  aria-hidden="true"
+                />
+              ) : null}
+              <Axes width={width} ticks={ticks} y={y} days={nights.map((night) => night.date)} x={x} formatTick={(tick) => clockLabel(tick)} />
+              {spans.map((span, index) =>
+                span ? (
+                  <rect
+                    key={nights[index].date}
+                    x={x(index) - barWidth / 2}
+                    y={y(span.start)}
+                    width={barWidth}
+                    height={Math.max(2, y(span.end) - y(span.start))}
+                    rx={4}
+                    fill={color}
+                    opacity={active != null && active !== index ? 0.55 : 1}
+                  />
+                ) : null
+              )}
+              {nights.map((night, index) => (
+                <rect
+                  key={night.date}
+                  x={MARGIN.left + slot * index}
+                  y={MARGIN.top}
+                  width={slot}
+                  height={plotHeight}
+                  fill="transparent"
+                  tabIndex={0}
+                  aria-label={`${formatDay(night.date, true)}: ${
+                    night.bedtime && night.wakeTime ? `${clockLabel(eveningOf(night.bedtime), true)} to ${clockLabel(eveningOf(night.wakeTime), true)}` : "no data"
+                  }`}
+                  onPointerEnter={() => setActive(index)}
+                  onPointerLeave={() => setActive(null)}
+                  onFocus={() => setActive(index)}
+                  onBlur={() => setActive(null)}
+                />
+              ))}
+            </svg>
+            {activeNight && active != null ? (
+              <Tooltip
+                x={x(active)}
+                width={width}
+                title={formatDay(activeNight.date, true)}
+                rows={
+                  activeNight.bedtime && activeNight.wakeTime
+                    ? [
+                        {
+                          color,
+                          label: "in bed",
+                          value: `${clockLabel(eveningOf(activeNight.bedtime), true)} – ${clockLabel(eveningOf(activeNight.wakeTime), true)}`
+                        },
+                        { color: "transparent", label: "asleep", value: activeNight.minutes == null ? "–" : FORMATTERS.hours(activeNight.minutes / 60) }
+                      ]
+                    : [{ color: "transparent", label: "", value: "No data" }]
+                }
+              />
+            ) : null}
+            {usual ? (
+              <p className="chart-note">
+                Shaded: your usual night, {clockLabel(eveningOf(usual.bedtime), true)} – {clockLabel(eveningOf(usual.wakeTime), true)}
+              </p>
             ) : null}
           </>
         );

@@ -4,6 +4,11 @@ Product and design decisions, newest first. One entry per decision: what was dec
 
 ## 2026-10-31
 
+### Sleep is a score: duration against a need that moves, plus consistency
+- **Decided:** Sleep on Today, the day strip and in Recovery is a sleep score, 70% duration (asleep / need) and 30% consistency (a Sleep Regularity Index over 7 nights). Need is 8 h plus up to 30 min after a hard day (strain above 10), a quarter of the recent sleep debt (up to 60 min) and 45 min when sick, capped at 9 h 30 m. Sleep's trends show each night from bedtime to wake time over the usual night, with the score, need and consistency below. Each score card has two rows under its bar: Sleep shows the score up top, then "8h 38m of 8h 12m" (asleep of need) and "87% consistent"; Recovery HRV and RHR; Strain steps and how much of the day's strain came from workouts (the workouts alone on the same 0-21 curve). Detail in [scores.md](scores.md#sleep).
+- **Why:** the owner wanted Whoop's idea with their own spin; regularity is well supported as mattering alongside duration. The owner found a 10-hour need absurd and an 8 h 45 m need after a workout too high: debt is measured against the 8 h baseline so a raised need can't feed on itself, and the strain bump is gentle because the evidence for it is weak.
+- **Instead of:** asleep / a fixed 8 h; a 4-night consistency (too jumpy); a 10-hour cap.
+
 ### The README leads with the body state
 - **Decided:** the README opens with the body state as the project's core idea (shape, an example from demo, principles, versioned storage), then the data flow from raw watch payloads to views to the daily model. The screenshots show demo's six weeks, which include a cold the watch flags a day early and weekend drinks, so the model has something to show.
 - **Why:** the data modeling is the most interesting part of the project to show; the old README described the app as a logger and predated the body state and the Training redesign.

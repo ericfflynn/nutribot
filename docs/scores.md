@@ -17,11 +17,28 @@ Strain's zone weighting follows the general TRIMP idea from sports science (trai
 ## Sleep
 
 ```
-sleep % = min(100, minutes asleep / 480)
+need        = 8 h
+            + 3 min per point of yesterday's day strain above 10   (up to 30 min)
+            + a quarter of the sleep debt                          (up to 60 min)
+            + 45 min on a sick day or the night after one
+            (capped at 9 h 30 m)
+debt        = running balance over the 7 nights before, against 8 h:
+              a short night adds its shortfall, a long one pays it down, never below 0
+duration %  = min(100, minutes asleep / need)
+consistency = Sleep Regularity Index over the last 7 nights (at least 5 with bed and wake times)
+sleep score = 0.7 × duration % + 0.3 × consistency          (duration % alone without consistency)
 ```
 
-- Input: `sleep_minutes` of the main sleep, dated by the morning you woke up.
-- Need is a fixed 8 hours (`SLEEP_NEED_MINUTES`). Whoop personalizes sleep need from recent strain and sleep debt; we don't yet.
+- **Input:** `sleep_minutes`, `bedtime` and `wake_time` of the main sleep, dated by the morning you woke up; yesterday's day strain (below); sick days logged or tagged in the journal (`listSickDates`).
+- **Shape:** Whoop's sleep need is a baseline plus extra for the day's strain and for recent sleep debt, less naps; its sleep score blends hours vs need with consistency (and efficiency and "sleep stress", unpublished weights). This keeps the two parts that are best supported and adds illness. Naps aren't synced.
+- **Baseline 8 h, fixed.** Whoop learns a personal baseline; without a way to tell how rested the owner feels it can't be learned honestly. Later, perhaps from the morning check-in.
+- **Strain from 10, 3 min a point, up to 30:** the evidence that exercise raises sleep need is weak (a controlled trial in young adults found it didn't; very long efforts, such as a 92 km race, did), so only harder days add, and modestly: strain 14 adds 12 min, 16 adds 18, the cap is reached at 20.
+- **Debt, a quarter of it:** roughly 4 nights of good sleep repay an hour of debt (small studies, an approximation). Debt is measured against the 8 h baseline, not each night's raised need: the first version measured it against the raised need, which fed on itself and pushed typical needs to 9 h and sick weeks to the cap.
+- **Sick, 45 min:** no study measures it; a judgment call. Early signs alone don't add (they showed on 15 of 59 nights in Sep-Oct 2026, too often).
+- **Consistency:** the Sleep Regularity Index (Phillips et al. 2017): for each pair of nights a day apart, the share of the 24 hours spent in the same state, asleep or awake, scaled so identical nights score 100 and unrelated ones 0. Here "asleep" is the whole window from bedtime to wake time, so wake-ups in the night count as asleep and it runs a little high. Regularity predicted mortality better than duration in about 61,000 UK Biobank adults (Windred et al. 2023, observational). 7 nights, not 4: on the owner's data a 4-night version moved about 8 points from one day to the next, 7 nights about 2.
+- **70 / 30:** duration is the bigger lever night to night; 30% lets an irregular week cost something.
+- **Calibration (Sep-Oct 2026, 58 nights):** need is 8 h 09 m typically, 8 h 36 m at the 90th percentile; duration is 100% on most nights (the owner sleeps about 8 h 38 m); consistency 80-90 (median 87); the score 90-97 (median 96). Most nights score high, so the score mostly moves with consistency and the occasional short night.
+- Sources: [Whoop: how much sleep do I need](https://www.whoop.com/us/en/thelocker/how-much-sleep-do-i-need), [Phillips et al. 2017](https://pmc.ncbi.nlm.nih.gov/articles/PMC5468315), [Windred et al. 2023](https://pmc.ncbi.nlm.nih.gov/articles/PMC10782489/), [exercise and sleep need, 2013](https://pubmed.ncbi.nlm.nih.gov/23075031/), [Fischer, Klerman & Phillips 2021](https://academic.oup.com/sleep/article/8273793).
 
 ## Recovery
 
@@ -31,7 +48,7 @@ For the latest day that has both HRV and resting heart rate:
 z_hrv = (today's HRV - 30-day mean HRV) / 30-day SD of HRV
 z_rhr = (30-day mean RHR - today's RHR) / 30-day SD of RHR     (lower RHR is good)
 physiology = clamp(60 + 25 × (0.65 × z_hrv + 0.35 × z_rhr), 1, 99)
-recovery = 0.8 × physiology + 0.2 × sleep %                     (physiology alone if no sleep)
+recovery = 0.8 × physiology + 0.2 × sleep score                 (physiology alone if no sleep)
 band = green ≥ 67, yellow ≥ 34, else red
 ```
 
@@ -39,9 +56,9 @@ band = green ≥ 67, yellow ≥ 34, else red
 - **HRV vs RHR weight (0.65 / 0.35):** Whoop says HRV matters most; the exact split is a judgment call.
 - **Center at 60:** started at 50, but then an ordinary day landed mid-yellow. At 60, a typical day with full sleep scores about 68, right at the green line, and it takes a clearly worse-than-usual morning to drop into yellow.
 - **25 points per SD:** a day one SD better than usual on both inputs moves physiology up 25 points.
-- **Sleep at 20%:** keeps a short night visible without letting sleep swamp the physiological signal.
+- **Sleep at 20%:** keeps a short night visible without letting sleep swamp the physiological signal. Since October 31, 2026 it's the sleep score rather than asleep / 8 h; that moved recovery by about −1 point on average (at most −2) over Sep-Oct 2026, and no day changed band.
 
-Example (synthetic): baseline HRV 80 ± 10 ms, RHR 62 ± 2 bpm. Today HRV 90 ms (z +1.0), RHR 61 bpm (z +0.5), 7h 30m asleep (94%).
+Example (synthetic): baseline HRV 80 ± 10 ms, RHR 62 ± 2 bpm. Today HRV 90 ms (z +1.0), RHR 61 bpm (z +0.5), sleep score 94.
 physiology = 60 + 25 × (0.65 + 0.175) = 80.6 → recovery = 0.8 × 80.6 + 0.2 × 94 = **83%, green**.
 
 Not used yet: respiratory rate and SpO2 (both synced), which Whoop also considers.

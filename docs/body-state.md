@@ -98,14 +98,18 @@ So the top of a day reads like "Physical: low, sick, day 3 · Mental: ok, mood 3
 
 | Signal | Meaning |
 | --- | --- |
-| `minutes`, `needMinutes`, `pct` | Asleep, need (8 h, `SLEEP_NEED_MINUTES`) and percent, as in [scores.md](scores.md). |
+| `minutes`, `needMinutes`, `pct` | Asleep, last night's need and asleep as a percent of it (capped at 100), as in [scores.md](scores.md#sleep). Need was a fixed 8 h until October 31, 2026. |
+| `score` | The sleep score, 70% duration and 30% consistency ([scores.md](scores.md#sleep)). Added October 31, 2026. |
+| `need` | What the need was made of: `baseline`, `strain`, `debt`, `illness` (minutes) and the total. Added October 31, 2026. |
 | `bedtime`, `wakeTime` | Local times. |
 | `deepMinutes`, `remMinutes`, `lightMinutes`, `awakeMinutes` | Stages. |
-| `nights7` | The last 7 nights by stage, for the sleep chart. |
+| `nights7` | The last 7 nights by stage, with bedtime and wake time, for the sleep chart. |
+| `usualBedtime`, `usualWakeTime` | The usual night: median bedtime and wake time over the 28 nights before last night (at least 7 known). Sleep's trends draw each night from bedtime to wake time over this window. Added October 31, 2026. |
 | `debt3n` | Total shortfall over the last 3 nights, in minutes (only nights under need count). |
 | `bedtimeDrift7n` | How far last night's bedtime was from the 7-night median, in minutes; late nights show up here. |
+| `consistency7n` | The Sleep Regularity Index over the last 7 nights, 0-100 (at least 5 nights; [scores.md](scores.md#sleep)). Added October 31, 2026; older stored states lack it. |
 
-Status: **good** at 90%+ with `debt3n` under 60; **low** under 60%; **watch** under 75% or `debt3n` 120+; otherwise **ok**.
+Status: **good** with a sleep score of 90+, `debt3n` under 60 and `consistency7n` not under 80; **low** under 60% of need; **watch** under 75% or `debt3n` 120+; otherwise **ok**. The sleep thresholds were calibrated October 31, 2026 on 58 nights: about 1 in 10 scored under 90 and about 1 in 20 had consistency under 80.
 
 ### `physical.recovery`
 

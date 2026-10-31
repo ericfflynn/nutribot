@@ -8,7 +8,7 @@ import { listIllnessDays } from "../illness";
 import { listJournalEntries } from "../journal";
 import { getUserGoals, getWaterOunces, listEntriesForDateRange } from "../supabase";
 import { listFitbitWorkouts, listWorkoutSessions } from "../workouts";
-import { buildBodyState } from "./build";
+import { buildBodyState, journalSickDays } from "./build";
 import type { BodySources, BodyState } from "./types";
 
 export async function loadBodySources(db: Pool, userName: string, date: string): Promise<BodySources> {
@@ -54,4 +54,14 @@ export async function getBodyState(
   trigger: BodyState["meta"]["trigger"] = "live"
 ): Promise<BodyState> {
   return buildBodyState(await loadBodySources(db, userName, date), date, { trigger });
+}
+
+// Sick dates in a range, the way the body state counts them: logged sick
+// days plus journal entries tagged sick. Sleep need rises on these.
+export async function listSickDates(db: Pool, userName: string, startDate: string, endDate: string): Promise<Set<string>> {
+  const [logged, journal] = await Promise.all([
+    listIllnessDays(db, userName, startDate, endDate),
+    listJournalEntries(db, userName, startDate, endDate)
+  ]);
+  return new Set([...logged, ...journalSickDays(journal, logged)].filter((day) => day.severity > 0).map((day) => day.date));
 }

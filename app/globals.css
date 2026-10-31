@@ -4686,3 +4686,9 @@ details[open] .journal-preview {
   color: var(--muted);
   font-size: 12px;
 }
+
+.chart-note {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}

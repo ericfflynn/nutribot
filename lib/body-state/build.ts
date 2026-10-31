@@ -5,7 +5,7 @@ import { addDays, weekdayOf } from "../dates";
 import { gramsFromPercentGoals, restingKcalPerMinute, withWorkoutCalories, workoutCalories } from "../goals";
 import { baselineDays, illnessSignal } from "../health/illness";
 import type { HealthDay, HealthWorkout } from "../health/queries";
-import { SLEEP_NEED_MINUTES, dayStrain, recoveryScore, sleepPerformance } from "../health/scores";
+import { SLEEP_NEED_MINUTES, dayStrain, recoveryScore, sleepScoresFor, type SleepScore } from "../health/scores";
 import { formatClockTime, formatHabitAmount, habitOutcome, summarizeHabitDay, trackedOn, type Habit } from "../habits";
 import { SEVERITY_LABELS, SYMPTOMS, easingOn, sickOn, type IllnessDay, type Symptom } from "../illness-days";
 import { ENERGY_LABELS, MOOD_LABELS, type JournalEntry } from "../journal";
@@ -118,6 +118,7 @@ type Context = {
   sickDates: Set<string>;
   illnessDays: IllnessDay[]; // logged plus journal-tagged
   journalSick: Set<string>; // dates whose sick day came from the journal
+  sleepScores: Map<string, SleepScore>; // every night in the health window
 };
 
 // The physical domain's head: when something's wrong, illness speaks first;
@@ -130,6 +131,21 @@ function physicalHead(problemOrder: Head[], fineOrder: Head[]): Head {
 
 // ---------- Physical ----------
 
+// The inverse of eveningMinutes, as "HH:MM".
+function clockOf(evening: number) {
+  const total = Math.round(evening + 18 * 60) % 1440;
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
+
+function usualClock(times: (string | null | undefined)[]) {
+  const known = times.filter((value): value is string => Boolean(value)).map(eveningMinutes);
+  return known.length >= 7 ? clockOf(median(known)) : null;
+}
+
+// Sleep status thresholds (calibrated October 31, 2026; docs/body-state.md).
+const GOOD_SLEEP = 90;
+const IRREGULAR = 80;
+
 function sleepArea(c: Context): SleepArea {
   const night = c.healthByDay.get(c.date);
   const minutes = night?.sleepMinutes ?? null;
@@ -141,10 +157,15 @@ function sleepArea(c: Context): SleepArea {
     .filter((value): value is string => Boolean(value))
     .map(eveningMinutes);
   const bedtimeDrift7n = night?.bedtime && before.length >= 3 ? Math.round(eveningMinutes(night.bedtime) - median(before)) : null;
-  const pct = sleepPerformance(minutes);
+  const scored = c.sleepScores.get(c.date) ?? null;
+  const pct = scored?.durationPct ?? null;
+  const consistency7n = scored?.consistency ?? null;
+  const baseline28 = lastDays(addDays(c.date, -1), 28);
   const base = {
     minutes,
-    needMinutes: SLEEP_NEED_MINUTES,
+    needMinutes: scored?.need.minutes ?? SLEEP_NEED_MINUTES,
+    need: scored?.need ?? null,
+    score: scored?.score ?? null,
     pct,
     bedtime: night?.bedtime?.slice(11, 16) ?? null,
     wakeTime: night?.wakeTime?.slice(11, 16) ?? null,
@@ -160,18 +181,28 @@ function sleepArea(c: Context): SleepArea {
         deep: day?.deepMinutes ?? null,
         light: day?.lightMinutes ?? null,
         rem: day?.remMinutes ?? null,
-        awake: day?.awakeMinutes ?? null
+        awake: day?.awakeMinutes ?? null,
+        bedtime: day?.bedtime?.slice(11, 16) ?? null,
+        wakeTime: day?.wakeTime?.slice(11, 16) ?? null
       };
     }),
+    usualBedtime: usualClock(baseline28.map((day) => c.healthByDay.get(day)?.bedtime)),
+    usualWakeTime: usualClock(baseline28.map((day) => c.healthByDay.get(day)?.wakeTime)),
     debt3n,
-    bedtimeDrift7n
+    bedtimeDrift7n,
+    consistency7n
   };
   if (minutes == null || pct == null) return { ...base, status: "unknown", headline: "Last night's sleep hasn't synced" };
+  // A short night against need is low or watch; an irregular week
+  // (consistency under IRREGULAR) keeps an otherwise long one from good.
+  const irregular = consistency7n != null && consistency7n < IRREGULAR;
+  const score = scored!.score;
   const status: Status =
-    pct < 60 ? "low" : pct < 75 || (debt3n ?? 0) >= 120 ? "watch" : pct >= 90 && (debt3n ?? 0) < 60 ? "good" : "ok";
-  const parts = [`${hm(minutes)}, ${pct}% of need`];
+    pct < 60 ? "low" : pct < 75 || (debt3n ?? 0) >= 120 ? "watch" : score >= GOOD_SLEEP && (debt3n ?? 0) < 60 && !irregular ? "good" : "ok";
+  const parts = [`${hm(minutes)}, sleep score ${score} (${pct}% of a ${hm(base.needMinutes)} need)`];
   if ((debt3n ?? 0) >= 60) parts.push(`${hm(debt3n!)} short over 3 nights`);
   if ((bedtimeDrift7n ?? 0) >= 60) parts.push(`to bed ${hm(bedtimeDrift7n!)} later than usual`);
+  if (irregular) parts.push(`bed and wake times irregular this week (${consistency7n}% consistent)`);
   return { ...base, status, headline: parts.join(", ") };
 }
 
@@ -180,7 +211,7 @@ function recoveryArea(c: Context): RecoveryArea {
   const scoreOn = (date: string) => {
     const index = days.findIndex((day) => day.day === date);
     if (index < 0 || days[index].hrvMs == null || days[index].restingHr == null) return null;
-    return recoveryScore(days.slice(0, index + 1));
+    return recoveryScore(days.slice(0, index + 1), (day) => c.sleepScores.get(day)?.score ?? null);
   };
   const today = scoreOn(c.date);
   const trend7 = lastDays(c.date, 7).map((day) => scoreOn(day)?.score ?? null);
@@ -716,12 +747,14 @@ export function buildBodyState(
     workoutsByDay,
     sickDates: new Set(),
     illnessDays: [],
-    journalSick: new Set()
+    journalSick: new Set(),
+    sleepScores: new Map()
   };
   const fromJournal = journalSickDays(sources.journal, sources.illness);
   c.illnessDays = [...sources.illness, ...fromJournal].sort((a, b) => a.date.localeCompare(b.date));
   c.journalSick = new Set(fromJournal.map((day) => day.date));
   c.sickDates = new Set(c.illnessDays.filter((day) => day.severity > 0).map((day) => day.date));
+  c.sleepScores = sleepScoresFor(sources.health, sources.health.map((day) => day.day), workoutsByDay, c.sickDates);
 
   const sleep = sleepArea(c);
   const recovery = recoveryArea(c);

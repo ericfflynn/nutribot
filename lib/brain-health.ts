@@ -5,8 +5,10 @@ import { tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { addDays } from "./dates";
 import { listHealthDays, listHealthWorkouts, type HealthDay, type HealthWorkout } from "./health/queries";
-import { dayStrain, recoveryScore, sleepPerformance, workoutStrain, type RecoveryScore } from "./health/scores";
+import { dayStrain, recoveryScore, sleepScoresFor, workoutStrain, type RecoveryScore, type SleepScore } from "./health/scores";
 import { fahrenheitDelta } from "./health/units";
+import { listSickDates } from "./body-state/load";
+import { getPool } from "./supabase";
 
 export const HEALTH_TOOLS = ["get_health"];
 
@@ -40,11 +42,17 @@ function describeWorkout(w: HealthWorkout) {
     .join(", ");
 }
 
-function describeDay(day: HealthDay, recovery: RecoveryScore | undefined, workouts: HealthWorkout[]) {
+function describeDay(day: HealthDay, sleep: SleepScore | undefined, recovery: RecoveryScore | undefined, workouts: HealthWorkout[]) {
   const parts: (string | null)[] = [];
   if (day.sleepMinutes != null) {
     const detail = [
-      `${sleepPerformance(day.sleepMinutes)}% of need`,
+      sleep
+        ? `sleep score ${sleep.score}: ${sleep.durationPct}% of a ${hm(sleep.need.minutes)} need${
+            sleep.need.minutes > sleep.need.baseline
+              ? ` (8h${sleep.need.strain ? ` + ${sleep.need.strain}m strain` : ""}${sleep.need.debt ? ` + ${sleep.need.debt}m debt` : ""}${sleep.need.illness ? ` + ${sleep.need.illness}m sick` : ""})`
+              : ""
+          }, consistency ${sleep.consistency ?? "–"}`
+        : null,
       day.bedtime && day.wakeTime ? `bed ${day.bedtime.slice(11)}, wake ${day.wakeTime.slice(11)}` : null,
       day.deepMinutes != null ? `deep ${day.deepMinutes}m` : null,
       day.remMinutes != null ? `REM ${day.remMinutes}m` : null,
@@ -98,26 +106,30 @@ export function healthTools({ userName, today }: { userName: string; today: stri
           };
         }
         // Recovery needs the 30 days before each scored day as its baseline.
-        const [allDays, workouts] = await Promise.all([
+        // Sleep need reads the day before's strain and sick days.
+        const [allDays, workouts, sickDates] = await Promise.all([
           listHealthDays(userName, addDays(args.start_date, -31), end),
-          listHealthWorkouts(userName, args.start_date, end)
+          listHealthWorkouts(userName, addDays(args.start_date, -1), end),
+          listSickDates(getPool()!, userName, addDays(args.start_date, -1), end)
         ]);
-        const recoveryByDay = new Map<string, RecoveryScore>();
-        allDays.forEach((day, index) => {
-          if (day.hrvMs == null || day.restingHr == null) return;
-          const score = recoveryScore(allDays.slice(0, index + 1));
-          if (score) recoveryByDay.set(day.day, score);
-        });
         const workoutsByDay = new Map<string, HealthWorkout[]>();
         for (const w of [...workouts].reverse()) {
           workoutsByDay.set(w.day, [...(workoutsByDay.get(w.day) ?? []), w]);
         }
+        const shown = allDays.map((day) => day.day).filter((day) => day >= args.start_date);
+        const sleepByDay = sleepScoresFor(allDays, shown, workoutsByDay, sickDates);
+        const recoveryByDay = new Map<string, RecoveryScore>();
+        allDays.forEach((day, index) => {
+          if (day.hrvMs == null || day.restingHr == null || day.day < args.start_date) return;
+          const score = recoveryScore(allDays.slice(0, index + 1), (night) => sleepByDay.get(night)?.score ?? null);
+          if (score) recoveryByDay.set(day.day, score);
+        });
         const days = allDays.filter((day) => day.day >= args.start_date);
         if (!days.length) {
           return { content: [{ type: "text" as const, text: "No watch data in that range." }] };
         }
 
-        const lines = days.map((day) => describeDay(day, recoveryByDay.get(day.day), workoutsByDay.get(day.day) ?? []));
+        const lines = days.map((day) => describeDay(day, sleepByDay.get(day.day), recoveryByDay.get(day.day), workoutsByDay.get(day.day) ?? []));
         // Today is partial, so it stays out of the averages.
         const full = days.filter((day) => day.day < today);
         const avg = {

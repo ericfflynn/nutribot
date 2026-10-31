@@ -7,6 +7,7 @@ import type { Habit, HabitLog, HabitOutcome } from "../habits";
 import type { IllnessDay, Symptom } from "../illness-days";
 import type { JournalEntry } from "../journal";
 import type { Goals } from "../goals";
+import type { SleepNeed } from "../health/scores";
 import type { MacroEntry } from "../supabase";
 import type { FitbitWorkout, Intensity, SorenessReport, TrackedMuscle, WorkoutSession } from "../workouts";
 
@@ -31,8 +32,8 @@ export type Vital = {
 
 export type SleepArea = Head & {
   minutes: number | null;
-  needMinutes: number;
-  pct: number | null;
+  needMinutes: number; // tonight's need (8 h until Oct 31, 2026)
+  pct: number | null; // asleep / need, capped at 100
   bedtime: string | null; // local "HH:MM"
   wakeTime: string | null;
   deepMinutes: number | null;
@@ -40,9 +41,28 @@ export type SleepArea = Head & {
   lightMinutes: number | null;
   awakeMinutes: number | null;
   // The last 7 nights, oldest first, by stage (minutes; null when not synced).
-  nights7: { date: string; minutes: number | null; deep: number | null; light: number | null; rem: number | null; awake: number | null }[];
+  // bedtime and wakeTime ("HH:MM") were added Oct 31, 2026; older stored states lack them.
+  nights7: {
+    date: string;
+    minutes: number | null;
+    deep: number | null;
+    light: number | null;
+    rem: number | null;
+    awake: number | null;
+    bedtime?: string | null;
+    wakeTime?: string | null;
+  }[];
+  // The usual night: median bedtime and wake time ("HH:MM") over the 28 nights
+  // before last night, with at least 7 known (added Oct 31, 2026).
+  usualBedtime?: string | null;
+  usualWakeTime?: string | null;
   debt3n: number | null; // shortfall over the last 3 nights, minutes
   bedtimeDrift7n: number | null; // minutes past the 7-night median bedtime (negative: earlier)
+  // Added Oct 31, 2026 (older stored states lack them): the sleep score, what
+  // tonight's need was made of, and the 7-night Sleep Regularity Index.
+  score?: number | null;
+  need?: SleepNeed | null;
+  consistency7n?: number | null;
 };
 
 export type RecoveryArea = Head & {

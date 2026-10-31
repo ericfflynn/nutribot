@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildBodyState, journalSickDays, worstOf } from "@/lib/body-state/build";
+import { sleepConsistency, sleepDebt, sleepNeed } from "@/lib/health/scores";
 import type { BodySources } from "@/lib/body-state/types";
 import type { HealthDay } from "@/lib/health/queries";
 import type { Habit, HabitLog } from "@/lib/habits";
@@ -166,4 +167,43 @@ test("the stored hash ignores meta, so a rebuild that changes nothing isn't save
   // The current schema reads as is; an unknown older one says so.
   assert.equal(upgradeState(a as unknown as Record<string, unknown>, 1).meta.date, TODAY);
   assert.throws(() => upgradeState({}, 0), /No upgrade from body state v0/);
+});
+
+test("sleep consistency is a 7-night regularity index: identical nights 100, needs 5 nights", () => {
+  const regular = buildBodyState(sources(), TODAY).physical.sleep;
+  assert.equal(regular.consistency7n, 100);
+  assert.equal(regular.score, 100);
+  assert.equal(regular.usualBedtime, "23:00");
+  assert.equal(regular.usualWakeTime, "07:00");
+  assert.equal(regular.nights7.at(-1)?.bedtime, "23:00");
+  const night = (bed: string, wake: string) => ({ bedtime: `2026-11-01T${bed}:00`, wakeTime: `2026-11-02T${wake}:00` });
+  // Alternating 11 pm and 1 am, 8 hours each: 2 of 24 hours differ on each
+  // side, so 20 of 24 match: 200 × 20/24 − 100 = 67.
+  const alternating = Array.from({ length: 7 }, (_, index) => (index % 2 ? night("01:00", "09:00") : night("23:00", "07:00")));
+  assert.equal(sleepConsistency(alternating), 67);
+  assert.equal(sleepConsistency([night("23:00", "07:00"), null, night("23:00", "07:00"), null, night("23:00", "07:00")]), null);
+});
+
+test("sleep need: 8 h, plus hard-day strain, a quarter of the debt and sick days, capped", () => {
+  assert.equal(sleepNeed({ strainYesterday: 9, debtMinutes: 0, sick: false }).minutes, 480);
+  assert.equal(sleepNeed({ strainYesterday: 16, debtMinutes: 0, sick: false }).strain, 18);
+  assert.equal(sleepNeed({ strainYesterday: 21, debtMinutes: 0, sick: false }).strain, 30);
+  assert.equal(sleepNeed({ strainYesterday: null, debtMinutes: 120, sick: false }).debt, 30);
+  assert.equal(sleepNeed({ strainYesterday: 21, debtMinutes: 600, sick: true }).minutes, 570);
+  // Debt is against 8 h: a long night pays a short one back.
+  assert.equal(sleepDebt([420, 540]), 0);
+  assert.equal(sleepDebt([540, 420, 420]), 120);
+});
+
+test("a short night after a hard day scores lower; an irregular week keeps sleep from good", () => {
+  const hardDay = { [shift(TODAY, -1)]: { zoneMinutesCardio: 60, zoneMinutesPeak: 20 }, [TODAY]: { sleepMinutes: 450 } };
+  const easy = buildBodyState(sources({ health: health({ [TODAY]: { sleepMinutes: 450 } }) }), TODAY).physical.sleep;
+  const hard = buildBodyState(sources({ health: health(hardDay) }), TODAY).physical.sleep;
+  assert.ok(hard.needMinutes > easy.needMinutes);
+  assert.ok(hard.score! < easy.score!);
+  const late = (days: number) => ({ [shift(TODAY, days)]: { bedtime: `${shift(TODAY, days - 1)}T01:30:00`, wakeTime: `${shift(TODAY, days)}T09:30:00` } });
+  const state = buildBodyState(sources({ health: health({ ...late(-5), ...late(-3), ...late(-1) }) }), TODAY);
+  assert.ok(state.physical.sleep.consistency7n! < 80);
+  assert.equal(state.physical.sleep.status, "ok");
+  assert.match(state.physical.sleep.headline, /irregular/);
 });
