@@ -2,6 +2,17 @@
 
 Product and design decisions, newest first. One entry per decision: what was decided, why, and what it replaced or ruled out. Add an entry whenever the owner settles something that future work should follow; link the doc that holds the detail. Data shapes live in their specs ([body-state.md](body-state.md) keeps the body state's schema versions); this log says why they are what they are.
 
+## 2026-10-31
+
+### The chat talks first and logs when something is reported
+- **Decided:** the chat is a health assistant that also keeps records, not a logger that also chats. It decides per message: reports ("had eggs", "chest day, hard", "2 beers"), check-in answers and "log that" get drafts; questions, venting and conversation get a real answer, with observations from the owner's data and a recommendation when one helps, and no drafts. "Just chatting" or "don't log this" turns drafting off for the conversation. Feelings shared in conversation get a small **Save to journal** button (a journal draft with `offer: true`), one tap to keep, instead of a full card. Check-ins ask about missing habits once. [brain.md](brain.md#talking-and-logging).
+- **Why:** every message produced a card, so the chat felt like a data-entry form ("a glorified CRUD assistant"). In one evening it asked about unlogged habits five times and answered "I binged chasing dopamine" with a journal card and a request for what else to log.
+- **Instead of:** a Log / Talk switch in the composer (more friction, easy to forget) or never journaling conversation (loses entries worth keeping). Memory across conversations is a separate, later step (feedback fa2e1bba, 63863809).
+
+### The check-in can be swiped away
+- **Decided:** Today's check-in goes away once it's answered in chat (a "Morning check-in: …" or "Evening check-in: …" message that day) or a journal entry of its kind is saved, and it can be swiped (or tapped ×) away for the day; the morning and evening check-ins are separate. Dismissals live in a cookie.
+- **Why:** a quick reply led to a sick-day card but no journal entry, so the card stayed up after the owner answered it.
+
 ## 2026-10-30
 
 ### Temperatures show in Fahrenheit

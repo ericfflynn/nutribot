@@ -252,9 +252,41 @@ function timeRange(start: string | null, end: string | null) {
   return start && end ? `${at(start)}–${at(end)}` : end ? `until ${at(end)}` : `from ${at(start)}`;
 }
 
+// A journal entry the chat offered from conversation: one tap saves it, and
+// "Review" opens the full card first.
+function JournalOffer({ draft, onSave, onReview }: { draft: JournalDraft; onSave: () => Promise<void>; onReview: () => void }) {
+  const [busy, setBusy] = useState(false);
+  if (draft.saved_id) return <p className="journal-offer-status">Saved to journal</p>;
+  return (
+    <div className="journal-offer">
+      <button
+        type="button"
+        className="journal-offer-save"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          await onSave();
+          setBusy(false);
+        }}
+      >
+        {busy ? "Saving…" : "Save to journal"}
+      </button>
+      <button type="button" className="text-button" onClick={onReview} disabled={busy}>
+        Review
+      </button>
+    </div>
+  );
+}
+
 function JournalCard({ draft, today, ...handlers }: { draft: JournalDraft } & DraftHandlers) {
+  const [reviewing, setReviewing] = useState(false);
   const day = dayLabel(draft.date, today);
   const ratings = recordedRatings(draft.ratings);
+  if (draft.offer && !reviewing) {
+    // A passed-over offer just goes away.
+    if (draft.discarded || handlers.superseded) return null;
+    return <JournalOffer draft={draft} onSave={() => handlers.onSave()} onReview={() => setReviewing(true)} />;
+  }
   return (
     <CheckinCard draft={draft} kind={`${draft.edits ? "Edit · " : ""}${draft.kind} journal${day ? ` · ${day}` : ""}`} {...handlers}>
       {draft.edits ? (

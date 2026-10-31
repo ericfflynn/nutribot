@@ -2458,6 +2458,30 @@ button.fab {
   font-weight: 600;
 }
 
+.journal-offer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.journal-offer-save {
+  padding: 7px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.journal-offer-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .chat-message.user .chat-bubble {
   justify-self: end;
   background: var(--ink);
