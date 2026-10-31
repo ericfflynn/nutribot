@@ -4,6 +4,10 @@ Product and design decisions, newest first. One entry per decision: what was dec
 
 ## 2026-10-31
 
+### The README leads with the body state
+- **Decided:** the README opens with the body state as the project's core idea (shape, an example from demo, principles, versioned storage), then the data flow from raw watch payloads to views to the daily model. The screenshots show demo's six weeks, which include a cold the watch flags a day early and weekend drinks, so the model has something to show.
+- **Why:** the data modeling is the most interesting part of the project to show; the old README described the app as a logger and predated the body state and the Training redesign.
+
 ### Today drops the "Last 7 days" tiles; Nutrition opens its week
 - **Decided:** the four trend tiles at the bottom of Today are gone. Sleep, Recovery and Strain already open their 7-day trends from their scores; tapping the Nutrition title now opens the week in one chart, calories as bars and protein as a line, each as a percent of its goal so they share one y-axis (the tooltip shows the real values), plus a few averages.
 - **Why:** the tiles repeated what the drill-downs show.
