@@ -13,7 +13,7 @@ import { EntryCard } from "./entry-card";
 import { AppShell, GoalsForm, Login } from "./shared-ui";
 import { getSessionUser } from "@/lib/auth";
 import { addDays, isValidLocalDate, localDateTime, rollingDateWindow, todayLocalDate } from "@/lib/dates";
-import { getBodyState } from "@/lib/body-state/load";
+import { getBodyState, listSickDates } from "@/lib/body-state/load";
 import { answeredCheckins } from "@/lib/chat";
 import { CHECKIN_DISMISSED_COOKIE, type CheckinKind } from "@/lib/checkin";
 import { morningBrief, type Reply } from "@/lib/body-state/brief";
@@ -30,8 +30,9 @@ import {
 import {
   dayStrain,
   recoveryScore,
-  sleepPerformance,
+  sleepScoresFor,
   workoutStrain,
+  workoutsStrain,
   type RecoveryBand,
   type RecoveryScore
 } from "@/lib/health/scores";
@@ -452,29 +453,33 @@ export default async function Home({ searchParams }: PageProps) {
   const healthStart = addDays(stripDates[0] < priorDates[0] ? stripDates[0] : priorDates[0], -31);
 
   const db = getPool()!;
-  const [entries, goals, healthDays, rangeWorkouts, waterOunces, lastRun, journal, body, checkinReplies, cookieStore] = await Promise.all([
+  const firstShown = priorDates[0] < stripDates[0] ? priorDates[0] : stripDates[0];
+  const [entries, goals, healthDays, rangeWorkouts, waterOunces, lastRun, journal, body, checkinReplies, cookieStore, sickDates] = await Promise.all([
     listEntriesForDateRange(user.name, priorDates[0], date),
     getUserGoals(user.name),
     listHealthDays(user.name, healthStart, stripEnd),
-    // Every day the strip and trends score; day strain builds on its workouts.
-    listHealthWorkouts(user.name, priorDates[0] < stripDates[0] ? priorDates[0] : stripDates[0], stripEnd),
+    // Every day the strip and trends score, and the day before the first (its
+    // strain raises that night's sleep need); day strain builds on its workouts.
+    listHealthWorkouts(user.name, addDays(firstShown, -1), stripEnd),
     getWaterOunces(user.name, date),
     getLatestHealthSyncRun(user.name),
     listJournalEntries(db, user.name, date, date),
     // The chosen day's body state: the check-in, the sick line, Recovery's trends.
     getBodyState(db, user.name, date),
     answeredCheckins(db, user.name, date),
-    cookies()
+    cookies(),
+    listSickDates(db, user.name, addDays(firstShown, -1), stripEnd)
   ]);
 
   const healthByDay = new Map(healthDays.map((day) => [day.day, day]));
   const workoutsByDay = new Map<string, HealthWorkout[]>();
   for (const workout of rangeWorkouts) workoutsByDay.set(workout.day, [...(workoutsByDay.get(workout.day) ?? []), workout]);
   const workouts = workoutsByDay.get(date) ?? [];
+  const sleepByDay = sleepScoresFor(healthDays, healthDays.map((day) => day.day).filter((day) => day >= firstShown), workoutsByDay, sickDates);
   const recoveryByDay = new Map<string, RecoveryScore>();
   healthDays.forEach((day, index) => {
-    if (day.hrvMs != null && day.restingHr != null) {
-      const score = recoveryScore(healthDays.slice(0, index + 1));
+    if (day.hrvMs != null && day.restingHr != null && day.day >= firstShown) {
+      const score = recoveryScore(healthDays.slice(0, index + 1), (night) => sleepByDay.get(night)?.score ?? null);
       if (score) {
         recoveryByDay.set(day.day, score);
       }
@@ -484,7 +489,6 @@ export default async function Home({ searchParams }: PageProps) {
     const health = healthByDay.get(day);
     return health ? field(health) : null;
   };
-  const sleepMinutesOn = (day: string) => pick(day, (health) => health.sleepMinutes);
   const strainOn = (day: string) => dayStrain(healthByDay.get(day), workoutsByDay.get(day));
 
   const caloriesByDay = new Map<string, number>();
@@ -496,7 +500,7 @@ export default async function Home({ searchParams }: PageProps) {
 
   // Strip
   const stripDays: StripDay[] = stripDates.map((day) => {
-    const sleep = sleepPerformance(sleepMinutesOn(day));
+    const sleep = sleepByDay.get(day)?.score ?? null;
     const recovery = recoveryByDay.get(day);
     const strain = strainOn(day);
     return {
@@ -516,17 +520,24 @@ export default async function Home({ searchParams }: PageProps) {
   // Day scores
   const health = healthByDay.get(date);
   const sleepMinutes = health?.sleepMinutes ?? null;
-  const sleepPercent = sleepPerformance(sleepMinutes);
+  const sleepScore = sleepByDay.get(date) ?? null;
+  const workoutsPart = workouts.length ? workoutsStrain(workouts) : null;
   const recovery = recoveryByDay.get(date) ?? null;
   const strain = strainOn(date);
   const scores: Score[] = [
     {
       label: "Sleep",
-      percent: sleepPercent,
+      percent: sleepScore?.score ?? null,
       color: SLEEP_COLOR,
       textColor: "var(--sleep-ink)",
-      value: sleepMinutes != null ? formatDuration(sleepMinutes) : "–",
-      notes: [sleepPercent != null ? `${sleepPercent}%` : "No data"]
+      value: sleepScore ? `${sleepScore.score}%` : "–",
+      // Duration against tonight's need, then how regular the week was.
+      notes: sleepScore
+        ? [
+            `${formatDuration(sleepScore.minutes)} of ${formatDuration(sleepScore.need.minutes)}`,
+            sleepScore.consistency != null ? `${sleepScore.consistency}% consistent` : null
+          ].filter((note): note is string => note != null)
+        : [sleepMinutes != null ? formatDuration(sleepMinutes) : "No data"]
     },
     {
       label: "Recovery",
@@ -548,7 +559,14 @@ export default async function Home({ searchParams }: PageProps) {
       color: STRAIN_COLOR,
       textColor: "var(--strain-ink)",
       value: strain == null ? "–" : strain.toFixed(1),
-      notes: strain == null ? ["No data"] : health?.steps != null ? [`${integer.format(health.steps)} steps`] : []
+      // Steps, then how much of the day's strain came from workouts.
+      notes:
+        strain == null
+          ? ["No data"]
+          : [
+              health?.steps != null ? `${integer.format(health.steps)} steps` : null,
+              workouts.length ? (workoutsPart != null ? `${workoutsPart.toFixed(1)} from workouts` : "Workout, no HR") : "No workouts"
+            ].filter((note): note is string => note != null)
     }
   ];
 
@@ -610,7 +628,7 @@ export default async function Home({ searchParams }: PageProps) {
       title: `Slept ${formatDuration(sleepMinutes)}`,
       detail: [
         health?.bedtime && health.wakeTime ? `${formatClock(health.bedtime)} – ${formatClock(health.wakeTime)}` : null,
-        sleepPercent != null ? `${sleepPercent}% of need` : null
+        sleepScore ? `sleep score ${sleepScore.score}%` : null
       ]
         .filter(Boolean)
         .join(" · "),
