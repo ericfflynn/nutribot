@@ -4256,6 +4256,95 @@ details[open] .journal-preview {
   font-size: 13px;
 }
 
+/* Today's Strain panel: minutes per heart-rate zone */
+.zone-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.zone-tiles .split-tile {
+  padding: 8px 10px;
+}
+
+.zone-tiles .split-tile small {
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.zone-tiles .split-tile strong .zone-goal {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.strain-day {
+  display: grid;
+  gap: 2px;
+  margin-bottom: 12px;
+}
+
+.strain-day > small {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.strain-day > strong {
+  font-size: 17px;
+}
+
+.strain-day > span {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.strain-day ul {
+  display: grid;
+  gap: 4px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 15px;
+}
+
+.strain-day li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.strain-day li small {
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.strain-day li small.hard {
+  color: var(--bad);
+}
+
+.zone-tiles .split-tile small.zone-pace {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.zone-tiles .split-tile small.zone-pace.behind {
+  color: var(--bad);
+}
+
+.zone-tiles .split-tile small.zone-pace.done {
+  color: var(--good, var(--ink));
+}
+
+.zone-tiles-note {
+  margin: 4px 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 /* Next up's illness note (docs/illness.md) */
 .training-illness {
   margin: 0;
@@ -4516,6 +4605,21 @@ details[open] .journal-preview {
   stroke: #aeaeb2;
   stroke-width: 1;
   stroke-dasharray: 4 4;
+}
+
+.chart-band {
+  fill: var(--ink);
+  fill-opacity: 0.07;
+}
+
+.chart-end-label {
+  fill: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.chart-end-label.off {
+  fill: var(--status-low);
 }
 
 .chart-reference-label {

@@ -2,11 +2,15 @@
 // line under the day scores, and the trends each score opens.
 import type { ReactNode } from "react";
 import { ColumnChart, SleepWindowChart, VitalsChart } from "./charts";
-import { addDays, todayLocalDate } from "@/lib/dates";
+import { addDays } from "@/lib/dates";
 import { formatClockTime } from "@/lib/habits";
 import type { BodyState, Status, Vital } from "@/lib/body-state/types";
 import { recoveryBand } from "@/lib/health/scores";
 import { fahrenheitDelta } from "@/lib/health/units";
+import type { WeekRow } from "@/lib/training-week";
+import { ZONES, ZONE_GOALS, zonePace, type ZoneBounds, type ZoneMinutes } from "@/lib/health/zones";
+import { callOf } from "@/lib/body-state/brief";
+import { INTENSITIES, INTENSITY_RULES, type Intensity } from "@/lib/workouts";
 
 const STATUS_LABELS: Record<Status, string> = { good: "Good", ok: "Ok", watch: "Watch", low: "Low", unknown: "No data" };
 const BAND_INK = { green: "#0a7f0a", yellow: "#8a5d00", red: "#b42f2f" } as const;
@@ -145,6 +149,8 @@ export function RecoveryDetails({ state }: { state: BodyState }) {
             unit: "bpm",
             values: rhr.trend7,
             usual: rhr.usual,
+            // Within 3 bpm of usual; 3 or more above is red.
+            band: rhr.usual == null ? null : [rhr.usual - 3, rhr.usual + 3],
             off: rhr.trend7.map((value) => value != null && rhr.usual != null && value - rhr.usual >= 3),
             color: "#3a3a3c"
           },
@@ -154,6 +160,8 @@ export function RecoveryDetails({ state }: { state: BodyState }) {
             unit: "ms",
             values: hrv.trend7.map((value) => (value == null ? null : Math.round(value))),
             usual: hrv.usual,
+            // Within 20% of usual; 20% or more below is red.
+            band: hrv.usual == null ? null : [hrv.usual * 0.8, hrv.usual * 1.2],
             off: hrv.trend7.map((value) => value != null && hrv.usual != null && value <= hrv.usual * 0.8),
             color: "#3a3a3c"
           }
@@ -262,27 +270,94 @@ export function SleepDetails({ state }: { state: BodyState }) {
 
 // Strain's trends: 7 days of day strain against the usual (today still
 // counting), hard days in a row and days since a rest day.
-export function StrainDetails({ state }: { state: BodyState }) {
-  const { load } = state.physical;
-  const date = state.meta.date;
+// Strain's trends: the day (what was done, or what's up next when nothing is
+// yet), then the calendar week's workout minutes per heart-rate zone against
+// goals, with the pace.
+// The week's training breakdown lives on Training.
+export function StrainDetails({
+  state,
+  done,
+  isToday,
+  zones
+}: {
+  state: BodyState;
+  done: WeekRow["items"]; // the day's workouts
+  isToday: boolean;
+  // Workout minutes per zone this calendar week through the day, and how many
+  // of the week's days are over (for the pace).
+  zones: { minutes: ZoneMinutes; bounds: ZoneBounds | null; daysDone: number };
+}) {
+  const pick = state.physical.training.suggested;
   return (
     <>
-      {load.trend7?.length ? (
-        <ColumnChart
-          label="Day strain, last 7 days"
-          format="decimal"
-          series={[{ key: "strain", label: "Strain", color: "#eb6834" }]}
-          reference={load.strain28 == null ? undefined : { value: load.strain28, label: `usual ${round(load.strain28, 1)}` }}
-          data={lastDays(date, 7).map((day, index) => ({ day, values: { strain: load.trend7[index] }, partial: day === todayLocalDate() }))}
-        />
-      ) : null}
-      <Facts
-        rows={[
-          ["Average, last 7 days", load.strain7 == null ? "–" : round(load.strain7, 1)],
-          ["Hard days in a row", `${load.hardStreak}`],
-          ["Since a rest day", `${load.daysSinceRest} day${load.daysSinceRest === 1 ? "" : "s"}`]
-        ]}
-      />
+      <div className="strain-day">
+        {done.length ? (
+          <>
+            <small>{isToday ? "Done today" : "Done"}</small>
+            <ul>
+              {done.map((item, index) => (
+                <li key={index}>
+                  <span>{item.title}</span>
+                  {item.tag ? <small className={item.hard ? "hard" : undefined}>{item.tag}</small> : null}
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : isToday ? (
+          <>
+            <small>Up next</small>
+            <strong>{callOf(state).replace(/^./, (letter) => letter.toUpperCase())}</strong>
+            {pick.name && pick.work.length ? <span>{workText(pick.work)}</span> : null}
+            {pick.note ? <span>{pick.note}</span> : null}
+          </>
+        ) : (
+          <>
+            <small>Done</small>
+            <strong>Rest day</strong>
+          </>
+        )}
+      </div>
+      <div className="zone-tiles" aria-label="Workout minutes by heart-rate zone this week">
+        {ZONES.map((zone) => {
+          const goal = ZONE_GOALS[zone.key];
+          const minutes = zones.minutes[zone.key];
+          const pace = goal == null ? null : zonePace(minutes, goal, zones.daysDone);
+          return (
+            <div key={zone.key} className="split-tile">
+              <strong className={pace?.status === "behind" ? "short" : undefined}>
+                {minutes}
+                {goal != null ? <span className="zone-goal">/{goal}</span> : null}
+              </strong>
+              <span>{zone.label}</span>
+              {zones.bounds ? (
+                <small>
+                  {zone.key === "light"
+                    ? `<${zones.bounds.moderate.min}`
+                    : zone.key === "peak"
+                      ? `${zones.bounds.peak.min}+`
+                      : `${zones.bounds[zone.key].min}–${zones.bounds[zone.key].max}`}
+                </small>
+              ) : null}
+              {pace ? (
+                <small className={`zone-pace ${pace.status}`}>
+                  {pace.status === "done" ? "Done" : pace.status === "on_pace" ? "On pace" : `${pace.behind} behind`}
+                </small>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+      <p className="zone-tiles-note">Workout minutes by heart-rate zone this week, Monday to Sunday</p>
     </>
   );
+}
+
+// "Hard: Chest, Triceps · Medium: Front Delts"
+function workText(work: { muscle: string; intensity: Intensity }[]) {
+  return [...INTENSITIES]
+    .reverse()
+    .map((intensity) => ({ intensity, muscles: work.filter((item) => item.intensity === intensity).map((item) => item.muscle) }))
+    .filter((group) => group.muscles.length)
+    .map((group) => `${INTENSITY_RULES[group.intensity].label}: ${group.muscles.join(", ")}`)
+    .join(" · ");
 }

@@ -9,12 +9,14 @@ import { dayStrain, recoveryScore, sleepScoresFor, workoutStrain, type RecoveryS
 import { fahrenheitDelta } from "./health/units";
 import { listSickDates } from "./body-state/load";
 import { getPool } from "./supabase";
+import { ZONE_GOALS, describeZoneBounds, getZoneBounds, zoneMinutes } from "./health/zones";
 
 export const HEALTH_TOOLS = ["get_health"];
 
 export const HEALTH_PROMPT = `## Health data
 - get_health reads their watch data for any range: sleep (duration, stages, bed and wake times), HRV, resting heart rate, SpO2, breathing rate, VO2 max, skin temperature vs baseline, steps, active calories, heart-zone minutes, the app's Sleep, Recovery and Strain scores, and each day's watch workouts. Data starts in late June 2026.
 - Use it whenever they ask about sleep, recovery, strain, heart rate, trends or how a day went, and to connect what they ate or did to how they recovered. Pull the range you need; for trends, compare against the averages it returns.
+- Heart-rate zones are Fitbit's four: light, moderate, vigorous, peak. Fitbit sets them from heart-rate reserve (moderate from about 40%, vigorous 60%, peak 85%), so the bpm shift a little with resting HR; get_health gives the current bpm. Each workout lists its minutes per zone, and the range's workout totals and the weekly zone goals come at the end; the goals run Monday to Sunday, so for progress pull from this Monday and compare with the share of the week gone; suggest what closes the gap (peak needs hard intervals; peak during lifting counts too). Day "zone min fat burn/cardio/peak" is all-day, the same moderate/vigorous/peak bands. When they talk cardio or zone goals, use these four, not a 5-zone model: moderate is roughly steady aerobic work, vigorous is hard, peak is all-out.
 - Sleep is dated by the morning they woke up. Today's activity and strain are partial until the day ends.`;
 
 const MAX_DAYS = 366;
@@ -36,7 +38,10 @@ function describeWorkout(w: HealthWorkout) {
     w.distanceMiles ? `${round(w.distanceMiles, 1)} mi` : null,
     w.avgHr != null ? `avg HR ${w.avgHr}` : null,
     w.calories != null ? `${w.calories} kcal` : null,
-    strain != null ? `strain ${strain}` : null
+    strain != null ? `strain ${strain}` : null,
+    w.hrModerateMinutes != null
+      ? `zones light/moderate/vigorous/peak ${w.hrLightMinutes ?? 0}/${w.hrModerateMinutes ?? 0}/${w.hrVigorousMinutes ?? 0}/${w.hrPeakMinutes ?? 0} min`
+      : null
   ]
     .filter(Boolean)
     .join(", ");
@@ -107,10 +112,11 @@ export function healthTools({ userName, today }: { userName: string; today: stri
         }
         // Recovery needs the 30 days before each scored day as its baseline.
         // Sleep need reads the day before's strain and sick days.
-        const [allDays, workouts, sickDates] = await Promise.all([
+        const [allDays, workouts, sickDates, bounds] = await Promise.all([
           listHealthDays(userName, addDays(args.start_date, -31), end),
           listHealthWorkouts(userName, addDays(args.start_date, -1), end),
-          listSickDates(getPool()!, userName, addDays(args.start_date, -1), end)
+          listSickDates(getPool()!, userName, addDays(args.start_date, -1), end),
+          getZoneBounds(userName, end)
         ]);
         const workoutsByDay = new Map<string, HealthWorkout[]>();
         for (const w of [...workouts].reverse()) {
@@ -140,6 +146,8 @@ export function healthTools({ userName, today }: { userName: string; today: stri
           strain: average(full.map((day) => dayStrain(day, workoutsByDay.get(day.day)))),
           steps: average(full.map((day) => day.steps))
         };
+        // Workouts start the day before the range (for sleep need); count the range's own.
+        const inRange = workouts.filter((w) => w.day >= args.start_date);
         const summary = [
           avg.sleep != null ? `sleep ${hm(avg.sleep)}` : null,
           avg.recovery != null ? `recovery ${round(avg.recovery)}%` : null,
@@ -147,9 +155,14 @@ export function healthTools({ userName, today }: { userName: string; today: stri
           avg.rhr != null ? `RHR ${round(avg.rhr, 1)}` : null,
           avg.strain != null ? `strain ${round(avg.strain, 1)}` : null,
           avg.steps != null ? `${round(avg.steps)} steps` : null,
-          `${workouts.length} workouts`
+          `${inRange.length} workouts`
         ].filter(Boolean);
         lines.push(`Averages over ${full.length} full days: ${summary.join(" · ")}`);
+        const zones = zoneMinutes(inRange);
+        lines.push(
+          `Workout minutes by zone over the range: light ${zones.light}, moderate ${zones.moderate}, vigorous ${zones.vigorous}, peak ${zones.peak}. Goals per calendar week (Monday to Sunday): moderate ${ZONE_GOALS.moderate}, vigorous ${ZONE_GOALS.vigorous}, peak ${ZONE_GOALS.peak}`
+        );
+        if (bounds) lines.push(`Fitbit's zones as of ${end}: ${describeZoneBounds(bounds)}`);
         return { content: [{ type: "text" as const, text: lines.join("\n") }] };
       },
       { annotations: { readOnlyHint: true } }

@@ -186,10 +186,10 @@ Status: **watch** when `loadRatio` is over 1.3, `hardStreak` is 2+ or `daysSince
 
 These come straight from the Training model ([training-plan.md](training-plan.md)), so the two can't disagree.
 
-- `muscles[]`, one per tracked muscle: `soreness` (level 0-3, `source`: `workout` or `told`), `points7` (out of 4), `daysSinceHit`, `readyIn`, `out` (null, or why: `sore`, `after forearms`).
+- `muscles[]`, one per tracked muscle: `soreness` (level 0-3, `source`: `workout` or `told`), `points7` (out of 4; this calendar week, Monday through the day, since November 1, 2026, the last 7 days before; the name stayed), `daysSinceHit`, `readyIn`, `out` (null, or why: `sore`, `after forearms`).
 - `groups`: days since each day type's muscles were last worked (`push`, `pull`, `legs`, `arms`, `shoulders`, `core`).
 - `due[]`: muscles fresh and 4+ days since a real hit, most overdue first.
-- `split`: strength, cardio and mobility sessions in the last 7 days against 4, 2 and 2.
+- `split`: strength, cardio and mobility sessions this calendar week (Monday through the day; the last 7 days before November 1, 2026) against 4, 2 and 2.
 
 Status: **watch** when push, pull or legs (the main day types; arms and shoulders are optional picks) has gone 7+ days, by its middle muscle; otherwise **good**. The headline names what's most due ("Legs due, 6 days"). Training is what's due, not how the body is, so it doesn't set the physical domain's status (October 30, 2026: it held the domain on watch 17 days of October).
 

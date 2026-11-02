@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useFormStatus } from "react-dom";
-import { autoSyncHealthAction, refreshHealthAction } from "./actions";
+import { refreshHealthAction } from "./actions";
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -24,7 +24,8 @@ export function RefreshButton() {
 
 // Pulls fresh watch data when the app opens or comes back to the foreground
 // (the Home Screen app resumes more often than it reloads). The server skips
-// it when a sync started in the last 15 minutes. Shows while it runs.
+// it when a sync started in the last 15 minutes. Shows while it runs. It goes
+// through a route so taps on the page don't queue behind it.
 let inFlight = false;
 
 export function HealthAutoSync() {
@@ -37,7 +38,8 @@ export function HealthAutoSync() {
       inFlight = true;
       setSyncing(true);
       try {
-        const result = await autoSyncHealthAction();
+        const response = await fetch("/api/health/auto-sync", { method: "POST" });
+        const result = response.ok ? ((await response.json()) as { synced: boolean }) : { synced: false };
         if (result.synced) router.refresh();
       } catch {
         // Offline or a failed run: Today's sync note shows what happened.

@@ -1,7 +1,11 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import type { ReactNode } from "react";
-import { addWaterAction, deleteCheckinAction, undoWaterAction } from "./actions";
+import { deleteCheckinAction } from "./actions";
+import { WaterRow } from "./water-row";
+import { lastWeekRows, weekItems } from "@/lib/training-week";
+import { listFitbitWorkouts, listWorkoutSessions } from "@/lib/workouts";
+import { getZoneBounds, zoneMinutes } from "@/lib/health/zones";
 import { Facts, RecoveryDetails, SickLine, SleepDetails, StrainDetails } from "./body-ui";
 import { GoalComboChart } from "./charts";
 import { NutritionCard } from "./nutrition-toggle";
@@ -12,7 +16,7 @@ import { RefreshButton } from "./refresh-button";
 import { EntryCard } from "./entry-card";
 import { AppShell, GoalsForm, Login } from "./shared-ui";
 import { getSessionUser } from "@/lib/auth";
-import { addDays, isValidLocalDate, localDateTime, rollingDateWindow, todayLocalDate } from "@/lib/dates";
+import { addDays, currentWeekToDate, isValidLocalDate, localDateTime, rollingDateWindow, todayLocalDate } from "@/lib/dates";
 import { getBodyState, listSickDates } from "@/lib/body-state/load";
 import { answeredCheckins } from "@/lib/chat";
 import { CHECKIN_DISMISSED_COOKIE, type CheckinKind } from "@/lib/checkin";
@@ -105,6 +109,17 @@ function dayTitle(date: string, today: string) {
   return ago < 7 ? weekdayLong.format(utcDate(date)) : monthDay.format(utcDate(date));
 }
 
+// "7:45": hours and minutes, for the Sleep card.
+function hoursMinutes(minutes: number) {
+  const rounded = Math.round(minutes);
+  return `${Math.floor(rounded / 60)}:${String(rounded % 60).padStart(2, "0")}`;
+}
+
+// "8.5k" above a thousand.
+function compactCount(value: number) {
+  return value >= 1000 ? `${(value / 1000).toFixed(1).replace(/\.0$/, "")}k` : integer.format(value);
+}
+
 function formatDuration(minutes: number) {
   return `${Math.floor(minutes / 60)}h ${String(Math.round(minutes % 60)).padStart(2, "0")}m`;
 }
@@ -163,63 +178,6 @@ function deltaFrom(
 
 function DeltaText({ delta }: { delta: Delta | null }) {
   return delta ? <span className={`delta ${delta.tone}`}>{delta.text}</span> : null;
-}
-
-const BOTTLE_PATH = "M30 6 H50 V20 C50 28 72 30 72 46 V124 Q72 136 60 136 H20 Q8 136 8 124 V46 C8 30 30 28 30 20 Z";
-
-function wavePath(y: number, amplitude: number) {
-  let path = `M0 ${y.toFixed(1)}`;
-  for (let x = 0; x < 120; x += 20) {
-    path += ` q10 ${-amplitude} 20 0`;
-  }
-  return `${path} V140 H0 Z`;
-}
-
-function WaterRow({ ounces, goalOz, date }: { ounces: number; goalOz: number; date: string }) {
-  const level = Math.min(1, ounces / goalOz);
-  const surface = 134 - 104 * level;
-  const left = goalOz - ounces;
-  return (
-    <div className="water-row">
-      <svg className="water-bottle" viewBox="0 0 80 140" role="img" aria-label={`Water: ${integer.format(ounces)} of ${goalOz} oz`}>
-        <defs>
-          <clipPath id="bottle-inside">
-            <path d={BOTTLE_PATH} />
-          </clipPath>
-        </defs>
-        <path d={BOTTLE_PATH} fill="var(--water-soft)" />
-        {level > 0 ? (
-          <g clipPath="url(#bottle-inside)">
-            <path className="wave-back" d={wavePath(surface - 2, 3)} fill="var(--water)" fillOpacity="0.35" />
-            <path className="wave" d={wavePath(surface, 4)} fill="var(--water)" />
-          </g>
-        ) : null}
-        <path d={BOTTLE_PATH} fill="none" stroke="var(--water-ink)" strokeWidth="6" />
-      </svg>
-      <div className="water-figure">
-        <span>
-          <strong>{integer.format(ounces)}</strong> / {goalOz} oz
-        </span>
-        <small>{left > 0 ? `${integer.format(left)} oz to go` : "Goal reached"}</small>
-        {ounces > 0 ? (
-          <form action={undoWaterAction}>
-            <input type="hidden" name="entryDate" value={date} />
-            <button type="submit" className="text-button water-undo">
-              Undo last
-            </button>
-          </form>
-        ) : null}
-      </div>
-      <form className="water-buttons" action={addWaterAction}>
-        <input type="hidden" name="entryDate" value={date} />
-        {[8, 16, 24].map((ounces) => (
-          <button key={ounces} type="submit" name="oz" value={ounces} aria-label={`Add ${ounces} ounces of water`}>
-            +{ounces}
-          </button>
-        ))}
-      </form>
-    </div>
-  );
 }
 
 type TimelineEvent = {
@@ -454,7 +412,7 @@ export default async function Home({ searchParams }: PageProps) {
 
   const db = getPool()!;
   const firstShown = priorDates[0] < stripDates[0] ? priorDates[0] : stripDates[0];
-  const [entries, goals, healthDays, rangeWorkouts, waterOunces, lastRun, journal, body, checkinReplies, cookieStore, sickDates] = await Promise.all([
+  const [entries, goals, healthDays, rangeWorkouts, waterOunces, lastRun, journal, body, checkinReplies, cookieStore, sickDates, weekSessions, weekFitbit, zoneBounds] = await Promise.all([
     listEntriesForDateRange(user.name, priorDates[0], date),
     getUserGoals(user.name),
     listHealthDays(user.name, healthStart, stripEnd),
@@ -468,10 +426,21 @@ export default async function Home({ searchParams }: PageProps) {
     getBodyState(db, user.name, date),
     answeredCheckins(db, user.name, date),
     cookies(),
-    listSickDates(db, user.name, addDays(firstShown, -1), stripEnd)
+    listSickDates(db, user.name, addDays(firstShown, -1), stripEnd),
+    // Strain's trends: the day's workouts, as Training lists them, and the
+    // week's ignored recordings (left out of the zone minutes).
+    listWorkoutSessions(db, user.name, addDays(date, -6), date),
+    listFitbitWorkouts(db, user.name, addDays(date, -6), date),
+    getZoneBounds(user.name, date)
   ]);
 
   const healthByDay = new Map(healthDays.map((day) => [day.day, day]));
+  // The zone tiles: this calendar week's watch workouts through the day,
+  // leaving out ignored recordings. On today, today isn't over yet.
+  const zoneWeek = currentWeekToDate(date);
+  const ignoredIds = new Set(weekFitbit.filter((workout) => workout.ignored).map((workout) => workout.id));
+  const weekWorkouts = rangeWorkouts.filter((workout) => workout.day >= zoneWeek.startDate && workout.day <= date && !ignoredIds.has(workout.id));
+  const zoneDaysDone = isToday ? zoneWeek.elapsedDays - 1 : zoneWeek.elapsedDays;
   const workoutsByDay = new Map<string, HealthWorkout[]>();
   for (const workout of rangeWorkouts) workoutsByDay.set(workout.day, [...(workoutsByDay.get(workout.day) ?? []), workout]);
   const workouts = workoutsByDay.get(date) ?? [];
@@ -534,10 +503,10 @@ export default async function Home({ searchParams }: PageProps) {
       // Duration against tonight's need, then how regular the week was.
       notes: sleepScore
         ? [
-            `${formatDuration(sleepScore.minutes)} of ${formatDuration(sleepScore.need.minutes)}`,
+            `${hoursMinutes(sleepScore.minutes)} of ${hoursMinutes(sleepScore.need.minutes)}`,
             sleepScore.consistency != null ? `${sleepScore.consistency}% consistent` : null
           ].filter((note): note is string => note != null)
-        : [sleepMinutes != null ? formatDuration(sleepMinutes) : "No data"]
+        : [sleepMinutes != null ? hoursMinutes(sleepMinutes) : "No data"]
     },
     {
       label: "Recovery",
@@ -559,13 +528,13 @@ export default async function Home({ searchParams }: PageProps) {
       color: STRAIN_COLOR,
       textColor: "var(--strain-ink)",
       value: strain == null ? "–" : strain.toFixed(1),
-      // Steps, then how much of the day's strain came from workouts.
+      // Steps, then how much of the day's strain came from workouts ("activity").
       notes:
         strain == null
           ? ["No data"]
           : [
-              health?.steps != null ? `${integer.format(health.steps)} steps` : null,
-              workouts.length ? (workoutsPart != null ? `${workoutsPart.toFixed(1)} from workouts` : "Workout, no HR") : "No workouts"
+              health?.steps != null ? `${compactCount(health.steps)} steps` : null,
+              workouts.length ? (workoutsPart != null ? `${workoutsPart.toFixed(1)} activity` : "No workout HR") : "No workouts"
             ].filter((note): note is string => note != null)
     }
   ];
@@ -770,7 +739,14 @@ export default async function Home({ searchParams }: PageProps) {
         details={{
           Sleep: <SleepDetails state={body} />,
           Recovery: <RecoveryDetails state={body} />,
-          Strain: <StrainDetails state={body} />
+          Strain: (
+            <StrainDetails
+              state={body}
+              done={lastWeekRows(weekItems(weekSessions, weekFitbit), date).at(-1)?.items ?? []}
+              isToday={isToday}
+              zones={{ minutes: zoneMinutes(weekWorkouts), bounds: zoneBounds, daysDone: zoneDaysDone }}
+            />
+          )
         }}
       />
 
