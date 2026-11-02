@@ -2,6 +2,18 @@
 
 Product and design decisions, newest first. One entry per decision: what was decided, why, and what it replaced or ruled out. Add an entry whenever the owner settles something that future work should follow; link the doc that holds the detail. Data shapes live in their specs ([body-state.md](body-state.md) keeps the body state's schema versions); this log says why they are what they are.
 
+## 2026-11-01
+
+### Heart-rate zones are Fitbit's four, shown in Strain's trends
+- **Decided:** zones are Fitbit's light, moderate, vigorous and peak (`lib/health/zones.ts`). Fitbit sets them from heart-rate reserve (on the owner's data moderate starts near 40%, vigorous 60%, peak 85%), so the bpm shift a few beats with resting HR; a custom max HR in the Fitbit app moves them. Strain's trends open with four tiles: workout minutes per zone over the last 7 days (ignored recordings left out) with each zone's current bpm. The chat sees each workout's zone minutes, the range's totals and the current bpm through `get_health`. No zone goals yet.
+- **Why:** the owner wants weekly minutes per zone to tune workouts and cardio. Fitbit's bands are already in the data; custom 5-zone bands would need minute-level heart rate, which isn't synced.
+- **Instead of:** our own zone 1-5 from minute heart rate (later, if Fitbit's bands prove too coarse); counting all-day zone minutes (stairs and errands can't be planned around).
+
+### Strain's trends are the training week, not bars
+- **Decided:** tapping Strain shows the zone tiles, Training's split tiles (Strength x/4, Cardio x/2, Mobility x/2), then Training's "Last 7 days" list with each day's strain at the right, then the facts. The week list and split are shared code (`lib/training-week.ts`). Recovery's resting HR and HRV charts shade a normal band (within 3 bpm and within 20% of usual), whose bad edge is the red-dot threshold.
+- **Why:** the owner found the 7-day strain bars useless: they showed how much, not why.
+- **Instead of:** the bars; week-paging on Sleep, left for an analysis page with custom charts (backlog).
+
 ## 2026-10-31
 
 ### Sleep is a score: duration against a need that moves, plus consistency

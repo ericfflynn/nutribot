@@ -8,6 +8,7 @@ import type { BodyState, Status, Vital } from "@/lib/body-state/types";
 import { recoveryBand } from "@/lib/health/scores";
 import { fahrenheitDelta } from "@/lib/health/units";
 import type { WeekRow } from "@/lib/training-week";
+import { ZONES, type ZoneBounds, type ZoneMinutes } from "@/lib/health/zones";
 import { ACTIVITY_LABELS, type SplitEntry } from "@/lib/workouts";
 
 const STATUS_LABELS: Record<Status, string> = { good: "Good", ok: "Ok", watch: "Watch", low: "Low", unknown: "No data" };
@@ -272,16 +273,36 @@ export function StrainDetails({
   state,
   rows,
   split,
-  strains
+  strains,
+  zones
 }: {
   state: BodyState;
   rows: WeekRow[];
   split: SplitEntry[];
   strains: (number | null)[]; // each row's day strain
+  zones: { minutes: ZoneMinutes; bounds: ZoneBounds | null }; // workouts' minutes per zone, last 7 days
 }) {
   const { load } = state.physical;
   return (
     <>
+      <div className="zone-tiles" aria-label="Workout minutes by heart-rate zone, last 7 days">
+        {ZONES.map((zone) => (
+          <div key={zone.key} className="split-tile">
+            <strong>{zones.minutes[zone.key]}</strong>
+            <span>{zone.label}</span>
+            {zones.bounds ? (
+              <small>
+                {zone.key === "light"
+                  ? `<${zones.bounds.moderate.min}`
+                  : zone.key === "peak"
+                    ? `${zones.bounds.peak.min}+`
+                    : `${zones.bounds[zone.key].min}–${zones.bounds[zone.key].max}`}
+              </small>
+            ) : null}
+          </div>
+        ))}
+      </div>
+      <p className="zone-tiles-note">Workout minutes by heart-rate zone, last 7 days</p>
       <div className="split-tiles" aria-label="Split, last 7 days">
         {split.map((entry) => (
           <div key={entry.kind} className="split-tile">

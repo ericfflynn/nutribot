@@ -4267,6 +4267,29 @@ details[open] .journal-preview {
   font-size: 13px;
 }
 
+/* Today's Strain panel: minutes per heart-rate zone */
+.zone-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.zone-tiles .split-tile {
+  padding: 8px 10px;
+}
+
+.zone-tiles .split-tile small {
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.zone-tiles-note {
+  margin: 4px 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 /* Next up's illness note (docs/illness.md) */
 .training-illness {
   margin: 0;

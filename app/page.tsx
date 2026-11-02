@@ -5,6 +5,7 @@ import { deleteCheckinAction } from "./actions";
 import { WaterRow } from "./water-row";
 import { lastWeekRows, weekItems, weekSplit } from "@/lib/training-week";
 import { listFitbitWorkouts, listWorkoutSessions } from "@/lib/workouts";
+import { getZoneBounds, zoneMinutes } from "@/lib/health/zones";
 import { Facts, RecoveryDetails, SickLine, SleepDetails, StrainDetails } from "./body-ui";
 import { GoalComboChart } from "./charts";
 import { NutritionCard } from "./nutrition-toggle";
@@ -411,7 +412,7 @@ export default async function Home({ searchParams }: PageProps) {
 
   const db = getPool()!;
   const firstShown = priorDates[0] < stripDates[0] ? priorDates[0] : stripDates[0];
-  const [entries, goals, healthDays, rangeWorkouts, waterOunces, lastRun, journal, body, checkinReplies, cookieStore, sickDates, weekSessions, weekFitbit] = await Promise.all([
+  const [entries, goals, healthDays, rangeWorkouts, waterOunces, lastRun, journal, body, checkinReplies, cookieStore, sickDates, weekSessions, weekFitbit, zoneBounds] = await Promise.all([
     listEntriesForDateRange(user.name, priorDates[0], date),
     getUserGoals(user.name),
     listHealthDays(user.name, healthStart, stripEnd),
@@ -428,10 +429,14 @@ export default async function Home({ searchParams }: PageProps) {
     listSickDates(db, user.name, addDays(firstShown, -1), stripEnd),
     // Strain's last 7 days, the same list as Training's.
     listWorkoutSessions(db, user.name, addDays(date, -6), date),
-    listFitbitWorkouts(db, user.name, addDays(date, -6), date)
+    listFitbitWorkouts(db, user.name, addDays(date, -6), date),
+    getZoneBounds(user.name, date)
   ]);
 
   const healthByDay = new Map(healthDays.map((day) => [day.day, day]));
+  // The 7 days' watch workouts for the zone tiles, leaving out ignored recordings.
+  const ignoredIds = new Set(weekFitbit.filter((workout) => workout.ignored).map((workout) => workout.id));
+  const weekWorkouts = rangeWorkouts.filter((workout) => workout.day >= addDays(date, -6) && workout.day <= date && !ignoredIds.has(workout.id));
   const workoutsByDay = new Map<string, HealthWorkout[]>();
   for (const workout of rangeWorkouts) workoutsByDay.set(workout.day, [...(workoutsByDay.get(workout.day) ?? []), workout]);
   const workouts = workoutsByDay.get(date) ?? [];
@@ -736,6 +741,7 @@ export default async function Home({ searchParams }: PageProps) {
               rows={lastWeekRows(weekItems(weekSessions, weekFitbit), date, isToday ? "Today" : null)}
               split={weekSplit(weekSessions, weekFitbit, date)}
               strains={rollingDateWindow(date, 7).map(strainOn)}
+              zones={{ minutes: zoneMinutes(weekWorkouts), bounds: zoneBounds }}
             />
           )
         }}
