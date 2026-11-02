@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import type { ReactNode } from "react";
-import { addWaterAction, deleteCheckinAction, undoWaterAction } from "./actions";
+import { deleteCheckinAction } from "./actions";
+import { WaterRow } from "./water-row";
 import { Facts, RecoveryDetails, SickLine, SleepDetails, StrainDetails } from "./body-ui";
 import { GoalComboChart } from "./charts";
 import { NutritionCard } from "./nutrition-toggle";
@@ -105,6 +106,17 @@ function dayTitle(date: string, today: string) {
   return ago < 7 ? weekdayLong.format(utcDate(date)) : monthDay.format(utcDate(date));
 }
 
+// "7:45": hours and minutes, for the Sleep card.
+function hoursMinutes(minutes: number) {
+  const rounded = Math.round(minutes);
+  return `${Math.floor(rounded / 60)}:${String(rounded % 60).padStart(2, "0")}`;
+}
+
+// "8.5k" above a thousand.
+function compactCount(value: number) {
+  return value >= 1000 ? `${(value / 1000).toFixed(1).replace(/\.0$/, "")}k` : integer.format(value);
+}
+
 function formatDuration(minutes: number) {
   return `${Math.floor(minutes / 60)}h ${String(Math.round(minutes % 60)).padStart(2, "0")}m`;
 }
@@ -163,63 +175,6 @@ function deltaFrom(
 
 function DeltaText({ delta }: { delta: Delta | null }) {
   return delta ? <span className={`delta ${delta.tone}`}>{delta.text}</span> : null;
-}
-
-const BOTTLE_PATH = "M30 6 H50 V20 C50 28 72 30 72 46 V124 Q72 136 60 136 H20 Q8 136 8 124 V46 C8 30 30 28 30 20 Z";
-
-function wavePath(y: number, amplitude: number) {
-  let path = `M0 ${y.toFixed(1)}`;
-  for (let x = 0; x < 120; x += 20) {
-    path += ` q10 ${-amplitude} 20 0`;
-  }
-  return `${path} V140 H0 Z`;
-}
-
-function WaterRow({ ounces, goalOz, date }: { ounces: number; goalOz: number; date: string }) {
-  const level = Math.min(1, ounces / goalOz);
-  const surface = 134 - 104 * level;
-  const left = goalOz - ounces;
-  return (
-    <div className="water-row">
-      <svg className="water-bottle" viewBox="0 0 80 140" role="img" aria-label={`Water: ${integer.format(ounces)} of ${goalOz} oz`}>
-        <defs>
-          <clipPath id="bottle-inside">
-            <path d={BOTTLE_PATH} />
-          </clipPath>
-        </defs>
-        <path d={BOTTLE_PATH} fill="var(--water-soft)" />
-        {level > 0 ? (
-          <g clipPath="url(#bottle-inside)">
-            <path className="wave-back" d={wavePath(surface - 2, 3)} fill="var(--water)" fillOpacity="0.35" />
-            <path className="wave" d={wavePath(surface, 4)} fill="var(--water)" />
-          </g>
-        ) : null}
-        <path d={BOTTLE_PATH} fill="none" stroke="var(--water-ink)" strokeWidth="6" />
-      </svg>
-      <div className="water-figure">
-        <span>
-          <strong>{integer.format(ounces)}</strong> / {goalOz} oz
-        </span>
-        <small>{left > 0 ? `${integer.format(left)} oz to go` : "Goal reached"}</small>
-        {ounces > 0 ? (
-          <form action={undoWaterAction}>
-            <input type="hidden" name="entryDate" value={date} />
-            <button type="submit" className="text-button water-undo">
-              Undo last
-            </button>
-          </form>
-        ) : null}
-      </div>
-      <form className="water-buttons" action={addWaterAction}>
-        <input type="hidden" name="entryDate" value={date} />
-        {[8, 16, 24].map((ounces) => (
-          <button key={ounces} type="submit" name="oz" value={ounces} aria-label={`Add ${ounces} ounces of water`}>
-            +{ounces}
-          </button>
-        ))}
-      </form>
-    </div>
-  );
 }
 
 type TimelineEvent = {
@@ -534,10 +489,10 @@ export default async function Home({ searchParams }: PageProps) {
       // Duration against tonight's need, then how regular the week was.
       notes: sleepScore
         ? [
-            `${formatDuration(sleepScore.minutes)} of ${formatDuration(sleepScore.need.minutes)}`,
+            `${hoursMinutes(sleepScore.minutes)} of ${hoursMinutes(sleepScore.need.minutes)}`,
             sleepScore.consistency != null ? `${sleepScore.consistency}% consistent` : null
           ].filter((note): note is string => note != null)
-        : [sleepMinutes != null ? formatDuration(sleepMinutes) : "No data"]
+        : [sleepMinutes != null ? hoursMinutes(sleepMinutes) : "No data"]
     },
     {
       label: "Recovery",
@@ -548,8 +503,8 @@ export default async function Home({ searchParams }: PageProps) {
       // The bar color and the timeline carry the band; the notes show what drives the score.
       notes: recovery
         ? [
-            health?.hrvMs != null ? `HRV ${Math.round(health.hrvMs)} ms` : null,
-            health?.restingHr != null ? `RHR ${health.restingHr} bpm` : null
+            health?.hrvMs != null ? `HRV ${Math.round(health.hrvMs)}` : null,
+            health?.restingHr != null ? `RHR ${health.restingHr}` : null
           ].filter((note): note is string => note != null)
         : ["No data"]
     },
@@ -559,13 +514,13 @@ export default async function Home({ searchParams }: PageProps) {
       color: STRAIN_COLOR,
       textColor: "var(--strain-ink)",
       value: strain == null ? "–" : strain.toFixed(1),
-      // Steps, then how much of the day's strain came from workouts.
+      // Steps, then how much of the day's strain came from workouts ("from activity").
       notes:
         strain == null
           ? ["No data"]
           : [
-              health?.steps != null ? `${integer.format(health.steps)} steps` : null,
-              workouts.length ? (workoutsPart != null ? `${workoutsPart.toFixed(1)} from workouts` : "Workout, no HR") : "No workouts"
+              health?.steps != null ? `${compactCount(health.steps)} steps` : null,
+              workouts.length ? (workoutsPart != null ? `${workoutsPart.toFixed(1)} from activity` : "No workout HR") : "No workouts"
             ].filter((note): note is string => note != null)
     }
   ];

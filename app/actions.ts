@@ -5,11 +5,10 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { clearSession, createSession, getSessionUser } from "@/lib/auth";
 import { addDays, isValidLocalDate, todayLocalDate } from "@/lib/dates";
-import { refreshBodyStates, refreshRecentBodyStates } from "@/lib/body-state/store";
+import { refreshBodyStates } from "@/lib/body-state/store";
 import { parseGoals } from "@/lib/goals";
 import { parseMacroObject } from "@/lib/macros";
-import { HEALTH_DATA_TYPES } from "@/lib/health/google";
-import { runHealthSync } from "@/lib/health/sync";
+import { syncRecentHealth } from "@/lib/health/recent-sync";
 import type { Draft } from "@/lib/brain";
 import { newConversation, withDraft } from "@/lib/chat";
 import {
@@ -279,50 +278,6 @@ export async function refreshHealthAction() {
   // Don't stack syncs from repeated taps.
   await syncRecentHealth(user.name, "2 minutes", true);
   revalidatePath("/");
-}
-
-// The light sync, for the Fitbit owner only, unless a run started within
-// `skipWithin` (a Postgres interval; with runningOnly, only a run still going
-// counts). Returns whether it ran.
-async function syncRecentHealth(userName: string, skipWithin: string, runningOnly: boolean) {
-  const db = getPool();
-  if (!db || userName !== process.env.GOOGLE_HEALTH_USER) return false;
-  const { rows } = await db.query(
-    `
-    select 1 from public.health_sync_runs
-    where user_name = $1 and started_at > now() - $2::interval
-      and (status = 'running' or (not $3 and status = 'succeeded'))
-    limit 1
-    `,
-    [userName, skipWithin, runningOnly]
-  );
-  if (rows.length) return false;
-  try {
-    await runHealthSync(db, { trigger: "manual", userName, types: HEALTH_DATA_TYPES, recentDays: 3 });
-  } catch {
-    // The failure is recorded in health_sync_runs and shown on Today.
-  }
-  after(async () => {
-    try {
-      await refreshRecentBodyStates(db, userName);
-    } catch {
-      console.error("body state refresh failed");
-    }
-  });
-  return true;
-}
-
-// Opening the app (or coming back to it): the light sync, unless one started
-// in the last 15 minutes.
-export async function autoSyncHealthAction(): Promise<{ synced: boolean }> {
-  const user = await getSessionUser();
-  if (!user) return { synced: false };
-  const synced = await syncRecentHealth(user.name, "15 minutes", false);
-  if (synced) {
-    revalidatePath("/");
-    revalidatePath("/training");
-  }
-  return { synced };
 }
 
 // The earliest date a saved draft changes, for the body state rebuild. An

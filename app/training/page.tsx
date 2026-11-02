@@ -48,8 +48,6 @@ import {
 } from "@/lib/workouts";
 
 export const dynamic = "force-dynamic";
-// Room for the health sync that opening the app may run (autoSyncHealthAction).
-export const maxDuration = 60;
 
 // Recent workouts lists this many days.
 const WINDOW_DAYS = 14;
