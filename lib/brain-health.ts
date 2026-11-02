@@ -146,6 +146,8 @@ export function healthTools({ userName, today }: { userName: string; today: stri
           strain: average(full.map((day) => dayStrain(day, workoutsByDay.get(day.day)))),
           steps: average(full.map((day) => day.steps))
         };
+        // Workouts start the day before the range (for sleep need); count the range's own.
+        const inRange = workouts.filter((w) => w.day >= args.start_date);
         const summary = [
           avg.sleep != null ? `sleep ${hm(avg.sleep)}` : null,
           avg.recovery != null ? `recovery ${round(avg.recovery)}%` : null,
@@ -153,10 +155,9 @@ export function healthTools({ userName, today }: { userName: string; today: stri
           avg.rhr != null ? `RHR ${round(avg.rhr, 1)}` : null,
           avg.strain != null ? `strain ${round(avg.strain, 1)}` : null,
           avg.steps != null ? `${round(avg.steps)} steps` : null,
-          `${workouts.length} workouts`
+          `${inRange.length} workouts`
         ].filter(Boolean);
         lines.push(`Averages over ${full.length} full days: ${summary.join(" · ")}`);
-        const inRange = workouts.filter((w) => w.day >= args.start_date);
         const zones = zoneMinutes(inRange);
         lines.push(
           `Workout minutes by zone over the range: light ${zones.light}, moderate ${zones.moderate}, vigorous ${zones.vigorous}, peak ${zones.peak}. Goals per calendar week (Monday to Sunday): moderate ${ZONE_GOALS.moderate}, vigorous ${ZONE_GOALS.vigorous}, peak ${ZONE_GOALS.peak}`
