@@ -15,7 +15,7 @@ export const ZONES = [
 
 export type ZoneKey = (typeof ZONES)[number]["key"];
 
-// Workout minutes per zone to reach in any 7 days, every workout counted
+// Workout minutes per zone to reach each calendar week (Monday to Sunday), every workout counted
 // (peak during a lift counts). Hard on purpose (Nov 1, 2026: the owner wants to
 // push cardio for a lower resting HR): moderate and vigorous are the tops of
 // WHO's 150-300 moderate and 75-150 vigorous minutes a week; peak 25 sits at
@@ -31,6 +31,17 @@ const minutesOf: Record<ZoneKey, (workout: HealthWorkout) => number | null> = {
   vigorous: (workout) => workout.hrVigorousMinutes,
   peak: (workout) => workout.hrPeakMinutes
 };
+
+// Where a zone stands against its goal partway through the week. The pace
+// counts only the week's finished days, so Monday morning starts on pace and
+// today's workouts can only help: `daysDone` is days of the week already over.
+export type ZonePace = { status: "done" | "on_pace" | "behind"; behind: number };
+
+export function zonePace(minutes: number, goal: number, daysDone: number): ZonePace {
+  if (minutes >= goal) return { status: "done", behind: 0 };
+  const expected = Math.round((goal * daysDone) / 7);
+  return minutes >= expected ? { status: "on_pace", behind: 0 } : { status: "behind", behind: expected - minutes };
+}
 
 // Minutes in each zone across the workouts.
 export function zoneMinutes(workouts: readonly HealthWorkout[]): ZoneMinutes {

@@ -4326,6 +4326,19 @@ details[open] .journal-preview {
   color: var(--bad);
 }
 
+.zone-tiles .split-tile small.zone-pace {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.zone-tiles .split-tile small.zone-pace.behind {
+  color: var(--bad);
+}
+
+.zone-tiles .split-tile small.zone-pace.done {
+  color: var(--good, var(--ink));
+}
+
 .zone-tiles-note {
   margin: 4px 0 12px;
   color: var(--muted);

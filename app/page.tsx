@@ -16,7 +16,7 @@ import { RefreshButton } from "./refresh-button";
 import { EntryCard } from "./entry-card";
 import { AppShell, GoalsForm, Login } from "./shared-ui";
 import { getSessionUser } from "@/lib/auth";
-import { addDays, isValidLocalDate, localDateTime, rollingDateWindow, todayLocalDate } from "@/lib/dates";
+import { addDays, currentWeekToDate, isValidLocalDate, localDateTime, rollingDateWindow, todayLocalDate } from "@/lib/dates";
 import { getBodyState, listSickDates } from "@/lib/body-state/load";
 import { answeredCheckins } from "@/lib/chat";
 import { CHECKIN_DISMISSED_COOKIE, type CheckinKind } from "@/lib/checkin";
@@ -435,9 +435,12 @@ export default async function Home({ searchParams }: PageProps) {
   ]);
 
   const healthByDay = new Map(healthDays.map((day) => [day.day, day]));
-  // The 7 days' watch workouts for the zone tiles, leaving out ignored recordings.
+  // The zone tiles: this calendar week's watch workouts through the day,
+  // leaving out ignored recordings. On today, today isn't over yet.
+  const zoneWeek = currentWeekToDate(date);
   const ignoredIds = new Set(weekFitbit.filter((workout) => workout.ignored).map((workout) => workout.id));
-  const weekWorkouts = rangeWorkouts.filter((workout) => workout.day >= addDays(date, -6) && workout.day <= date && !ignoredIds.has(workout.id));
+  const weekWorkouts = rangeWorkouts.filter((workout) => workout.day >= zoneWeek.startDate && workout.day <= date && !ignoredIds.has(workout.id));
+  const zoneDaysDone = isToday ? zoneWeek.elapsedDays - 1 : zoneWeek.elapsedDays;
   const workoutsByDay = new Map<string, HealthWorkout[]>();
   for (const workout of rangeWorkouts) workoutsByDay.set(workout.day, [...(workoutsByDay.get(workout.day) ?? []), workout]);
   const workouts = workoutsByDay.get(date) ?? [];
@@ -741,7 +744,7 @@ export default async function Home({ searchParams }: PageProps) {
               state={body}
               done={lastWeekRows(weekItems(weekSessions, weekFitbit), date).at(-1)?.items ?? []}
               isToday={isToday}
-              zones={{ minutes: zoneMinutes(weekWorkouts), bounds: zoneBounds }}
+              zones={{ minutes: zoneMinutes(weekWorkouts), bounds: zoneBounds, daysDone: zoneDaysDone }}
             />
           )
         }}

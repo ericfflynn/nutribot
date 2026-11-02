@@ -8,7 +8,7 @@ import type { BodyState, Status, Vital } from "@/lib/body-state/types";
 import { recoveryBand } from "@/lib/health/scores";
 import { fahrenheitDelta } from "@/lib/health/units";
 import type { WeekRow } from "@/lib/training-week";
-import { ZONES, ZONE_GOALS, type ZoneBounds, type ZoneMinutes } from "@/lib/health/zones";
+import { ZONES, ZONE_GOALS, zonePace, type ZoneBounds, type ZoneMinutes } from "@/lib/health/zones";
 import { callOf } from "@/lib/body-state/brief";
 import { INTENSITIES, INTENSITY_RULES, type Intensity } from "@/lib/workouts";
 
@@ -271,7 +271,8 @@ export function SleepDetails({ state }: { state: BodyState }) {
 // Strain's trends: 7 days of day strain against the usual (today still
 // counting), hard days in a row and days since a rest day.
 // Strain's trends: the day (what was done, or what's up next when nothing is
-// yet), then the week's workout minutes per heart-rate zone against goals.
+// yet), then the calendar week's workout minutes per heart-rate zone against
+// goals, with the pace.
 // The week's training breakdown lives on Training.
 export function StrainDetails({
   state,
@@ -282,7 +283,9 @@ export function StrainDetails({
   state: BodyState;
   done: WeekRow["items"]; // the day's workouts
   isToday: boolean;
-  zones: { minutes: ZoneMinutes; bounds: ZoneBounds | null }; // workouts' minutes per zone, last 7 days
+  // Workout minutes per zone this calendar week through the day, and how many
+  // of the week's days are over (for the pace).
+  zones: { minutes: ZoneMinutes; bounds: ZoneBounds | null; daysDone: number };
 }) {
   const pick = state.physical.training.suggested;
   return (
@@ -314,13 +317,14 @@ export function StrainDetails({
           </>
         )}
       </div>
-      <div className="zone-tiles" aria-label="Workout minutes by heart-rate zone, last 7 days">
+      <div className="zone-tiles" aria-label="Workout minutes by heart-rate zone this week">
         {ZONES.map((zone) => {
           const goal = ZONE_GOALS[zone.key];
           const minutes = zones.minutes[zone.key];
+          const pace = goal == null ? null : zonePace(minutes, goal, zones.daysDone);
           return (
             <div key={zone.key} className="split-tile">
-              <strong className={goal != null && minutes < goal ? "short" : undefined}>
+              <strong className={pace?.status === "behind" ? "short" : undefined}>
                 {minutes}
                 {goal != null ? <span className="zone-goal">/{goal}</span> : null}
               </strong>
@@ -334,11 +338,16 @@ export function StrainDetails({
                       : `${zones.bounds[zone.key].min}–${zones.bounds[zone.key].max}`}
                 </small>
               ) : null}
+              {pace ? (
+                <small className={`zone-pace ${pace.status}`}>
+                  {pace.status === "done" ? "Done" : pace.status === "on_pace" ? "On pace" : `${pace.behind} behind`}
+                </small>
+              ) : null}
             </div>
           );
         })}
       </div>
-      <p className="zone-tiles-note">Workout minutes by heart-rate zone, last 7 days</p>
+      <p className="zone-tiles-note">Workout minutes by heart-rate zone this week, Monday to Sunday</p>
     </>
   );
 }
