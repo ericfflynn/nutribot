@@ -490,7 +490,7 @@ export default async function Home({ searchParams }: PageProps) {
       notes: sleepScore
         ? [
             `${hoursMinutes(sleepScore.minutes)} of ${hoursMinutes(sleepScore.need.minutes)}`,
-            sleepScore.consistency != null ? `${sleepScore.consistency}% consistent` : null
+            sleepScore.consistency != null ? `${sleepScore.consistency}% steady` : null
           ].filter((note): note is string => note != null)
         : [sleepMinutes != null ? hoursMinutes(sleepMinutes) : "No data"]
     },
@@ -503,8 +503,8 @@ export default async function Home({ searchParams }: PageProps) {
       // The bar color and the timeline carry the band; the notes show what drives the score.
       notes: recovery
         ? [
-            health?.hrvMs != null ? `HRV ${Math.round(health.hrvMs)}` : null,
-            health?.restingHr != null ? `RHR ${health.restingHr}` : null
+            health?.hrvMs != null ? `HRV ${Math.round(health.hrvMs)} ms` : null,
+            health?.restingHr != null ? `RHR ${health.restingHr} bpm` : null
           ].filter((note): note is string => note != null)
         : ["No data"]
     },
@@ -514,13 +514,13 @@ export default async function Home({ searchParams }: PageProps) {
       color: STRAIN_COLOR,
       textColor: "var(--strain-ink)",
       value: strain == null ? "–" : strain.toFixed(1),
-      // Steps, then how much of the day's strain came from workouts ("from activity").
+      // Steps, then how much of the day's strain came from workouts ("activity").
       notes:
         strain == null
           ? ["No data"]
           : [
               health?.steps != null ? `${compactCount(health.steps)} steps` : null,
-              workouts.length ? (workoutsPart != null ? `${workoutsPart.toFixed(1)} from activity` : "No workout HR") : "No workouts"
+              workouts.length ? (workoutsPart != null ? `${workoutsPart.toFixed(1)} activity` : "No workout HR") : "No workouts"
             ].filter((note): note is string => note != null)
     }
   ];
