@@ -3,6 +3,8 @@ import { cookies } from "next/headers";
 import type { ReactNode } from "react";
 import { deleteCheckinAction } from "./actions";
 import { WaterRow } from "./water-row";
+import { lastWeekRows, weekItems, weekSplit } from "@/lib/training-week";
+import { listFitbitWorkouts, listWorkoutSessions } from "@/lib/workouts";
 import { Facts, RecoveryDetails, SickLine, SleepDetails, StrainDetails } from "./body-ui";
 import { GoalComboChart } from "./charts";
 import { NutritionCard } from "./nutrition-toggle";
@@ -409,7 +411,7 @@ export default async function Home({ searchParams }: PageProps) {
 
   const db = getPool()!;
   const firstShown = priorDates[0] < stripDates[0] ? priorDates[0] : stripDates[0];
-  const [entries, goals, healthDays, rangeWorkouts, waterOunces, lastRun, journal, body, checkinReplies, cookieStore, sickDates] = await Promise.all([
+  const [entries, goals, healthDays, rangeWorkouts, waterOunces, lastRun, journal, body, checkinReplies, cookieStore, sickDates, weekSessions, weekFitbit] = await Promise.all([
     listEntriesForDateRange(user.name, priorDates[0], date),
     getUserGoals(user.name),
     listHealthDays(user.name, healthStart, stripEnd),
@@ -423,7 +425,10 @@ export default async function Home({ searchParams }: PageProps) {
     getBodyState(db, user.name, date),
     answeredCheckins(db, user.name, date),
     cookies(),
-    listSickDates(db, user.name, addDays(firstShown, -1), stripEnd)
+    listSickDates(db, user.name, addDays(firstShown, -1), stripEnd),
+    // Strain's last 7 days, the same list as Training's.
+    listWorkoutSessions(db, user.name, addDays(date, -6), date),
+    listFitbitWorkouts(db, user.name, addDays(date, -6), date)
   ]);
 
   const healthByDay = new Map(healthDays.map((day) => [day.day, day]));
@@ -725,7 +730,14 @@ export default async function Home({ searchParams }: PageProps) {
         details={{
           Sleep: <SleepDetails state={body} />,
           Recovery: <RecoveryDetails state={body} />,
-          Strain: <StrainDetails state={body} />
+          Strain: (
+            <StrainDetails
+              state={body}
+              rows={lastWeekRows(weekItems(weekSessions, weekFitbit), date, isToday ? "Today" : null)}
+              split={weekSplit(weekSessions, weekFitbit, date)}
+              strains={rollingDateWindow(date, 7).map(strainOn)}
+            />
+          )
         }}
       />
 

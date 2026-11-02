@@ -2,6 +2,7 @@ import { AppShell, Login } from "../shared-ui";
 import { BodyMap, type MuscleView } from "../body-map";
 import { WeekPages, LabelButton, MergeControls, RestoreButton, WorkoutEditor, type CoverageRow, type WeekPage } from "../training-ui";
 import { getSessionUser } from "@/lib/auth";
+import { lastWeekRows, weekItems } from "@/lib/training-week";
 import { addDays, localDateTime, rollingDateWindow, todayLocalDate } from "@/lib/dates";
 import { listHealthWorkouts, type HealthWorkout } from "@/lib/health/queries";
 import { workoutStrain } from "@/lib/health/scores";
@@ -77,7 +78,6 @@ const clockFormat = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: 
 
 // Next up, the way the owner decides: what's out (sore), what's fresh, and a
 // pick with alternatives. Text helpers for it and the last 7 days.
-const weekdayShort = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" });
 const listText = (items: string[]) => (items.length > 1 ? `${items.slice(0, -1).join(", ")} and ${items.at(-1)}` : (items[0] ?? ""));
 const daysText = (days: number) => (days > 56 ? "a while" : `${days} day${days === 1 ? "" : "s"}`);
 
@@ -89,34 +89,6 @@ function workText(work: NonNullable<Suggestion["pick"]>["work"]) {
     .filter((group) => group.muscles.length)
     .map((group) => `${INTENSITY_RULES[group.intensity].label}: ${group.muscles.join(", ")}`)
     .join(" · ");
-}
-
-type WeekRow = { date: string; day: string; items: { title: string; tag: string | null; hard: boolean }[] };
-
-// One row per day of the last 7, newest first: what was done, with how hard
-// a lift was or what kind of workout it was.
-function lastWeekRows(recent: RecentItem[], today: string): WeekRow[] {
-  return Array.from({ length: 7 }, (_, index) => {
-    const date = addDays(today, index - 6);
-    const items = recent
-      .filter((item) => item.date === date)
-      .reverse()
-      .map((item) => {
-        const session = item.session;
-        const strength = session?.muscleGroups.some((name) => STRENGTH_GROUPS.includes(groupOf(name)));
-        let tag: string | null = WORKOUT_TYPE_LABELS[item.workoutType];
-        let hard = false;
-        if (session && strength) {
-          const hardest = session.muscleGroups
-            .map((name) => intensityOf(session, name))
-            .reduce<Intensity>((most, value) => (INTENSITIES.indexOf(value) > INTENSITIES.indexOf(most) ? value : most), "light");
-          tag = INTENSITY_RULES[hardest].label;
-          hard = hardest === "hard";
-        }
-        return { title: `${item.title}${item.minutes != null ? ` · ${item.minutes} min` : ""}`, tag, hard };
-      });
-    return { date, day: date === today ? "Today" : weekdayShort.format(new Date(`${date}T00:00:00Z`)), items };
-  });
 }
 
 function formatDay(date: string) {
@@ -299,7 +271,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     });
   }
   recent.sort((a, b) => b.sort.localeCompare(a.sort));
-  const lastWeek = lastWeekRows(recent, today);
+  const lastWeek = lastWeekRows(weekItems(sessions, fitbit), today);
   // Workout types present in the window, for the filter and the type counts.
   const typeCounts = new Map<WorkoutType, number>();
   for (const item of recent.filter((entry) => entry.date >= recentStart)) typeCounts.set(item.workoutType, (typeCounts.get(item.workoutType) ?? 0) + 1);

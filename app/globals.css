@@ -3964,6 +3964,17 @@ details[open] .journal-preview {
   white-space: nowrap;
 }
 
+/* Today's Strain panel: Training's week list with each day's strain */
+.strain-week li {
+  grid-template-columns: 44px minmax(0, 1fr) 36px;
+}
+
+.strain-week-value {
+  color: var(--strain-ink);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .training-last-week-items small.hard {
   color: var(--bad);
 }

@@ -2,11 +2,13 @@
 // line under the day scores, and the trends each score opens.
 import type { ReactNode } from "react";
 import { ColumnChart, SleepWindowChart, VitalsChart } from "./charts";
-import { addDays, todayLocalDate } from "@/lib/dates";
+import { addDays } from "@/lib/dates";
 import { formatClockTime } from "@/lib/habits";
 import type { BodyState, Status, Vital } from "@/lib/body-state/types";
 import { recoveryBand } from "@/lib/health/scores";
 import { fahrenheitDelta } from "@/lib/health/units";
+import type { WeekRow } from "@/lib/training-week";
+import { ACTIVITY_LABELS, type SplitEntry } from "@/lib/workouts";
 
 const STATUS_LABELS: Record<Status, string> = { good: "Good", ok: "Ok", watch: "Watch", low: "Low", unknown: "No data" };
 const BAND_INK = { green: "#0a7f0a", yellow: "#8a5d00", red: "#b42f2f" } as const;
@@ -266,20 +268,50 @@ export function SleepDetails({ state }: { state: BodyState }) {
 
 // Strain's trends: 7 days of day strain against the usual (today still
 // counting), hard days in a row and days since a rest day.
-export function StrainDetails({ state }: { state: BodyState }) {
+export function StrainDetails({
+  state,
+  rows,
+  split,
+  strains
+}: {
+  state: BodyState;
+  rows: WeekRow[];
+  split: SplitEntry[];
+  strains: (number | null)[]; // each row's day strain
+}) {
   const { load } = state.physical;
-  const date = state.meta.date;
   return (
     <>
-      {load.trend7?.length ? (
-        <ColumnChart
-          label="Day strain, last 7 days"
-          format="decimal"
-          series={[{ key: "strain", label: "Strain", color: "#eb6834" }]}
-          reference={load.strain28 == null ? undefined : { value: load.strain28, label: `usual ${round(load.strain28, 1)}` }}
-          data={lastDays(date, 7).map((day, index) => ({ day, values: { strain: load.trend7[index] }, partial: day === todayLocalDate() }))}
-        />
-      ) : null}
+      <div className="split-tiles" aria-label="Split, last 7 days">
+        {split.map((entry) => (
+          <div key={entry.kind} className="split-tile">
+            <strong className={entry.count < entry.target! ? "short" : undefined}>
+              {entry.count}/{entry.target}
+            </strong>
+            <span>{ACTIVITY_LABELS[entry.kind]}</span>
+          </div>
+        ))}
+      </div>
+      <ul className="training-last-week strain-week" aria-label="Last 7 days">
+        {rows.map((row, index) => (
+          <li key={row.date}>
+            <span className="training-last-week-day">{row.day}</span>
+            {row.items.length ? (
+              <span className="training-last-week-items">
+                {row.items.map((item, itemIndex) => (
+                  <span key={itemIndex}>
+                    <span>{item.title}</span>
+                    {item.tag ? <small className={item.hard ? "hard" : undefined}>{item.tag}</small> : null}
+                  </span>
+                ))}
+              </span>
+            ) : (
+              <span className="training-last-week-rest">Rest</span>
+            )}
+            <strong className="strain-week-value">{strains[index] == null ? "–" : strains[index]!.toFixed(1)}</strong>
+          </li>
+        ))}
+      </ul>
       <Facts
         rows={[
           ["Average, last 7 days", load.strain7 == null ? "–" : round(load.strain7, 1)],
