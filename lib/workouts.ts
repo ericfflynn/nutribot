@@ -110,10 +110,19 @@ export const INTENSITY_RULES: Record<Intensity, { label: string; recoveryDays: n
   // Heavy or to failure: 4 days (very sore, fading; see sorenessOf).
   hard: { label: "Hard", recoveryDays: 4, points: 3 }
 };
-// Volume points each muscle should get in any 7 days: a hard and a light
-// session, or two medium. A group's target is this times its muscles.
+// Volume points each muscle should get each calendar week (Monday to Sunday):
+// a hard and a light session, or two medium. A group's target is this times
+// its muscles. The target goes by the calendar week (since Nov 1, 2026; a
+// rolling 7 days before); readiness and the hard-day rule stay rolling, since
+// recovery doesn't reset on Monday.
 export const WEEKLY_TARGET_POINTS = 4;
 const WEEK_DAYS = 7;
+
+// The Monday of `date`'s week.
+export function weekStartOf(date: string) {
+  const day = new Date(`${date}T00:00:00Z`).getUTCDay();
+  return shiftDate(date, -((day + 6) % 7));
+}
 
 export function intensityFromRpe(rpe: number | null): Intensity {
   if (rpe == null) return "medium";
@@ -136,7 +145,7 @@ export function cleanIntensity(intensity: MuscleIntensity, names: readonly Muscl
 export type TrainedSession = { date: string; muscleGroups: MuscleName[]; muscleIntensity: MuscleIntensity; rpe: number | null };
 
 export type Load = {
-  points: number; // volume points in the last 7 days, today included
+  points: number; // volume points this calendar week (Monday through today)
   soreness: number; // 0 fresh to 3 very sore, fading (sorenessOf)
   readyIn: number; // days until fresh; 0 is ready
 };
@@ -224,7 +233,8 @@ function hitsOf<S extends TrainedSession>(sessions: readonly S[], muscle: Tracke
     if (ago < 0 || !name) return [];
     const intensity = intensityOf(session, name);
     const rules = INTENSITY_RULES[intensity];
-    return [{ session, intensity, ago, points: ago < WEEK_DAYS ? rules.points : 0, readyIn: Math.max(0, rules.recoveryDays - ago) }];
+    const inWeek = session.date >= weekStartOf(today);
+    return [{ session, intensity, ago, inWeek, points: inWeek ? rules.points : 0, readyIn: Math.max(0, rules.recoveryDays - ago) }];
   });
 }
 
@@ -252,7 +262,7 @@ export function muscleWeekOf<S extends TrainedSession>(
 ) {
   const load = loadOf(sessions, muscle, today, soreness);
   const hits = hitsOf(sessions, muscle, today)
-    .filter((hit) => hit.ago < WEEK_DAYS || hit.readyIn > 0)
+    .filter((hit) => hit.inWeek || hit.readyIn > 0)
     .sort((a, b) => a.ago - b.ago);
   // The owner's own level for today, if he set one.
   const todayReport = soreness.find((report) => report.muscle === muscle && report.date === today) ?? null;
@@ -335,7 +345,7 @@ export function activityCategoriesOf(type: WorkoutType, muscles: readonly Muscle
   return [main, ...extra];
 }
 
-// A good week's split: sessions of each kind in any 7 days. Sport counts but
+// A good week's split: sessions of each kind each calendar week (Monday to Sunday). Sport counts but
 // has no target. A workout counts for every kind it includes, so stretching
 // logged on a strength session is also a mobility session.
 export const SPLIT_TARGETS: Partial<Record<ActivityCategory, number>> = { strength: 4, cardio: 2, mobility: 2 };

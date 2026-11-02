@@ -4,6 +4,11 @@ Product and design decisions, newest first. One entry per decision: what was dec
 
 ## 2026-11-01
 
+### Weekly targets go by the calendar week; recovery stays rolling
+- **Decided:** the 4 points per muscle, the split (strength 4, cardio 2, mobility 2) and the heart-rate zone goals count Monday to Sunday. Training's week grid pages by calendar week (This week, Last week, N weeks ago). Readiness doesn't reset: soreness, days to recovered and the no-second-hard-day rule still look back day by day, so Next up won't push a muscle on Monday that was hit hard on Sunday. Training's "Last 7 days" card stays a log of the last 7 days.
+- **Why:** the owner finds grouping by week helps a lot, and a rolling window has no fresh start and drops a big day off a week later; but the body is dynamic, so recovery can't follow the calendar.
+- **Instead of:** a rolling 7 days for the targets (until this date); calendar weeks for readiness too.
+
 ### Heart-rate zones are Fitbit's four, shown in Strain's trends
 - **Decided:** zones are Fitbit's light, moderate, vigorous and peak (`lib/health/zones.ts`). Fitbit sets them from heart-rate reserve (on the owner's data moderate starts near 40%, vigorous 60%, peak 85%), so the bpm shift a few beats with resting HR; a custom max HR in the Fitbit app moves them. Strain's trends show workout minutes per zone this calendar week (ignored recordings left out) with each zone's current bpm. The chat sees each workout's zone minutes, the range's totals, the goals and the current bpm through `get_health`.
 - **Why:** the owner wants weekly minutes per zone to tune workouts and cardio. Fitbit's bands are already in the data; custom 5-zone bands would need minute-level heart rate, which isn't synced.

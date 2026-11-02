@@ -3,7 +3,7 @@ import { BodyMap, type MuscleView } from "../body-map";
 import { WeekPages, LabelButton, MergeControls, RestoreButton, WorkoutEditor, type CoverageRow, type WeekPage } from "../training-ui";
 import { getSessionUser } from "@/lib/auth";
 import { lastWeekRows, weekItems } from "@/lib/training-week";
-import { addDays, localDateTime, rollingDateWindow, todayLocalDate } from "@/lib/dates";
+import { addDays, localDateTime, todayLocalDate } from "@/lib/dates";
 import { listHealthWorkouts, type HealthWorkout } from "@/lib/health/queries";
 import { workoutStrain } from "@/lib/health/scores";
 import { getPool } from "@/lib/supabase";
@@ -45,6 +45,7 @@ import {
   type TrackedMuscle,
   type WorkoutSession,
   type WorkoutType,
+  weekStartOf,
   workoutTypeOf
 } from "@/lib/workouts";
 
@@ -52,7 +53,7 @@ export const dynamic = "force-dynamic";
 
 // Recent workouts lists this many days.
 const WINDOW_DAYS = 14;
-// The week grid pages back this many rolling weeks, as far as there's data.
+// The week grid pages back this many calendar weeks, as far as there's data.
 const HISTORY_WEEKS = 8;
 // The hour (local) after which an untrained day is over for planning: the
 // owner's workouts have all started by 5 pm.
@@ -63,10 +64,6 @@ const UNLABELED_DAYS = 7;
 const dayFormat = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
 const shortDay = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 
-// The Monday a date's week starts on.
-function weekStartOf(date: string) {
-  return addDays(date, -((new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7));
-}
 
 function formatMinutes(total: number) {
   const hours = Math.floor(total / 60);
@@ -298,8 +295,8 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     };
   });
 
-  // The week grid: one page per rolling 7 days, newest first, back to the
-  // first week with a logged session. Strength groups are shaded by how much
+  // The week grid: one page per calendar week (Monday to Sunday), newest
+  // first, back to the first week with a logged session. Strength groups are shaded by how much
   // of the group was worked (groupDayIntensity), their muscles by the hardest
   // each got. The points column is that week's volume, so on the newest page
   // it's the live 4-point target; a group shows its percent of that.
@@ -316,9 +313,12 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
   // unlabeled watch workouts, and every muscle at 0 points.
   const firstDate = sessions.map((session) => session.date).sort()[0] ?? today;
   const weekPages: WeekPage[] = [];
+  const thisMonday = weekStartOf(today);
   for (let week = 0; week < HISTORY_WEEKS; week++) {
-    const end = addDays(today, -7 * week);
-    const pageDays = rollingDateWindow(end, 7);
+    const monday = addDays(thisMonday, -7 * week);
+    const pageDays = Array.from({ length: 7 }, (_, index) => addDays(monday, index));
+    // This week's points run through today; past weeks through their Sunday.
+    const end = week === 0 ? today : pageDays[6];
     if (week > 0 && pageDays[6] < firstDate) break;
     const pointsOf = (muscle: TrackedMuscle) => loadOf(sessions, muscle, end).points;
     const pointsCell = (points: number) => ({ aside: `${points}/${WEEKLY_TARGET_POINTS}`, done: points >= WEEKLY_TARGET_POINTS });
@@ -346,15 +346,15 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     }));
     weekPages.push({
       key: end,
-      label: week === 0 ? "Last 7 days" : week === 1 ? "Previous 7 days" : `${week} weeks earlier`,
-      range: `${shortDay.format(new Date(`${pageDays[0]}T00:00:00Z`))} – ${shortDay.format(new Date(`${end}T00:00:00Z`))}`,
+      label: week === 0 ? "This week" : week === 1 ? "Last week" : `${week} weeks ago`,
+      range: `${shortDay.format(new Date(`${pageDays[0]}T00:00:00Z`))} – ${shortDay.format(new Date(`${pageDays[6]}T00:00:00Z`))}`,
       days: pageDays.map((day) => ({ date: day, letter: weekdayLetter.format(new Date(`${day}T00:00:00Z`)) })),
       strength
     });
   }
 
   // The newest week's split: a tile per kind with a target, under Next up.
-  const thisSplit = splitOf(splitKinds(sessions, fitbit, addDays(today, -6), today));
+  const thisSplit = splitOf(splitKinds(sessions, fitbit, weekStartOf(today), today));
 
   return (
     <AppShell

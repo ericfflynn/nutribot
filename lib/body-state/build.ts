@@ -22,6 +22,7 @@ import {
   muscleWeekOf,
   sorenessStep,
   splitKinds,
+  weekStartOf,
   splitOf,
   suggestNext,
   trackedOf,
@@ -496,7 +497,8 @@ function trainingArea(c: Context, illness: IllnessArea): TrainingArea {
   );
   groups.core = groupSince(trackedOf("Core"));
   const due = next.fresh.filter((item) => item.since >= DUE_AFTER_DAYS).map((item) => item.muscle);
-  const split = splitOf(splitKinds(sessions, fitbit, addDays(c.date, -6), c.date)).map((entry) => ({
+  // This calendar week's split (Monday through the day), like the 4-point target.
+  const split = splitOf(splitKinds(sessions, fitbit, weekStartOf(c.date), c.date)).map((entry) => ({
     kind: entry.kind,
     count: entry.count,
     target: entry.target
