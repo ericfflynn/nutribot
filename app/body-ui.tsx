@@ -145,6 +145,8 @@ export function RecoveryDetails({ state }: { state: BodyState }) {
             unit: "bpm",
             values: rhr.trend7,
             usual: rhr.usual,
+            // Within 3 bpm of usual; 3 or more above is red.
+            band: rhr.usual == null ? null : [rhr.usual - 3, rhr.usual + 3],
             off: rhr.trend7.map((value) => value != null && rhr.usual != null && value - rhr.usual >= 3),
             color: "#3a3a3c"
           },
@@ -154,6 +156,8 @@ export function RecoveryDetails({ state }: { state: BodyState }) {
             unit: "ms",
             values: hrv.trend7.map((value) => (value == null ? null : Math.round(value))),
             usual: hrv.usual,
+            // Within 20% of usual; 20% or more below is red.
+            band: hrv.usual == null ? null : [hrv.usual * 0.8, hrv.usual * 1.2],
             off: hrv.trend7.map((value) => value != null && hrv.usual != null && value <= hrv.usual * 0.8),
             color: "#3a3a3c"
           }

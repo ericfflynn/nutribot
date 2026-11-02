@@ -721,17 +721,21 @@ export type VitalPanel = {
   unit: string; // "bpm"
   values: (number | null)[];
   usual: number | null;
+  band: [number, number] | null; // the normal range; its bad edge is the red threshold
   off: boolean[]; // past the vital's threshold that day
   color: string;
 };
 
-const PANEL_HEIGHT = 92;
-const PANEL_MARGIN = { top: 18, right: 14, bottom: 8, left: 36 };
+const signed = (value: number) => (value > 0 ? `+${value}` : value < 0 ? `−${-value}` : "±0");
+
+const PANEL_HEIGHT = 124;
+const PANEL_MARGIN = { top: 20, right: 30, bottom: 10, left: 36 };
 
 // Two or more vitals over the same days as small charts stacked on one
-// timeline, each with its own y-axis (one axis per chart), a dashed usual
-// line, and red dots on days off the usual. Touching shows every vital for
-// that day.
+// timeline, each with its own y-axis (one axis per chart), a shaded normal
+// band around a dashed usual line, and red dots on days past the threshold.
+// The latest value is labeled at the end of its line. Touching shows every
+// vital for that day against its usual.
 export function VitalsChart({ days, panels, label }: { days: string[]; panels: VitalPanel[]; label: string }) {
   const [active, setActive] = useState<number | null>(null);
   const axisHeight = 20;
@@ -757,8 +761,8 @@ export function VitalsChart({ days, panels, label }: { days: string[]; panels: V
                 const plotHeight = PANEL_HEIGHT - PANEL_MARGIN.top - PANEL_MARGIN.bottom;
                 const known = panel.values.filter((value): value is number => value != null);
                 const { lo, hi, ticks } = niceDomain(
-                  Math.min(...known, panel.usual ?? Infinity),
-                  Math.max(...known, panel.usual ?? -Infinity),
+                  Math.min(...known, panel.usual ?? Infinity, panel.band?.[0] ?? Infinity),
+                  Math.max(...known, panel.usual ?? -Infinity, panel.band?.[1] ?? -Infinity),
                   2
                 );
                 const y = (value: number) => top + PANEL_MARGIN.top + plotHeight - ((value - lo) / (hi - lo || 1)) * plotHeight;
@@ -783,13 +787,34 @@ export function VitalsChart({ days, panels, label }: { days: string[]; panels: V
                         </text>
                       </g>
                     ))}
+                    {panel.band ? (
+                      <rect
+                        aria-hidden="true"
+                        x={PANEL_MARGIN.left}
+                        width={plotWidth}
+                        y={y(panel.band[1])}
+                        height={y(panel.band[0]) - y(panel.band[1])}
+                        className="chart-band"
+                      />
+                    ) : null}
                     {panel.usual != null ? (
-                      <g aria-hidden="true">
-                        <line x1={PANEL_MARGIN.left} x2={width - PANEL_MARGIN.right} y1={y(panel.usual)} y2={y(panel.usual)} className="chart-reference" />
-                        <text x={width - PANEL_MARGIN.right} y={y(panel.usual) - 4} textAnchor="end" className="chart-reference-label">
-                          usual {Math.round(panel.usual)}
-                        </text>
-                      </g>
+                      <line
+                        aria-hidden="true"
+                        x1={PANEL_MARGIN.left}
+                        x2={width - PANEL_MARGIN.right}
+                        y1={y(panel.usual)}
+                        y2={y(panel.usual)}
+                        className="chart-reference"
+                      />
+                    ) : null}
+                    {panel.band ? (
+                      <text x={width - PANEL_MARGIN.right} y={top + 11} textAnchor="end" className="chart-reference-label">
+                        normal {Math.round(panel.band[0])}–{Math.round(panel.band[1])}
+                      </text>
+                    ) : panel.usual != null ? (
+                      <text x={width - PANEL_MARGIN.right} y={top + 11} textAnchor="end" className="chart-reference-label">
+                        usual {Math.round(panel.usual)}
+                      </text>
                     ) : null}
                     {runs.map((run) =>
                       run.length > 1 ? (
@@ -817,6 +842,16 @@ export function VitalsChart({ days, panels, label }: { days: string[]; panels: V
                         />
                       )
                     )}
+                    {last >= 0 ? (
+                      <text
+                        x={x(last) + 8}
+                        y={y(panel.values[last] as number)}
+                        dy="0.32em"
+                        className={panel.off[last] ? "chart-end-label off" : "chart-end-label"}
+                      >
+                        {Math.round(panel.values[last] as number)}
+                      </text>
+                    ) : null}
                   </g>
                 );
               })}
@@ -843,7 +878,12 @@ export function VitalsChart({ days, panels, label }: { days: string[]; panels: V
                 rows={panels.map((panel) => ({
                   color: panel.off[active] ? "var(--status-low)" : panel.color,
                   label: panel.label,
-                  value: panel.values[active] == null ? "No data" : `${Math.round(panel.values[active] as number)} ${panel.unit}`
+                  value:
+                    panel.values[active] == null
+                      ? "No data"
+                      : `${Math.round(panel.values[active] as number)} ${panel.unit}${
+                          panel.usual == null ? "" : ` · ${signed(Math.round((panel.values[active] as number) - panel.usual))} vs usual`
+                        }`
                 }))}
               />
             ) : null}
