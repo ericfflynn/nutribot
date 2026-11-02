@@ -8,8 +8,9 @@ import type { BodyState, Status, Vital } from "@/lib/body-state/types";
 import { recoveryBand } from "@/lib/health/scores";
 import { fahrenheitDelta } from "@/lib/health/units";
 import type { WeekRow } from "@/lib/training-week";
-import { ZONES, type ZoneBounds, type ZoneMinutes } from "@/lib/health/zones";
-import { ACTIVITY_LABELS, type SplitEntry } from "@/lib/workouts";
+import { ZONES, ZONE_GOALS, type ZoneBounds, type ZoneMinutes } from "@/lib/health/zones";
+import { callOf } from "@/lib/body-state/brief";
+import { INTENSITIES, INTENSITY_RULES, type Intensity } from "@/lib/workouts";
 
 const STATUS_LABELS: Record<Status, string> = { good: "Good", ok: "Ok", watch: "Watch", low: "Low", unknown: "No data" };
 const BAND_INK = { green: "#0a7f0a", yellow: "#8a5d00", red: "#b42f2f" } as const;
@@ -269,77 +270,85 @@ export function SleepDetails({ state }: { state: BodyState }) {
 
 // Strain's trends: 7 days of day strain against the usual (today still
 // counting), hard days in a row and days since a rest day.
+// Strain's trends: the day (what was done, or what's up next when nothing is
+// yet), then the week's workout minutes per heart-rate zone against goals.
+// The week's training breakdown lives on Training.
 export function StrainDetails({
   state,
-  rows,
-  split,
-  strains,
+  done,
+  isToday,
   zones
 }: {
   state: BodyState;
-  rows: WeekRow[];
-  split: SplitEntry[];
-  strains: (number | null)[]; // each row's day strain
+  done: WeekRow["items"]; // the day's workouts
+  isToday: boolean;
   zones: { minutes: ZoneMinutes; bounds: ZoneBounds | null }; // workouts' minutes per zone, last 7 days
 }) {
-  const { load } = state.physical;
+  const pick = state.physical.training.suggested;
   return (
     <>
+      <div className="strain-day">
+        {done.length ? (
+          <>
+            <small>{isToday ? "Done today" : "Done"}</small>
+            <ul>
+              {done.map((item, index) => (
+                <li key={index}>
+                  <span>{item.title}</span>
+                  {item.tag ? <small className={item.hard ? "hard" : undefined}>{item.tag}</small> : null}
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : isToday ? (
+          <>
+            <small>Up next</small>
+            <strong>{callOf(state).replace(/^./, (letter) => letter.toUpperCase())}</strong>
+            {pick.name && pick.work.length ? <span>{workText(pick.work)}</span> : null}
+            {pick.note ? <span>{pick.note}</span> : null}
+          </>
+        ) : (
+          <>
+            <small>Done</small>
+            <strong>Rest day</strong>
+          </>
+        )}
+      </div>
       <div className="zone-tiles" aria-label="Workout minutes by heart-rate zone, last 7 days">
-        {ZONES.map((zone) => (
-          <div key={zone.key} className="split-tile">
-            <strong>{zones.minutes[zone.key]}</strong>
-            <span>{zone.label}</span>
-            {zones.bounds ? (
-              <small>
-                {zone.key === "light"
-                  ? `<${zones.bounds.moderate.min}`
-                  : zone.key === "peak"
-                    ? `${zones.bounds.peak.min}+`
-                    : `${zones.bounds[zone.key].min}–${zones.bounds[zone.key].max}`}
-              </small>
-            ) : null}
-          </div>
-        ))}
+        {ZONES.map((zone) => {
+          const goal = ZONE_GOALS[zone.key];
+          const minutes = zones.minutes[zone.key];
+          return (
+            <div key={zone.key} className="split-tile">
+              <strong className={goal != null && minutes < goal ? "short" : undefined}>
+                {minutes}
+                {goal != null ? <span className="zone-goal">/{goal}</span> : null}
+              </strong>
+              <span>{zone.label}</span>
+              {zones.bounds ? (
+                <small>
+                  {zone.key === "light"
+                    ? `<${zones.bounds.moderate.min}`
+                    : zone.key === "peak"
+                      ? `${zones.bounds.peak.min}+`
+                      : `${zones.bounds[zone.key].min}–${zones.bounds[zone.key].max}`}
+                </small>
+              ) : null}
+            </div>
+          );
+        })}
       </div>
       <p className="zone-tiles-note">Workout minutes by heart-rate zone, last 7 days</p>
-      <div className="split-tiles" aria-label="Split, last 7 days">
-        {split.map((entry) => (
-          <div key={entry.kind} className="split-tile">
-            <strong className={entry.count < entry.target! ? "short" : undefined}>
-              {entry.count}/{entry.target}
-            </strong>
-            <span>{ACTIVITY_LABELS[entry.kind]}</span>
-          </div>
-        ))}
-      </div>
-      <ul className="training-last-week strain-week" aria-label="Last 7 days">
-        {rows.map((row, index) => (
-          <li key={row.date}>
-            <span className="training-last-week-day">{row.day}</span>
-            {row.items.length ? (
-              <span className="training-last-week-items">
-                {row.items.map((item, itemIndex) => (
-                  <span key={itemIndex}>
-                    <span>{item.title}</span>
-                    {item.tag ? <small className={item.hard ? "hard" : undefined}>{item.tag}</small> : null}
-                  </span>
-                ))}
-              </span>
-            ) : (
-              <span className="training-last-week-rest">Rest</span>
-            )}
-            <strong className="strain-week-value">{strains[index] == null ? "–" : strains[index]!.toFixed(1)}</strong>
-          </li>
-        ))}
-      </ul>
-      <Facts
-        rows={[
-          ["Average, last 7 days", load.strain7 == null ? "–" : round(load.strain7, 1)],
-          ["Hard days in a row", `${load.hardStreak}`],
-          ["Since a rest day", `${load.daysSinceRest} day${load.daysSinceRest === 1 ? "" : "s"}`]
-        ]}
-      />
     </>
   );
+}
+
+// "Hard: Chest, Triceps · Medium: Front Delts"
+function workText(work: { muscle: string; intensity: Intensity }[]) {
+  return [...INTENSITIES]
+    .reverse()
+    .map((intensity) => ({ intensity, muscles: work.filter((item) => item.intensity === intensity).map((item) => item.muscle) }))
+    .filter((group) => group.muscles.length)
+    .map((group) => `${INTENSITY_RULES[group.intensity].label}: ${group.muscles.join(", ")}`)
+    .join(" · ");
 }

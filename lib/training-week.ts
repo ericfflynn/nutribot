@@ -1,5 +1,5 @@
 // The last 7 days of training, shared by Training's "Last 7 days" card and
-// Today's Strain panel so the two can't disagree.
+// Today's Strain panel (the day's workouts) so the two can't disagree.
 import { addDays } from "./dates";
 import {
   INTENSITIES,
@@ -8,12 +8,9 @@ import {
   WORKOUT_TYPE_LABELS,
   groupOf,
   intensityOf,
-  splitKinds,
-  splitOf,
   workoutTypeOf,
   type FitbitWorkout,
   type Intensity,
-  type SplitEntry,
   type WorkoutSession,
   type WorkoutType
 } from "./workouts";
@@ -89,10 +86,4 @@ export function lastWeekRows(items: readonly WeekItem[], today: string, todayLab
       });
     return { date, day: date === today && todayLabel ? todayLabel : weekdayShort.format(new Date(`${date}T00:00:00Z`)), items: dayItems };
   });
-}
-
-// Strength, cardio and mobility sessions in the 7 days ending `today`, against
-// their targets (sport has no target).
-export function weekSplit(sessions: readonly WorkoutSession[], fitbit: readonly FitbitWorkout[], today: string): SplitEntry[] {
-  return splitOf(splitKinds(sessions, fitbit, addDays(today, -6), today)).filter((entry) => entry.target != null);
 }

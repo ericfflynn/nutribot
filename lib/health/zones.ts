@@ -14,6 +14,12 @@ export const ZONES = [
 ] as const;
 
 export type ZoneKey = (typeof ZONES)[number]["key"];
+
+// Workout minutes per zone to reach in any 7 days. Moderate and vigorous are
+// the floors of WHO's 150-300 moderate or 75-150 vigorous minutes a week;
+// peak is the owner's pick (HIIT studies show gains from about 12-25 minutes a
+// week near max heart rate). Light has no goal.
+export const ZONE_GOALS: Record<ZoneKey, number | null> = { light: null, moderate: 150, vigorous: 75, peak: 10 };
 export type ZoneBounds = Record<ZoneKey, { min: number; max: number }>;
 export type ZoneMinutes = Record<ZoneKey, number>;
 

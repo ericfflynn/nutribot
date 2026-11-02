@@ -5,14 +5,14 @@ Product and design decisions, newest first. One entry per decision: what was dec
 ## 2026-11-01
 
 ### Heart-rate zones are Fitbit's four, shown in Strain's trends
-- **Decided:** zones are Fitbit's light, moderate, vigorous and peak (`lib/health/zones.ts`). Fitbit sets them from heart-rate reserve (on the owner's data moderate starts near 40%, vigorous 60%, peak 85%), so the bpm shift a few beats with resting HR; a custom max HR in the Fitbit app moves them. Strain's trends open with four tiles: workout minutes per zone over the last 7 days (ignored recordings left out) with each zone's current bpm. The chat sees each workout's zone minutes, the range's totals and the current bpm through `get_health`. No zone goals yet.
+- **Decided:** zones are Fitbit's light, moderate, vigorous and peak (`lib/health/zones.ts`). Fitbit sets them from heart-rate reserve (on the owner's data moderate starts near 40%, vigorous 60%, peak 85%), so the bpm shift a few beats with resting HR; a custom max HR in the Fitbit app moves them. Strain's trends show workout minutes per zone over the last 7 days (ignored recordings left out) with each zone's current bpm. The chat sees each workout's zone minutes, the range's totals, the goals and the current bpm through `get_health`.
 - **Why:** the owner wants weekly minutes per zone to tune workouts and cardio. Fitbit's bands are already in the data; custom 5-zone bands would need minute-level heart rate, which isn't synced.
 - **Instead of:** our own zone 1-5 from minute heart rate (later, if Fitbit's bands prove too coarse); counting all-day zone minutes (stairs and errands can't be planned around).
 
-### Strain's trends are the training week, not bars
-- **Decided:** tapping Strain shows the zone tiles, Training's split tiles (Strength x/4, Cardio x/2, Mobility x/2), then Training's "Last 7 days" list with each day's strain at the right, then the facts. The week list and split are shared code (`lib/training-week.ts`). Recovery's resting HR and HRV charts shade a normal band (within 3 bpm and within 20% of usual), whose bad edge is the red-dot threshold.
-- **Why:** the owner found the 7-day strain bars useless: they showed how much, not why.
-- **Instead of:** the bars; week-paging on Sleep, left for an analysis page with custom charts (backlog).
+### Strain's trends: the day, then the week's heart-rate zones
+- **Decided:** tapping Strain shows the day (its workouts as Training lists them; today with nothing done yet, Training's suggestion as "Up next"; a past day with none, "Rest day"), then four zone tiles: workout minutes per zone over the last 7 days against goals of moderate 150, vigorous 75 and peak 10 (`ZONE_GOALS` in `lib/health/zones.ts`), red while short. Light has no goal. Recovery's resting HR and HRV charts shade a normal band (within 3 bpm and within 20% of usual), whose bad edge is the red-dot threshold.
+- **Why:** the owner found the 7-day strain bars useless, and wants the week's training breakdown (split tiles, the day-by-day list) to stay on Training. Goals: moderate and vigorous are the floors of WHO's 150-300 moderate or 75-150 vigorous minutes a week; peak 10 is the owner's pick, in line with HIIT studies (about 12-25 minutes a week near max heart rate).
+- **Instead of:** the bars; Training's week list and split tiles in the panel (tried the same day); week-paging on Sleep, left for an analysis page with custom charts (backlog).
 
 ## 2026-10-31
 

@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import type { ReactNode } from "react";
 import { deleteCheckinAction } from "./actions";
 import { WaterRow } from "./water-row";
-import { lastWeekRows, weekItems, weekSplit } from "@/lib/training-week";
+import { lastWeekRows, weekItems } from "@/lib/training-week";
 import { listFitbitWorkouts, listWorkoutSessions } from "@/lib/workouts";
 import { getZoneBounds, zoneMinutes } from "@/lib/health/zones";
 import { Facts, RecoveryDetails, SickLine, SleepDetails, StrainDetails } from "./body-ui";
@@ -427,7 +427,8 @@ export default async function Home({ searchParams }: PageProps) {
     answeredCheckins(db, user.name, date),
     cookies(),
     listSickDates(db, user.name, addDays(firstShown, -1), stripEnd),
-    // Strain's last 7 days, the same list as Training's.
+    // Strain's trends: the day's workouts, as Training lists them, and the
+    // week's ignored recordings (left out of the zone minutes).
     listWorkoutSessions(db, user.name, addDays(date, -6), date),
     listFitbitWorkouts(db, user.name, addDays(date, -6), date),
     getZoneBounds(user.name, date)
@@ -738,9 +739,8 @@ export default async function Home({ searchParams }: PageProps) {
           Strain: (
             <StrainDetails
               state={body}
-              rows={lastWeekRows(weekItems(weekSessions, weekFitbit), date, isToday ? "Today" : null)}
-              split={weekSplit(weekSessions, weekFitbit, date)}
-              strains={rollingDateWindow(date, 7).map(strainOn)}
+              done={lastWeekRows(weekItems(weekSessions, weekFitbit), date).at(-1)?.items ?? []}
+              isToday={isToday}
               zones={{ minutes: zoneMinutes(weekWorkouts), bounds: zoneBounds }}
             />
           )

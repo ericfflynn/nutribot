@@ -9,14 +9,14 @@ import { dayStrain, recoveryScore, sleepScoresFor, workoutStrain, type RecoveryS
 import { fahrenheitDelta } from "./health/units";
 import { listSickDates } from "./body-state/load";
 import { getPool } from "./supabase";
-import { describeZoneBounds, getZoneBounds, zoneMinutes } from "./health/zones";
+import { ZONE_GOALS, describeZoneBounds, getZoneBounds, zoneMinutes } from "./health/zones";
 
 export const HEALTH_TOOLS = ["get_health"];
 
 export const HEALTH_PROMPT = `## Health data
 - get_health reads their watch data for any range: sleep (duration, stages, bed and wake times), HRV, resting heart rate, SpO2, breathing rate, VO2 max, skin temperature vs baseline, steps, active calories, heart-zone minutes, the app's Sleep, Recovery and Strain scores, and each day's watch workouts. Data starts in late June 2026.
 - Use it whenever they ask about sleep, recovery, strain, heart rate, trends or how a day went, and to connect what they ate or did to how they recovered. Pull the range you need; for trends, compare against the averages it returns.
-- Heart-rate zones are Fitbit's four: light, moderate, vigorous, peak. Fitbit sets them from heart-rate reserve (moderate from about 40%, vigorous 60%, peak 85%), so the bpm shift a little with resting HR; get_health gives the current bpm. Each workout lists its minutes per zone, and the range's workout totals come at the end. Day "zone min fat burn/cardio/peak" is all-day, the same moderate/vigorous/peak bands. When they talk cardio or zone goals, use these four, not a 5-zone model: moderate is roughly steady aerobic work, vigorous is hard, peak is all-out.
+- Heart-rate zones are Fitbit's four: light, moderate, vigorous, peak. Fitbit sets them from heart-rate reserve (moderate from about 40%, vigorous 60%, peak 85%), so the bpm shift a little with resting HR; get_health gives the current bpm. Each workout lists its minutes per zone, and the range's workout totals and the weekly zone goals come at the end; for zone goals pull the last 7 days and suggest what closes the gap (peak needs hard intervals). Day "zone min fat burn/cardio/peak" is all-day, the same moderate/vigorous/peak bands. When they talk cardio or zone goals, use these four, not a 5-zone model: moderate is roughly steady aerobic work, vigorous is hard, peak is all-out.
 - Sleep is dated by the morning they woke up. Today's activity and strain are partial until the day ends.`;
 
 const MAX_DAYS = 366;
@@ -159,7 +159,7 @@ export function healthTools({ userName, today }: { userName: string; today: stri
         const inRange = workouts.filter((w) => w.day >= args.start_date);
         const zones = zoneMinutes(inRange);
         lines.push(
-          `Workout minutes by zone over the range: light ${zones.light}, moderate ${zones.moderate}, vigorous ${zones.vigorous}, peak ${zones.peak}`
+          `Workout minutes by zone over the range: light ${zones.light}, moderate ${zones.moderate}, vigorous ${zones.vigorous}, peak ${zones.peak}. Goals for any 7 days: moderate ${ZONE_GOALS.moderate}, vigorous ${ZONE_GOALS.vigorous}, peak ${ZONE_GOALS.peak}`
         );
         if (bounds) lines.push(`Fitbit's zones as of ${end}: ${describeZoneBounds(bounds)}`);
         return { content: [{ type: "text" as const, text: lines.join("\n") }] };
