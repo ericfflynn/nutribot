@@ -490,7 +490,7 @@ export default async function Home({ searchParams }: PageProps) {
       notes: sleepScore
         ? [
             `${hoursMinutes(sleepScore.minutes)} of ${hoursMinutes(sleepScore.need.minutes)}`,
-            sleepScore.consistency != null ? `${sleepScore.consistency}% steady` : null
+            sleepScore.consistency != null ? `${sleepScore.consistency}% consistent` : null
           ].filter((note): note is string => note != null)
         : [sleepMinutes != null ? hoursMinutes(sleepMinutes) : "No data"]
     },
