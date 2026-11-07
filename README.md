@@ -1,8 +1,8 @@
 # NutriBot
 
-A personal health app built around one idea: **a single daily model of body and mind**, built from everything a person's watch records and everything they tell it.
+A personal health app built around the **body state**: one data representation of a person's body, health and mind, built from everything their watch records and everything they tell it.
 
-A Fitbit supplies sleep, heart rate, HRV, temperature, breathing and every workout on its own. Meals, workouts, moods, habits and sick days are logged by chatting with Claude, which turns plain sentences into structured records and waits for a tap on Save. Code then combines all of it into the **body state**: one stored JSON picture per day, organized into domains, areas and signals. The Today screen, Training's suggestion, illness detection and the chat all read that same picture.
+A Fitbit supplies sleep, heart rate, HRV, temperature, breathing and every workout on its own. Meals, workouts, moods, habits and sick days are logged by chatting with Claude, which turns plain sentences into structured records and waits for a tap on Save. Code combines all of it into the body state, organized into domains, areas and signals. The Today screen, Training's suggestion, illness detection and the chat all read it.
 
 **Live:** https://nutribot-dusky.vercel.app (private) · **Body state spec:** [docs/body-state.md](docs/body-state.md) · **Agent guidelines:** [AGENTS.md](AGENTS.md)
 
@@ -28,7 +28,7 @@ A Fitbit supplies sleep, heart rate, HRV, temperature, breathing and every worko
 
 ## The body state
 
-Most health apps show each source on its own screen: a sleep chart here, a workout log there, a mood graph somewhere else. Nothing ties them together, so they can disagree. On October 30, 2026, NutriBot's workout planner suggested a hard pull day while the owner was sick and the watch showed it. The body state was built to fix that: **one model, every reader**. If two screens disagree, one of them is a bug.
+The body state is a data representation of everything about a person's body, health and mind: sleep, recovery, vitals, illness, training load, food, mood, habits, work and relationships. Code builds it from every source, and every reader (Today, Training, illness detection, the chat) uses the same object instead of its own slice of the data. **One model, every reader**: if two screens disagree, one of them is a bug.
 
 ### Shape
 
