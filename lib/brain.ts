@@ -1,6 +1,6 @@
 // The chat brain: one user message in, a reply plus drafts (meals, workouts,
 // journal entries, habits) out.
-// Contract and rationale: docs/brain.md. Tools only create drafts; nothing is
+// Contract and rationale: docs/brain.md. Tools only create drafts (memories, lib/memories.ts, save at once); nothing else is
 // saved until the owner taps Save (app/actions.ts → saveDraftAction).
 import { randomUUID } from "crypto";
 import type { Pool } from "pg";
@@ -11,6 +11,7 @@ import { HEALTH_PROMPT, HEALTH_TOOLS, healthTools } from "./brain-health";
 import { BODY_PROMPT, BODY_TOOLS, bodyTools } from "./brain-body";
 import { FEEDBACK_PROMPT, FEEDBACK_TOOLS, feedbackTools, type FeedbackDraft } from "./feedback";
 import { ILLNESS_PROMPT, ILLNESS_TOOLS, illnessTools } from "./illness";
+import { MEMORY_PROMPT, MEMORY_TOOLS, describeMemories, listMemories, memoryTools, type MemoryNote } from "./memories";
 import type { IllnessDraft } from "./illness-days";
 import { runClaude } from "./claude-brain";
 import { addDays, isValidLocalDate, localDateTime } from "./dates";
@@ -112,7 +113,8 @@ export type IgnoreDraft = {
   discarded?: boolean;
 };
 
-export type Draft = MealDraft | WorkoutDraft | IgnoreDraft | CheckinDraft | FeedbackDraft | IllnessDraft;
+// MemoryNote isn't a draft (it's saved already), but rides with them on a reply.
+export type Draft = MealDraft | WorkoutDraft | IgnoreDraft | CheckinDraft | FeedbackDraft | IllnessDraft | MemoryNote;
 
 export type Turn = { role: "user" | "assistant"; text: string };
 
@@ -134,11 +136,13 @@ export type BrainContext = {
   savedDrafts?: Draft[];
   // Run a quick exercise-only health sync when today's workout isn't in yet.
   syncIfMissing: boolean;
+  // Write nothing (npm run brain): memories are reported, not saved.
+  dryRun?: boolean;
   now?: Date;
 };
 
 const SERVER = "nutribot";
-const TOOLS = ["draft_meal", "draft_workout", "draft_ignore_workout", "list_workouts", "list_meals", "get_goals", ...CHECKIN_TOOLS, ...HEALTH_TOOLS, ...BODY_TOOLS, ...FEEDBACK_TOOLS, ...ILLNESS_TOOLS];
+const TOOLS = ["draft_meal", "draft_workout", "draft_ignore_workout", "list_workouts", "list_meals", "get_goals", ...CHECKIN_TOOLS, ...HEALTH_TOOLS, ...BODY_TOOLS, ...FEEDBACK_TOOLS, ...ILLNESS_TOOLS, ...MEMORY_TOOLS];
 
 const localDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("Local date, YYYY-MM-DD.");
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
@@ -259,6 +263,8 @@ ${HEALTH_PROMPT}
 
 ${BODY_PROMPT}
 
+${MEMORY_PROMPT}
+
 ## Everything else
 - Answer general questions directly. You can see their saved meals, workouts, goals, water, journal, habits and watch data.
 - Write short sentences, with a blank line between topics. For a report with several numbers (a health breakdown, a meal's items), a short "- " list is fine, each item a sentence or two, optionally starting with a **bold** label ("- **Resting HR:** 71, usually 65."). The chat shows only paragraphs, "- " and "1. " lists and **bold**: no headings, tables, nested lists or other markdown.`;
@@ -272,8 +278,9 @@ function describeSaved(draft: Draft) {
   return { id: draft.id, type: draft.type, saved: true };
 }
 
-function promptFor(message: string, history: Turn[], openDrafts: Draft[], savedDrafts: Draft[] = []) {
+function promptFor(message: string, history: Turn[], openDrafts: Draft[], savedDrafts: Draft[] = [], memories = "") {
   const parts: string[] = [];
+  if (memories) parts.push(memories);
   if (history.length) {
     parts.push(
       `<history>\n${history.map((turn) => `${turn.role === "user" ? "Them" : "You"}: ${turn.text}`).join("\n")}\n</history>`
@@ -281,7 +288,7 @@ function promptFor(message: string, history: Turn[], openDrafts: Draft[], savedD
   }
   if (openDrafts.length) {
     const summary = openDrafts.map((draft) =>
-      draft.type === "journal" || draft.type === "habits" || draft.type === "habit" || draft.type === "feedback" || draft.type === "ignore" || draft.type === "illness"
+      draft.type === "journal" || draft.type === "habits" || draft.type === "habit" || draft.type === "feedback" || draft.type === "ignore" || draft.type === "illness" || draft.type === "memory"
         ? draft
         : draft.type === "meal"
         ? {
@@ -688,7 +695,7 @@ export async function runBrain(message: string, context: BrainContext): Promise<
 
   const run = await runClaude({
     system: systemPrompt(today, nowLocal, context.viewDate),
-    prompt: promptFor(message, context.history, context.openDrafts, context.savedDrafts),
+    prompt: promptFor(message, context.history, context.openDrafts, context.savedDrafts, describeMemories(await listMemories(db, userName), today)),
     server: {
       name: SERVER,
       config: createSdkMcpServer({
@@ -705,6 +712,7 @@ export async function runBrain(message: string, context: BrainContext): Promise<
           ...healthTools({ userName, today }),
           ...bodyTools({ db, userName, today }),
           ...feedbackTools({ db, userName, resolveDraftId, putDraft: (draft) => drafts.set(draft.id, draft) }),
+          ...memoryTools({ db, userName, dryRun: context.dryRun, putNote: (note) => drafts.set(note.id, note) }),
           ...illnessTools({
             db,
             userName,

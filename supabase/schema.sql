@@ -648,3 +648,23 @@ create or replace view public.body_state_current as
 select distinct on (user_name, state_date) *
 from public.body_states
 order by user_name, state_date, version desc;
+
+-- Chat memories (lib/memories.ts, docs/brain.md#memory): what the chat keeps
+-- about the owner between conversations. Saved by the chat on its own; the
+-- reply's note can undo it, and the chat can change, resolve or forget it.
+create table if not exists public.chat_memories (
+  id uuid primary key default gen_random_uuid(),
+  user_name text not null,
+  kind text not null check (kind in ('about', 'goal', 'ongoing', 'pattern')),
+  content text not null,
+  status text not null default 'active' check (status in ('active', 'resolved', 'forgotten')),
+  told boolean not null default false,
+  follow_up_on date,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  resolved_at timestamptz
+);
+
+create index if not exists chat_memories_user_status_idx on public.chat_memories (user_name, status, created_at);
+
+alter table public.chat_memories enable row level security;

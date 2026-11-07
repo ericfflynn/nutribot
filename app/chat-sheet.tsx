@@ -2,11 +2,12 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { discardDraftAction, newChatAction, saveDraftAction } from "./actions";
+import { discardDraftAction, newChatAction, saveDraftAction, undoMemoryAction } from "./actions";
 import { ChatText } from "./chat-text";
 import type { Draft, IgnoreDraft, MealDraft, WorkoutDraft } from "@/lib/brain";
 import type { HabitDraft, HabitsDraft, JournalDraft } from "@/lib/brain-checkin";
 import type { FeedbackDraft } from "@/lib/feedback";
+import type { MemoryNote } from "@/lib/memories";
 import { SEVERITY_LABELS, type IllnessDraft } from "@/lib/illness-days";
 import { describeGoal, formatHabitAmount, scaleGuideLines } from "@/lib/habits";
 import { recordedRatings } from "@/lib/journal";
@@ -400,6 +401,41 @@ function IllnessCard({ draft, ...handlers }: { draft: IllnessDraft } & DraftHand
   );
 }
 
+const MEMORY_ACTIONS: Record<MemoryNote["action"], string> = {
+  saved: "Remembered",
+  updated: "Updated memory",
+  resolved: "Memory marked over",
+  forgotten: "Forgot"
+};
+
+// A memory the reply saved or changed: already done, with Undo.
+function MemoryLine({ note, onUndo }: { note: MemoryNote; onUndo: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <p className={`memory-note${note.discarded ? " undone" : ""}`}>
+      <span>
+        <strong>{MEMORY_ACTIONS[note.action]}:</strong> {note.content}
+      </span>
+      {note.discarded ? (
+        <span className="memory-note-status">Undone</span>
+      ) : (
+        <button
+          type="button"
+          className="text-button"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            await onUndo();
+            setBusy(false);
+          }}
+        >
+          Undo
+        </button>
+      )}
+    </p>
+  );
+}
+
 // Opens the chat sheet from anywhere, optionally with text ready to send.
 const OPEN_EVENT = "nutribot:open-chat";
 // With send, the text goes straight to the chat (a check-in's quick reply).
@@ -585,6 +621,18 @@ export function ChatThread({
                   return <IgnoreCard key={draft.id} draft={draft} {...handlers} />;
                 case "illness":
                   return <IllnessCard key={draft.id} draft={draft} {...handlers} />;
+                case "memory":
+                  return (
+                    <MemoryLine
+                      key={draft.id}
+                      note={draft}
+                      onUndo={async () => {
+                        const result = await undoMemoryAction(message.id, draft.id);
+                        if (result.ok) replaceDraft(message.id, result.draft);
+                        else setError(result.error);
+                      }}
+                    />
+                  );
               }
             })}
           </div>

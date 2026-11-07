@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { undoMemoryNote } from "@/lib/memories";
 import { after } from "next/server";
 import { clearSession, createSession, getSessionUser } from "@/lib/auth";
 import { addDays, isValidLocalDate, todayLocalDate } from "@/lib/dates";
@@ -375,6 +376,8 @@ export async function saveDraftAction(
       } else if (stored.type === "habit") {
         savedId = await saveHabit(client, user.name, stored.habit, stored.habit_id);
         saved = { ...stored, saved_id: savedId };
+      } else if (stored.type === "memory") {
+        throw new Error("Memories save on their own.");
       } else {
         let healthRecordKey = stored.untracked ? null : (stored.match.match?.id ?? null);
         let linkedBy = stored.linked_by;
@@ -436,6 +439,26 @@ export async function discardDraftAction(messageId: string, draftId: string): Pr
     return { ok: true, draft };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "Couldn't discard the draft." };
+  }
+}
+
+// Undo a reply's memory note: a new memory is forgotten, a change reverted.
+export async function undoMemoryAction(messageId: string, noteId: string): Promise<DraftActionResult> {
+  const user = await getSessionUser();
+  const db = getPool();
+  if (!user) return { ok: false, error: "Log in again." };
+  if (!db) return { ok: false, error: "DATABASE_URL is required." };
+
+  try {
+    const draft = await withDraft(db, user.name, messageId, noteId, async (stored, client) => {
+      if (stored.type !== "memory") throw new Error("That isn't a memory.");
+      await undoMemoryNote(client, user.name, stored);
+      const undone = { ...stored, discarded: true };
+      return { draft: undone, result: undone };
+    });
+    return { ok: true, draft };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Couldn't undo that." };
   }
 }
 

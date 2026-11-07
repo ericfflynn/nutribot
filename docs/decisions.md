@@ -4,6 +4,11 @@ Product and design decisions, newest first. One entry per decision: what was dec
 
 ## 2026-11-06
 
+### The chat keeps memories, saved on its own
+- **Decided:** the chat keeps short memories about the owner (about them, goals, ongoing situations, patterns) and starts every turn with them, so it can follow up on its own and connect what's going on with goals and data ([brain.md](brain.md#memory)). They save right away, and always when the owner says "remember", with a small "Remembered" line and Undo under the reply. They live in the chat only: no page; the owner asks what it remembers or tells it to change or forget something. A first version to test; the owner plans a fuller system later.
+- **Why:** each chat starts fresh every day, so the chat forgot what the owner told it and felt like data entry rather than a health companion (feedback 63863809).
+- **Instead of:** a card to save each memory (tedious, would be skipped); a memories page (later, with the fuller system).
+
 ### Next up reads readiness: recovery, drinks, strain run and food
 - **Decided:** Next up takes the body state's readiness (`readinessOf` in `lib/body-state/build.ts`, scored in [body-state.md](body-state.md#physicaltraining-whats-due)): red recovery, drinks last night, hard days in a row and a rough food day add points; 2-3 is an easy day (nothing hard, leg day last), 4+ is rest or active recovery. A strenuous watch day (strain 14+) now counts as a hard day, not only sessions logged hard. Training's Next up for tomorrow doesn't use it: tomorrow is planned again in the morning.
 - **Why:** on November 3 it suggested leg day after wine, a big food day and three strenuous days in a row (the owner: "the worst idea"). The rules only knew soreness, days since and illness.
