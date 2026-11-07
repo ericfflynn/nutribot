@@ -1,5 +1,6 @@
 {
   "crons": [
+    { "path": "/api/cron/health-sync?mode=recent&slot=12", "schedule": "0 12 * * *" },
     { "path": "/api/cron/health-sync", "schedule": "0 13 * * *" },
     { "path": "/api/cron/health-sync?mode=recent&slot=16", "schedule": "0 16 * * *" },
     { "path": "/api/cron/health-sync?mode=recent&slot=19", "schedule": "0 19 * * *" },

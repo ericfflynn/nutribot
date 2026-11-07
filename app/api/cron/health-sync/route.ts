@@ -5,9 +5,11 @@ import { getPool } from "@/lib/supabase";
 import { localDateTime } from "@/lib/dates";
 import { sendIllnessAlert } from "@/lib/body-state/alert";
 import { refreshRecentBodyStates } from "@/lib/body-state/store";
+import { ensureDailyCall } from "@/lib/body-state/call";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+// The sync takes up to about 20 s; the morning call (Claude) up to a minute or two more.
+export const maxDuration = 300;
 
 const RECENT_DAYS = 3;
 
@@ -45,7 +47,14 @@ export async function GET(request: Request) {
     } catch {
       bodyStates = { status: "failed" };
     }
-    return Response.json({ ...result, illness, bodyStates }, { status: result.failedTypes.length ? 500 : 200 });
+    // The day's call, once last night's sleep is in (the 7 am run, usually).
+    let call: unknown = null;
+    try {
+      call = await ensureDailyCall(db, userName);
+    } catch {
+      call = { status: "failed" };
+    }
+    return Response.json({ ...result, illness, bodyStates, call }, { status: result.failedTypes.length ? 500 : 200 });
   } catch {
     // The run row holds the sanitized error; don't echo exception details here.
     return Response.json({ error: "Health sync failed" }, { status: 500 });

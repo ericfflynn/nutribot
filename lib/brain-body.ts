@@ -4,18 +4,22 @@ import { tool } from "@anthropic-ai/claude-agent-sdk";
 import type { Pool } from "pg";
 import { z } from "zod";
 import { addDays } from "./dates";
-import { getBodyState } from "./body-state/load";
+import { getBodyState, loadBodySources } from "./body-state/load";
+import { buildBodyState } from "./body-state/build";
+import { CALL_STYLE, callShape, checkCall, getDailyCall, guardrailsOf, saveDailyCall, toCall } from "./body-state/call";
+import { localDateTime } from "./dates";
 import { listBodyStates, listBodyStateVersions } from "./body-state/store";
 import type { BodyState } from "./body-state/types";
 
-export const BODY_TOOLS = ["get_body_state", "list_body_states"];
+export const BODY_TOOLS = ["get_body_state", "list_body_states", "submit_call"];
 
 export const BODY_PROMPT = `## Body state
 - The body state is the app's core model of how the owner is doing on a day, rebuilt from all their data. get_body_state returns it. Use it first for "how am I doing", "what should I do today", "why is my recovery low", and before suggesting training.
 - It has three domains: physical (areas sleep, recovery, vitals, illness, load, training, fuel), mental (mood) and lifestyle (habits, career, relationships). Each domain and area has a status (good, ok, watch, low, unknown) and a headline with the evidence; a domain takes its worst area. Under each area are the signals: numbers against the owner's own baseline (usual), streaks and 7-day trends.
 - explanations lists things that move the numbers besides illness: drinking or other habits, a late night, a hard training stretch, work stress. Use them when a number is off: "recovery is low after a late night" rather than an alarm.
 - Illness phases: sick (they said so: logged, or a journal entry tagged sick), recovering (2 days after), early_signs (the watch shows resting HR, temperature or HRV off their baseline and nothing explains it), well. What the owner says beats what the data suggests.
-- physical.training.suggested is Training's Next up for that day, with illness applied: sick means rest. Explain it from the state's headlines and signals rather than re-deriving it, and say which area drives it.
+- Today's call (get_body_state's call, shown on Today's check-in and as Training's Next up) is what to do today: made by you each morning inside guardrails the app sets (illness, readiness, sore muscles, the training rules), with a coach note and a question. physical.training.suggested is the rule-based default it started from. Explain the call from its reasons and the state; don't re-derive it.
+- When they tell you something that changes today's plan ("my wrist hurts", "no gym today", "I feel great, can I go harder?", their answer to the morning question), revise the call: call submit_call with the whole new call and revised_because, after saving any report it depends on. It's checked against the guardrails (which can't be lifted: "I feel great" doesn't make a red day hard); an error says what to fix. Revise only today's call, and only when the plan really changes. Say what changed in a sentence. The call's voice: ${CALL_STYLE}
 - Temperatures are in Celsius in the data (physical.vitals.sleepTemp is a °C difference from the watch's baseline). Always tell the owner Fahrenheit, as the headlines do: multiply a difference by 1.8 (+0.5°C is +0.9°F).
 - Status unknown means no data for that area; say so instead of guessing. meta.missing lists what's missing for the day.
 - Body states are stored daily from late June 2026. list_body_states reads history: each day's domain and area statuses and headlines, plus any areas you ask for in full by path (physical.recovery, mental.mood, lifestyle.career, explanations). Use it for "how was October", "when was I last sick", trends and comparisons. A past day changes when something is logged late; with versions for a single day it shows what the app believed as the day went on. Before about mid-September most mental and lifestyle areas are unknown: there was no journal or habit data yet.`;
@@ -32,7 +36,8 @@ export function bodyTools({ db, userName, today }: { db: Pool; userName: string;
     async (args) => {
       const date = args.date ?? today;
       if (date > today) return { ...text("Can't read a future date."), isError: true };
-      return text(await getBodyState(db, userName, date));
+      const [state, call] = await Promise.all([getBodyState(db, userName, date), getDailyCall(db, userName, date)]);
+      return text({ ...state, call });
     },
     { annotations: { readOnlyHint: true } }
   );
@@ -66,7 +71,7 @@ export function bodyTools({ db, userName, today }: { db: Pool; userName: string;
     { annotations: { readOnlyHint: true } }
   );
 
-  return [getBodyStateTool, listBodyStatesTool];
+  return [getBodyStateTool, listBodyStatesTool, revisionTool(db, userName, today)];
 }
 
 const AREAS = {
@@ -94,4 +99,24 @@ function heads(state: BodyState) {
 
 function pick(state: BodyState, path: string): unknown {
   return path.split(".").reduce<unknown>((value, key) => (value && typeof value === "object" ? (value as Record<string, unknown>)[key] : undefined), state);
+}
+
+// submit_call for the chat: guardrails built when it runs, so a report saved
+// earlier in the turn (soreness, a sick day) counts.
+function revisionTool(db: Pool, userName: string, today: string) {
+  return tool(
+    "submit_call",
+    "Revise today's call when something they said changes the plan. The whole call, checked against today's guardrails; an error says what to fix.",
+    { ...callShape, revised_because: z.string().max(160).describe("What they said that changed it.") },
+    async (args) => {
+      const sources = await loadBodySources(db, userName, today);
+      const state = buildBodyState(sources, today, { trigger: "report" });
+      const guardrails = guardrailsOf(state, sources);
+      const call = toCall(args, "claude", localDateTime());
+      const problem = checkCall(call, guardrails);
+      if (problem) return { ...text(problem), isError: true };
+      await saveDailyCall(db, userName, state, guardrails, { ...call, revised: args.revised_because }, "report");
+      return text("Today's call is revised.");
+    }
+  );
 }

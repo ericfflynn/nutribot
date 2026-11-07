@@ -21,6 +21,7 @@ import { getBodyState, listSickDates } from "@/lib/body-state/load";
 import { answeredCheckins } from "@/lib/chat";
 import { CHECKIN_DISMISSED_COOKIE, type CheckinKind } from "@/lib/checkin";
 import { morningBrief, type Reply } from "@/lib/body-state/brief";
+import { getDailyCall } from "@/lib/body-state/call";
 import { gramsFromPercentGoals, restingKcalPerMinute, withWorkoutCalories, workoutCalories } from "@/lib/goals";
 import { listJournalEntries, recordedRatings, type JournalEntry } from "@/lib/journal";
 import {
@@ -412,7 +413,7 @@ export default async function Home({ searchParams }: PageProps) {
 
   const db = getPool()!;
   const firstShown = priorDates[0] < stripDates[0] ? priorDates[0] : stripDates[0];
-  const [entries, goals, healthDays, rangeWorkouts, waterOunces, lastRun, journal, body, checkinReplies, cookieStore, sickDates, weekSessions, weekFitbit, zoneBounds] = await Promise.all([
+  const [entries, goals, healthDays, rangeWorkouts, waterOunces, lastRun, journal, body, checkinReplies, cookieStore, sickDates, weekSessions, weekFitbit, zoneBounds, dailyCall] = await Promise.all([
     listEntriesForDateRange(user.name, priorDates[0], date),
     getUserGoals(user.name),
     listHealthDays(user.name, healthStart, stripEnd),
@@ -431,7 +432,9 @@ export default async function Home({ searchParams }: PageProps) {
     // week's ignored recordings (left out of the zone minutes).
     listWorkoutSessions(db, user.name, addDays(date, -6), date),
     listFitbitWorkouts(db, user.name, addDays(date, -6), date),
-    getZoneBounds(user.name, date)
+    getZoneBounds(user.name, date),
+    // Claude's call for the day, once the morning has made it.
+    getDailyCall(db, user.name, date)
   ]);
 
   const healthByDay = new Map(healthDays.map((day) => [day.day, day]));
@@ -559,7 +562,9 @@ export default async function Home({ searchParams }: PageProps) {
           { label: "Rough day", message: "Evening check-in: rough day." }
         ] as Reply[]
       }
-    : { kicker: "Morning check-in", text: brief.text, call: brief.call, replies: brief.replies };
+    : dailyCall
+      ? { kicker: "Morning check-in", headline: dailyCall.headline, text: dailyCall.note, ask: dailyCall.ask, call: null, replies: brief.replies }
+      : { kicker: "Morning check-in", text: brief.text, call: brief.call, replies: brief.replies };
 
   // Nutrition
   const dayEntries = entries.filter((entry) => entry.entry_date === date);
@@ -730,7 +735,7 @@ export default async function Home({ searchParams }: PageProps) {
       ) : null}
 
       {isToday && !answered ? (
-        <TodayCheckin key={checkinKind} date={date} kind={checkinKind} kicker={checkin.kicker} text={checkin.text} call={checkin.call} replies={checkin.replies} allowMore={!evening} />
+        <TodayCheckin key={checkinKind} date={date} kind={checkinKind} kicker={checkin.kicker} headline={"headline" in checkin ? checkin.headline : null} text={checkin.text} ask={"ask" in checkin ? checkin.ask : null} call={checkin.call} replies={checkin.replies} allowMore={!evening} />
       ) : null}
 
       <ScoreSummary
@@ -744,6 +749,7 @@ export default async function Home({ searchParams }: PageProps) {
               state={body}
               done={lastWeekRows(weekItems(weekSessions, weekFitbit), date).at(-1)?.items ?? []}
               isToday={isToday}
+              call={dailyCall}
               zones={{ minutes: zoneMinutes(weekWorkouts), bounds: zoneBounds, daysDone: zoneDaysDone }}
             />
           )

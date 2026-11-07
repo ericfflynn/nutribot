@@ -418,6 +418,8 @@ type Guardrails = {
 
 Rules only take things away. The strictest wins.
 
+Built November 6, 2026 as `guardrailsOf` in `lib/body-state/call.ts`, with two changes from the table: recovery goes through readiness (`physical.training.readiness`: easy caps everything at medium, rest allows only rest, a walk or mobility), not red alone; and each muscle gets its own cap (`muscles[].max`, null when out) from soreness, the not_after rules, one hard day a week and the after_hard and hard_streak rules (`muscleCapsOn` in `lib/workouts.ts`).
+
 ## The call
 
 What to do today: Claude's judgment inside the guardrails, as a structured object validated with Zod.
@@ -441,6 +443,8 @@ type DailyCall = {
 - **Freedom:** Claude may change intensity and focus within the limits, and may pick a different day type than the rule-based one (agreed October 30, 2026), as long as it says why in `reasons` ("journaled knee pain, so pull instead of legs"). It writes the note and decides what to ask.
 - **Checked in code:** every field against the guardrails (kind allowed, intensity at most the cap, no out muscles). A call that breaks one, or a failed or slow run, falls back to the rule-based pick with a plain note (`source: "rules"`). The page never waits on Claude.
 - **Reasons cite fields**, so the Home card can show them as rows and the chat can explain them.
+
+Built November 6, 2026 (`lib/body-state/call.ts`), a little leaner than the type above: `kind`, `dayType`, `work` (muscles each with an intensity), `accessory`, `headline`, `note`, `reasons` (short text rows), `ask` (one question), `source`, `madeAt`, and `revised` when the chat changed it. Claude gets the body state, the guardrails, the rule-based pick, the last two journal entries and the chat's memories, and answers through a `submit_call` tool that checks the call against the guardrails and returns what to fix (`checkCall`); no good call, an error or a failed run falls back to the rules (`rulesCall`). Voice (the owner, November 6): a coach, warm and supportive, and direct. The call is stored on the day's current version (`body_states.call`, `guardrails`); `getDailyCall` reads the newest version that has one. **When:** `ensureDailyCall` runs after every health sync (the cron runs, including a new 7 am Eastern one at 12:00 UTC, which is 8 am in summer, and the app-open sync); it makes the day's call once, from 5 am when last night's sleep is in, or from 11 am without it, claimed in `reminder_sends` (kind `daily_call`) so two syncs can't both run it. It posts the brief (headline, note, question) as the first message of the day's chat. **Where:** Today's morning check-in shows the headline, note and question (the rules' brief until the call exists); Training's Next up shows the call for today (out and fresh muscles still from the state; tomorrow is the rules); Strain's Up next shows it too. **During the day** the chat revises it with the same `submit_call` (`lib/brain-body.ts`, guardrails rebuilt from the state as it is then) when something said changes the plan; the revision says why. No push yet: the owner wants it waiting when the app opens. `npm run call` makes today's call and prints it without saving.
 
 ## Reports: what the owner says
 
@@ -562,8 +566,8 @@ The separate illness card, `draft_illness` cards and the Next-up illness note on
 1. **Body state, read-only.** Built October 30, 2026: `buildBodyState` (`lib/body-state/build.ts`, tests in `tests/body-state.test.ts`), `loadBodySources` and `getBodyState` (`load.ts`), and `get_body_state` for the chat (`lib/brain-body.ts`). Until reports go through the journal (step 5), a journal entry tagged `sick` counts as a Sick day, and drinking habits are recognized by name until habits get an `affects` flag. A day type's "days since" is its middle muscle's, so lower back on a back day doesn't make legs look recent; training watches when a whole day type has gone 7+ days.
 2. **Storage and backfill.** Built October 30, 2026: `body_states` and `body_state_current` (`supabase/schema.sql`), `lib/body-state/store.ts` (save a version when the state changed, upgrade on read, rebuild a day and the days after it), rebuilds after every save in `app/actions.ts` and after each health sync (cron and app open), `npm run body:states` for the backfill and full rebuilds, and `list_body_states` for the chat.
 3. **Causes and effects.** The daily table view, seeded links, the weekly measurement; explanations read measured sizes when they have them.
-4. **Guardrails and the call.** Guardrails, the Claude call with validation and fallback, the Home card, and Next up reading the call.
-5. **Morning check-in.** Push, the chat opening with the brief, journal `illness` part, quick buttons.
+4. **Guardrails and the call.** Built November 6, 2026 (see The call): guardrails, the Claude call with validation and fallback, the check-in card, Next up reading the call, revisions from the chat.
+5. **Morning check-in.** The chat opening with the brief is built (November 6, 2026). Left: the push (the owner prefers it waiting in the app for now) and the journal `illness` part (with ailments, feedback c0890c4a).
 6. **Tuning.** Check early warnings against reports, adjust thresholds, document the calibration in [illness.md](illness.md).
 
 ## Decided

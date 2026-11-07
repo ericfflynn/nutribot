@@ -9,6 +9,7 @@ import { workoutStrain } from "@/lib/health/scores";
 import { getPool } from "@/lib/supabase";
 import { listSoreness } from "@/lib/body-log";
 import { getBodyState } from "@/lib/body-state/load";
+import { getDailyCall, workLine } from "@/lib/body-state/call";
 import { illnessStateOf } from "@/lib/body-state/build";
 import { isPossibleDuplicate, type WorkoutRecord } from "@/lib/health/dedupe-rules";
 import {
@@ -165,14 +166,15 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     );
   }
 
-  const [sessions, fitbit, healthWorkouts, unlabeled, soreness, body] = await Promise.all([
+  const [sessions, fitbit, healthWorkouts, unlabeled, soreness, body, todayCall] = await Promise.all([
     listWorkoutSessions(db, user.name, start, today),
     listFitbitWorkouts(db, user.name, start, today),
     listHealthWorkouts(user.name, start, today),
     listUnlabeledWorkouts(db, user.name, addDays(today, -(UNLABELED_DAYS - 1)), today),
     listSoreness(db, user.name, addDays(today, -14), today),
     // Illness comes from the body state, so Next up agrees with Today.
-    getBodyState(db, user.name, today)
+    getBodyState(db, user.name, today),
+    getDailyCall(db, user.name, today)
   ]);
   const healthById = new Map<string, HealthWorkout>(healthWorkouts.map((workout) => [workout.id, workout]));
   const fitbitById = new Map<string, FitbitWorkout>(fitbit.map((workout) => [workout.id, workout]));
@@ -185,6 +187,9 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
   // planned again in the morning with last night's data.
   const readiness = nextDate === today ? (body.physical.training.readiness ?? null) : null;
   const next = suggestNext(sessions, nextDate, soreness, undefined, illnessStateOf(body.physical.illness), readiness);
+  // Today's plan is Claude's call (made each morning inside the same limits);
+  // tomorrow, or before the call is made, it's the rules.
+  const call = nextDate === today ? todayCall : null;
   // The body map reads the body state (soreness, points, days to fresh, why
   // it's out, days since hit), so it agrees with Today and the chat. The owner's
   // own report for today (its id, to undo it) is the one thing the state doesn't keep.
@@ -381,8 +386,8 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
       <section className="card training-week-card" aria-label="Next up">
         <div className="training-next">
           <span className="training-missing-label">Next up · {next.date === today ? "today" : "tomorrow"}</span>
-          {next.illness ? <p className="training-illness">{next.illness.note}</p> : null}
-          {next.readiness ? <p className="training-illness">{next.readiness.note}</p> : null}
+          {!call && next.illness ? <p className="training-illness">{next.illness.note}</p> : null}
+          {!call && next.readiness ? <p className="training-illness">{next.readiness.note}</p> : null}
           <div className="training-chips-row">
             <span>Fresh</span>
             <div className="training-chips">
@@ -406,8 +411,16 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
             </div>
           ) : null}
           <div className="training-pick">
-            <small>Suggested</small>
-            {next.pick ? (
+            <small>{call ? "Today's call" : "Suggested"}</small>
+            {call ? (
+              <>
+                <strong>{call.headline}</strong>
+                {call.work.length ? <span>{workLine(call.work)}</span> : null}
+                {call.accessory.length ? <span>Accessory at the end: {listText(call.accessory)}</span> : null}
+                <span className="training-call-note">{call.note}</span>
+                {call.revised ? <span>Changed today: {call.revised}</span> : null}
+              </>
+            ) : next.pick ? (
               <>
                 <strong>{next.pick.name}</strong>
                 <span>{workText(next.pick.work)}</span>
@@ -432,7 +445,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
               </>
             )}
           </div>
-          {next.alternatives.length ? <span className="training-missing-note">Or: {next.alternatives.join(" · ")}</span> : null}
+          {!call && next.alternatives.length ? <span className="training-missing-note">Or: {next.alternatives.join(" · ")}</span> : null}
           {next.after.length ? (
             <span className="training-missing-note">
               After that: {next.after.join(" → ")}, as they freshen up. Rest days: light cardio, yoga or pilates.
