@@ -107,6 +107,23 @@ test("a muscle is due 4 days after its last medium or hard work; light work isn'
   assert.equal(suggestNext([...sessions, session("2026-10-17", ["Legs"], 2)], TODAY).pick?.name, "Leg day");
 });
 
+test("readiness: an easy day is nothing hard with legs last; a rest day has no pick", () => {
+  // Legs most overdue, push and pull due too.
+  const sessions = [session("2026-10-08", ["Legs"], 8), session("2026-10-13", ["Chest", "Shoulders", "Triceps", "Back", "Biceps"], 8)];
+  assert.equal(suggestNext(sessions, TODAY).pick?.name, "Leg day");
+  const easy = suggestNext(sessions, TODAY, [], undefined, null, { level: "easy", reasons: ["recovery red (20)"] });
+  assert.notEqual(easy.pick?.name, "Leg day");
+  assert.ok(easy.pick?.work.every((item) => item.intensity !== "hard"));
+  assert.match(easy.readiness!.note, /^Recovery red \(20\): nothing hard/);
+  const rest = suggestNext(sessions, TODAY, [], undefined, null, { level: "rest", reasons: ["recovery red (20)", "4 drinks last night"] });
+  assert.equal(rest.pick, null);
+  assert.deepEqual(rest.alternatives, []);
+  assert.equal(rest.readiness?.rest, true);
+  // Only legs due: an easy day still trains them, at medium.
+  const legsOnly = [session("2026-10-08", ["Legs"], 8), session("2026-10-16", ["Chest", "Back", "Shoulders", "Arms", "Core"], 8)];
+  assert.equal(suggestNext(legsOnly, TODAY, [], undefined, null, { level: "easy", reasons: ["x"] }).pick?.name, "Leg day");
+});
+
 test("not a strict split: an arm day when only arms are due", () => {
   const sessions = [
     session("2026-10-15", ["Chest", "Front Delts", "Side Delts", "Rear Delts", "Lats", "Upper Back", "Traps", "Lower Back", "Legs", "Core"], 5),

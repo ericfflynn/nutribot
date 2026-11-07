@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildBodyState, journalSickDays, worstOf } from "@/lib/body-state/build";
+import { buildBodyState, journalSickDays, readinessOf, worstOf } from "@/lib/body-state/build";
 import { sleepConsistency, sleepDebt, sleepNeed } from "@/lib/health/scores";
 import type { BodySources } from "@/lib/body-state/types";
 import type { HealthDay } from "@/lib/health/queries";
@@ -147,6 +147,39 @@ test("training watches whole day types, not single muscles", () => {
   assert.equal(state.physical.training.groups.legs, 9);
   assert.equal(state.physical.training.status, "watch");
   assert.match(state.physical.training.headline, /^Legs: 9 days/);
+});
+
+test("days since hit counts today's session and light work", () => {
+  const today = { ...session(TODAY, ["Lats", "Chest"], 6), id: "today", muscleIntensity: { Lats: "medium", Chest: "light" } } as WorkoutSession;
+  const sessions = [today, session(shift(TODAY, -4), ["Back"], 6)];
+  const state = buildBodyState(sources({ sessions }), TODAY);
+  const since = (muscle: string) => state.physical.training.muscles.find((item) => item.muscle === muscle)?.daysSinceHit;
+  assert.equal(since("Lats"), 0);
+  assert.equal(since("Chest"), 0);
+  const lats = state.physical.training.muscles.find((item) => item.muscle === "Lats");
+  assert.deepEqual(lats?.recentHits, [0, 4]);
+  // The day type only counts medium or hard: light chest isn't a push day.
+  assert.notEqual(state.physical.training.groups.push, 0);
+});
+
+test("readiness: Nov 3 (red, drinks, three hard days, big food day) is a rest day", () => {
+  const recovery = { band: "red", score: 20 } as Parameters<typeof readinessOf>[0];
+  const load = { hardStreak: 3 } as Parameters<typeof readinessOf>[1];
+  const drinks = [{ kind: "habit", detail: "4 drinks last night", affects: ["recovery"], source: "lifestyle.habits" }] as Parameters<typeof readinessOf>[2];
+  const day = { calories: 3839, caloriesTarget: 3137, proteinG: 169, proteinTarget: 196, waterOz: null, waterTarget: 100 };
+  const fuel = { yesterday: day } as Parameters<typeof readinessOf>[3];
+  const tired = readinessOf(recovery, load, drinks, fuel);
+  assert.equal(tired.level, "rest");
+  assert.deepEqual(tired.reasons, ["recovery red (20)", "4 drinks last night", "3 hard days in a row", "a rough food day yesterday"]);
+  // Red alone is an easy day; green with a normal day is normal.
+  assert.equal(readinessOf(recovery, { hardStreak: 0 } as typeof load, [], { yesterday: null } as typeof fuel).level, "easy");
+  assert.equal(readinessOf({ band: "green", score: 80 } as typeof recovery, { hardStreak: 0 } as typeof load, [], { yesterday: null } as typeof fuel).level, "normal");
+});
+
+test("a strenuous watch day counts as a hard day", () => {
+  const strenuous = { [shift(TODAY, -1)]: { zoneMinutesCardio: 90, zoneMinutesPeak: 30, steps: 20000 }, [shift(TODAY, -2)]: { zoneMinutesCardio: 90, zoneMinutesPeak: 30, steps: 20000 } };
+  const state = buildBodyState(sources({ health: health(strenuous) }), TODAY);
+  assert.equal(state.physical.load.hardStreak, 2);
 });
 
 test("mood: low streaks and high stress", () => {

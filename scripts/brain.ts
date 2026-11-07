@@ -21,7 +21,8 @@ runBrain(message, {
   viewDate,
   history: [],
   openDrafts: [],
-  syncIfMissing: false
+  syncIfMissing: false,
+  dryRun: true
 }).then(
   async (reply) => {
     console.log(JSON.stringify(reply, null, 2));

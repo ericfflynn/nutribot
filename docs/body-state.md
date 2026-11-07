@@ -176,7 +176,7 @@ Status: **good** when no vital is past its threshold; **watch** when any is; **l
 | `strainYesterday` | Day strain (`dayStrain`). |
 | `strain7`, `strain28` | Average day strain over 7 and 28 days. |
 | `loadRatio` | `strain7 / strain28`: above about 1.3 is a sharp ramp, below 0.8 is a lighter stretch. |
-| `hardStreak` | Hard strength days in a row, up to yesterday. |
+| `hardStreak` | Hard days in a row, up to yesterday: a session logged hard, or day strain 14+ (strenuous) on the watch (since November 6, 2026; logged hard sessions only before). |
 | `daysSinceRest` | Days since a day with no strength or hard cardio. |
 | `trend7` | Day strain for the 7 days to today (today partial). |
 
@@ -186,9 +186,10 @@ Status: **watch** when `loadRatio` is over 1.3, `hardStreak` is 2+ or `daysSince
 
 These come straight from the Training model ([training-plan.md](training-plan.md)), so the two can't disagree.
 
-- `muscles[]`, one per tracked muscle: `soreness` (level 0-3, `source`: `workout` or `told`), `points7` (out of 4; this calendar week, Monday through the day, since November 1, 2026, the last 7 days before; the name stayed), `daysSinceHit`, `readyIn`, `out` (null, or why: `sore`, `after forearms`).
-- `groups`: days since each day type's muscles were last worked (`push`, `pull`, `legs`, `arms`, `shoulders`, `core`).
+- `muscles[]`, one per tracked muscle: `soreness` (level 0-3, `source`: `workout` or `told`), `points7` (out of 4; this calendar week, Monday through the day, since November 1, 2026, the last 7 days before; the name stayed), `daysSinceHit` (any work, light included, today's session as 0), `recentHits` (days ago of the last two days worked, newest first, within 30 days; since November 6, 2026), `readyIn`, `out` (null, or why: `sore`, `after forearms`).
+- `groups`: days since each day type's muscles were last worked at medium or hard, the middle muscle (`push`, `pull`, `legs`, `arms`, `shoulders`, `core`).
 - `due[]`: muscles fresh and 4+ days since a real hit, most overdue first.
+- `readiness` (since November 6, 2026; older stored states lack it): how ready the body is to train today, `level` `normal`, `easy` or `rest`, with `reasons`. Points against: recovery red 2, yellow 1; drinks last night 2; `hardStreak` 2+ is 2, 1 is 1; yesterday's calories over 120% or under 70% of target, or protein under 70%, is 1. 2-3 points is **easy** (nothing hard; leg day goes last unless it's the only day due), 4+ is **rest** (rest or active recovery, no pick). `suggested.note` says why. November 3, 2026 (red after 4 drinks, three strenuous days, a big food day) scores 7; it had picked leg day.
 - `split`: strength, cardio and mobility sessions this calendar week (Monday through the day; the last 7 days before November 1, 2026) against 4, 2 and 2.
 
 Status: **watch** when push, pull or legs (the main day types; arms and shoulders are optional picks) has gone 7+ days, by its middle muscle; otherwise **good**. The headline names what's most due ("Legs due, 6 days"). Training is what's due, not how the body is, so it doesn't set the physical domain's status (October 30, 2026: it held the domain on watch 17 days of October).

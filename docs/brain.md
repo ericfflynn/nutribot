@@ -46,7 +46,9 @@ Model: `claude-sonnet-5-5` at low effort, overridable with `CLAUDE_MODEL`. A tur
 
 ## Memory
 
-Claude remembers nothing between requests. Each turn it sees only what the route sends: the current conversation's last 10 messages, its unsaved drafts, and today's date and time. **New chat** (`newChatAction`) starts a fresh conversation, and so does a new day: when the latest conversation's last message is from before today (local), `currentConversation` starts another. Old conversations stay in the database but aren't shown or sent. Long-term memory is the logged data itself, which Claude reads through its list tools and `get_goals`.
+Claude remembers nothing between requests. Each turn it sees only what the route sends: the current conversation's last 10 messages, its unsaved drafts, and today's date and time. **New chat** (`newChatAction`) starts a fresh conversation, and so does a new day: when the latest conversation's last message is from before today (local), `currentConversation` starts another. Old conversations stay in the database but aren't shown or sent. Long-term memory is the logged data itself, which Claude reads through its list tools and `get_goals`, plus **memories** (since November 6, 2026, `lib/memories.ts`).
+
+**Memories** are short facts Claude keeps about the owner in `chat_memories`, one per row, of four kinds: `about` (people, work, history, preferences), `goal`, `ongoing` (situations that end: a launch, a trip, an injury) and `pattern` (one the owner agrees with). Every turn starts with all active memories in `<memories>`, and with the ones whose `follow_up_on` day has come in `<follow_ups_due>`, so Claude can follow up ("how did the interview go?") and connect what's going on to the data and goals. Unlike everything else the chat writes, memories save right away, with no card: Claude saves what will matter later on its own, and always when told "remember …" (`told`). The reply carries a note for each memory saved or changed (a `memory` entry in its drafts, never a draft: it's already saved), shown as a small "Remembered: …" line with **Undo** (`undoMemoryAction`: a new memory is forgotten, a change reverted). Claude changes memories with `update_memory`, marks ongoing ones resolved when they end and forgotten when wrong; rows are never deleted. Memories live in the chat only: there's no page for them; the owner asks what it remembers or tells it to change or forget something. This is a first version; a fuller system is planned (feedback 63863809).
 
 ## Tools
 
@@ -67,9 +69,10 @@ Claude remembers nothing between requests. Each turn it sees only what the route
 | `get_body_state` | Read-only: the body state for a day ([body-state.md](body-state.md)): physical, mental and lifestyle domains, their areas' statuses and headlines, the signals under them, explanations, and Training's suggestion with illness applied. The prompt has Claude use it first for "how am I doing" and training questions. |
 | `list_body_states` | Read-only: stored body states over a range (up to 366 days): each day's domain and area statuses and headlines, plus areas asked for in full by path; with `versions` for one day, every version of it (what the app believed as the day went on). |
 | `draft_illness`, `list_illness` | Logs how sick the owner is on a day or a run of days (severity 0 Better to 3 Very sick, symptoms from a fixed list, a note), saved to `illness_days` on Save; and reads logged days, episodes, whether they count as sick today and today's watch illness signal. [illness.md](illness.md). |
+| `remember`, `update_memory`, `list_memories` | Saves a memory right away (kind, one self-contained sentence, an optional `follow_up_on` day, `told`); changes one (wording, kind, follow-up, or status `resolved` / `forgotten`); lists them, resolved ones too on request. See Memory. |
 | `draft_feedback`, `list_feedback` | Queues a bug, change or idea about the app itself (one draft per item, saved to `app_feedback` on Save) for the next dev pass, or changes a saved one (`feedback_id`): rewording, or marking it done or dropped. Items are never deleted. `list_feedback` lists the queue with ids. `lib/feedback.ts`. |
 
-Tools only build drafts; the rest only read.
+Tools only build drafts, except the memory tools, which save; the rest only read.
 
 ## Drafts
 
@@ -127,8 +130,9 @@ Tested against the Fitbit history (June–October 2026): with the type filter, 4
 - `chat_messages`: the messages, each in a conversation. Assistant rows carry their drafts in `drafts` (JSONB).
 - `workout_sessions`: one row per logged workout. `match_status` is `linked` (with `health_record_key`), `pending` or `untracked`. A unique index stops one Fitbit workout from being linked twice.
 - `macro_entries.meal_type`: set for meals saved from chat.
+- `chat_memories`: the chat's memories about the owner (kind, content, status active / resolved / forgotten, `told`, `follow_up_on`).
 
 ## Trying it
 
-- `npm run brain -- "chest and tris, hard"` runs one turn in the terminal. It reads the database but writes nothing: no chat rows, no sync. Add `--date YYYY-MM-DD` to log against another day.
+- `npm run brain -- "chest and tris, hard"` runs one turn in the terminal. It reads the database but writes nothing: no chat rows, no sync, no memories (the reply still shows what it would have remembered). Add `--date YYYY-MM-DD` to log against another day.
 - `npm run dev`, then tap **Chat** on any tab.

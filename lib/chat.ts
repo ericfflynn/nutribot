@@ -81,7 +81,8 @@ function recentDraftsFrom(messages: ChatMessage[]): Draft[] {
   const recent = messages.filter((message) => message.role === "assistant").slice(-OPEN_DRAFT_MESSAGES);
   const byId = new Map<string, Draft>();
   for (const message of recent) {
-    for (const draft of message.drafts) byId.set(draft.id, draft);
+    // Memory notes are already saved and Claude sees memories on their own.
+    for (const draft of message.drafts) if (draft.type !== "memory") byId.set(draft.id, draft);
   }
   return [...byId.values()];
 }

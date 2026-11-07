@@ -2660,6 +2660,30 @@ button.fab {
   color: var(--good);
 }
 
+/* A memory the chat saved: a quiet line under the reply, with Undo */
+.memory-note {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.memory-note strong {
+  font-weight: 600;
+}
+
+.memory-note.undone span:first-child {
+  text-decoration: line-through;
+}
+
+.memory-note-status {
+  flex: none;
+}
+
 /* Meal rows open to show each entry and its items */
 .timeline-details {
   min-width: 0;
@@ -4087,21 +4111,6 @@ details[open] .journal-preview {
   margin: 0;
   color: var(--muted);
   font-size: 13px;
-}
-
-.muscle-detail-list {
-  display: grid;
-  gap: 4px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  font-size: 14px;
-}
-
-.muscle-detail-list li {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
 }
 
 .muscle-detail-sore {
