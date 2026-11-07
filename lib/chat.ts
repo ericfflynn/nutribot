@@ -130,6 +130,15 @@ export async function appendExchange(
   }
 }
 
+// A message from the assistant with nothing before it: the morning brief,
+// posted as the first message of the day's chat.
+export async function appendAssistantMessage(db: Pool, userName: string, conversationId: string, text: string) {
+  await db.query(
+    `insert into public.chat_messages (user_name, conversation_id, role, content) values ($1, $2, 'assistant', $3)`,
+    [userName, conversationId, text]
+  );
+}
+
 // Loads one draft for saving, locked so two taps can't save it twice. The
 // callback runs inside the transaction and returns the updated draft.
 export async function withDraft<T>(

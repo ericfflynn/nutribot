@@ -483,6 +483,19 @@ function ruleCap(sessions: readonly TrainedSession[], date: string, muscles: rea
   return cap;
 }
 
+// The most each muscle may do on `date` under the training rules alone: one
+// hard day per muscle a week, and the after_hard and hard_streak rules. Out
+// muscles (sore, not_after) are the body state's `out`, not here.
+export function muscleCapsOn(sessions: readonly TrainedSession[], date: string, rules: readonly TrainingRule[] = DEFAULT_RULES) {
+  return new Map(
+    TRACKED_MUSCLES.map((muscle) => {
+      const cap = ruleCap(sessions, date, [muscle], rules).max;
+      const capped: Intensity = lastHitOf(sessions, muscle, date).hardThisWeek && RANK[cap] > RANK.medium ? "medium" : cap;
+      return [muscle, capped] as const;
+    })
+  );
+}
+
 // Muscles the not_after rules keep out on `date`, with the rule for each.
 function skippedOn(sessions: readonly TrainedSession[], date: string, rules: readonly TrainingRule[]) {
   const yesterday = intensitiesOn(sessions, shiftDate(date, -1));

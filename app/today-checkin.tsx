@@ -26,7 +26,9 @@ export function TodayCheckin({
   date,
   kind,
   kicker,
+  headline = null,
   text,
+  ask = null,
   call,
   replies,
   allowMore
@@ -34,7 +36,10 @@ export function TodayCheckin({
   date: string;
   kind: CheckinKind;
   kicker: string; // "Morning check-in"
+  // Claude's call: its headline above the note, and its question below.
+  headline?: string | null;
   text: string;
+  ask?: string | null;
   call: string | null;
   replies: Reply[];
   allowMore: boolean;
@@ -140,6 +145,7 @@ export function TodayCheckin({
             </svg>
           </button>
         </div>
+        {headline ? <strong className="checkin-headline">{headline}</strong> : null}
         <p>
           {text}
           {call ? (
@@ -149,6 +155,7 @@ export function TodayCheckin({
             </>
           ) : null}
         </p>
+        {ask ? <p className="checkin-ask">{ask}</p> : null}
         {replies.length ? (
           <div className="checkin-replies">
             {replies.map((reply) => (

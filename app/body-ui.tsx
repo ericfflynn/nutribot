@@ -10,6 +10,7 @@ import { fahrenheitDelta } from "@/lib/health/units";
 import type { WeekRow } from "@/lib/training-week";
 import { ZONES, ZONE_GOALS, zonePace, type ZoneBounds, type ZoneMinutes } from "@/lib/health/zones";
 import { callOf } from "@/lib/body-state/brief";
+import { workLine, type DailyCall } from "@/lib/body-state/call";
 import { INTENSITIES, INTENSITY_RULES, type Intensity } from "@/lib/workouts";
 
 const STATUS_LABELS: Record<Status, string> = { good: "Good", ok: "Ok", watch: "Watch", low: "Low", unknown: "No data" };
@@ -278,11 +279,14 @@ export function StrainDetails({
   state,
   done,
   isToday,
-  zones
+  zones,
+  call = null
 }: {
   state: BodyState;
   done: WeekRow["items"]; // the day's workouts
   isToday: boolean;
+  // Claude's call for the day, when it's made; the rules' pick otherwise.
+  call?: DailyCall | null;
   // Workout minutes per zone this calendar week through the day, and how many
   // of the week's days are over (for the pace).
   zones: { minutes: ZoneMinutes; bounds: ZoneBounds | null; daysDone: number };
@@ -306,9 +310,18 @@ export function StrainDetails({
         ) : isToday ? (
           <>
             <small>Up next</small>
-            <strong>{callOf(state).replace(/^./, (letter) => letter.toUpperCase())}</strong>
-            {pick.name && pick.work.length ? <span>{workText(pick.work)}</span> : null}
-            {pick.note ? <span>{pick.note}</span> : null}
+            {call ? (
+              <>
+                <strong>{call.headline}</strong>
+                {call.work.length ? <span>{workLine(call.work)}</span> : null}
+              </>
+            ) : (
+              <>
+                <strong>{callOf(state).replace(/^./, (letter) => letter.toUpperCase())}</strong>
+                {pick.name && pick.work.length ? <span>{workText(pick.work)}</span> : null}
+                {pick.note ? <span>{pick.note}</span> : null}
+              </>
+            )}
           </>
         ) : (
           <>

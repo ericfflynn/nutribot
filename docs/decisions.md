@@ -4,6 +4,11 @@ Product and design decisions, newest first. One entry per decision: what was dec
 
 ## 2026-11-06
 
+### Claude makes the day's call each morning
+- **Decided:** each morning Claude makes the day's training call inside code-set guardrails (illness, readiness, sore muscles, the training rules) and writes a coach note and one question ([body-state.md](body-state.md#the-call)). It's ready around 7 am Eastern, or when the app first opens once last night's sleep is in, shown on Today's check-in, as Training's Next up and as the day's first chat message. The chat revises it when something said changes the plan. Voice: a coach, warm and supportive, and direct. No push yet: waiting in the app is enough.
+- **Why:** the rules can't read the journal, memories or context, and the owner wants Next up to be intelligent, not purely rule-based. Guardrails keep Claude from ever suggesting more than the body allows.
+- **Instead of:** rules alone; a second Claude run after every check-in answer (slower; the chat revises instead); a morning push (later, if wanted).
+
 ### The chat keeps memories, saved on its own
 - **Decided:** the chat keeps short memories about the owner (about them, goals, ongoing situations, patterns) and starts every turn with them, so it can follow up on its own and connect what's going on with goals and data ([brain.md](brain.md#memory)). They save right away, and always when the owner says "remember", with a small "Remembered" line and Undo under the reply. They live in the chat only: no page; the owner asks what it remembers or tells it to change or forget something. A first version to test; the owner plans a fuller system later.
 - **Why:** each chat starts fresh every day, so the chat forgot what the owner told it and felt like data entry rather than a health companion (feedback 63863809).
