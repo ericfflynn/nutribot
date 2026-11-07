@@ -2086,7 +2086,8 @@ button {
   list-style: none;
 }
 
-.timeline li {
+/* Only the timeline's own rows: lists nested in a row (a meal's details) keep their layout. */
+.timeline > li {
   display: grid;
   grid-template-columns: 58px 14px minmax(0, 1fr);
   gap: 8px;
@@ -2121,7 +2122,7 @@ button {
   background: var(--line);
 }
 
-.timeline li:last-child .timeline-rail::after {
+.timeline > li:last-child .timeline-rail::after {
   visibility: hidden;
 }
 
@@ -2760,6 +2761,11 @@ button.fab {
   list-style: none;
   color: var(--muted);
   font-size: 13px;
+}
+
+.meal-details .entry {
+  padding: 4px 0 0;
+  background: transparent;
 }
 
 .meal-details small {
