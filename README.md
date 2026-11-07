@@ -35,34 +35,26 @@ The body state represents a person's body, health and mind programmatically: one
 One JSON object per user per day, built by a pure function, `buildBodyState(sources, date)`, and unit-tested.
 
 ```mermaid
-mindmap
-  root((Body state))
-    Physical
-      Sleep
-      Recovery
-      Vitals
-        Resting HR, HRV, temperature, breathing, SpO2
-      Illness
-        well, early signs, sick, easing back
-      Load
-        strain, hard-day streaks, days since rest
-      Training
-        which day types are due
-      Fuel
-        calories, protein, water, caffeine, sugar
-    Mental
-      Mood
-        mood, stress, energy from the journal
-    Lifestyle
-      Habits
-        goals met or missed, streaks
-      Career
-        work stress
-      Relationships
-        family, partner, friends
-    Explanations
-      what else could explain today's numbers
+flowchart LR
+  B((Body state)) --> P[Physical] & M[Mental] & L[Lifestyle] & E[Explanations]
+  P --> PA["Sleep · Recovery · Vitals<br/>Illness · Load · Training · Fuel"]
+  M --> MA[Mood]
+  L --> LA["Habits · Career · Relationships"]
+  E --> EA["What else could explain<br/>today's numbers"]
 ```
+
+| Area | Signals |
+| --- | --- |
+| Sleep | time asleep against need, bedtime, stages, the last 7 nights |
+| Recovery | score and band, against the last 7 days |
+| Vitals | resting HR, HRV, sleep temperature, breathing, SpO2, each against a personal baseline |
+| Illness | well → early signs → sick → easing back |
+| Load | strain, hard-day streaks, days since rest |
+| Training | which day types are due |
+| Fuel | calories, protein, water, caffeine, added sugar |
+| Mood | mood, stress and energy from the journal |
+| Habits | goals met or missed, streaks |
+| Career, Relationships | work stress and tags; family, partner, friends |
 
 Every domain and area has the same head: a `status` (`good`, `ok`, `watch`, `low` or `unknown`) and a one-line `headline` that names its evidence. An area's status comes from a simple rule a person can check in their head, such as "watch when resting HR is 2+ above usual". A domain takes its worst known area. So a day reads "Physical: low · Mental: ok · Lifestyle: watch", and any reader can drill down to the signal that set it.
 
