@@ -15,6 +15,8 @@ import {
   ACTIVITY_LABELS,
   INTENSITIES,
   INTENSITY_RULES,
+  bucketOf,
+  fatigueLevel,
   WEEKLY_TARGET_POINTS,
   intensityOf,
   muscleWeekOf,
@@ -179,20 +181,28 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
   // day's training window is over.
   const loggedToday = sessions.some((session) => session.date === today && session.muscleGroups.some((name) => STRENGTH_GROUPS.includes(groupOf(name))));
   const nextDate = loggedToday || Number(localDateTime().slice(11, 13)) >= PLAN_DAY_OVER_HOUR ? addDays(today, 1) : today;
-  const next = suggestNext(sessions, nextDate, soreness, undefined, illnessStateOf(body.physical.illness));
-  // This week: every strength muscle as due, recovering or covered, on the
-  // body map. Next up says what to train, so the map has no due list.
+  // Readiness (recovery, drinks, strain run, food) is today's; tomorrow is
+  // planned again in the morning with last night's data.
+  const readiness = nextDate === today ? (body.physical.training.readiness ?? null) : null;
+  const next = suggestNext(sessions, nextDate, soreness, undefined, illnessStateOf(body.physical.illness), readiness);
+  // The body map reads the body state (soreness, points, days to fresh, why
+  // it's out, days since hit), so it agrees with Today and the chat. The owner's
+  // own report for today (its id, to undo it) is the one thing the state doesn't keep.
+  const stateOf = new Map(body.physical.training.muscles.map((item) => [item.muscle, item]));
   const muscleViews: MuscleView[] = TRACKED_MUSCLES.map((muscle) => {
     const view = muscleWeekOf(sessions, soreness, muscle, today);
+    const state = stateOf.get(muscle);
+    const load = state ? { points: state.points7, soreness: state.soreness, readyIn: state.readyIn } : view;
     return {
       muscle,
-      bucket: view.bucket,
-      points: view.points,
-      readyIn: view.readyIn,
-      fatigue: view.fatigue,
-      level: view.soreness,
-      today: view.todayReport ? { id: view.todayReport.id, level: view.todayReport.level } : null,
-      sessions: view.hits.map((hit) => `${formatDay(hit.session.date)} · ${hit.session.name} · ${hit.intensity}, +${hit.points}`)
+      bucket: bucketOf(load),
+      points: load.points,
+      readyIn: load.readyIn,
+      fatigue: fatigueLevel(load.soreness),
+      level: load.soreness,
+      out: state?.out ?? null,
+      recentHits: state?.recentHits ?? [],
+      today: view.todayReport ? { id: view.todayReport.id, level: view.todayReport.level } : null
     };
   });
 
@@ -372,6 +382,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
         <div className="training-next">
           <span className="training-missing-label">Next up · {next.date === today ? "today" : "tomorrow"}</span>
           {next.illness ? <p className="training-illness">{next.illness.note}</p> : null}
+          {next.readiness ? <p className="training-illness">{next.readiness.note}</p> : null}
           <div className="training-chips-row">
             <span>Fresh</span>
             <div className="training-chips">
@@ -403,6 +414,11 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
                 {next.pick.heldBy ? <span>Not hard: {next.pick.heldBy.label.toLowerCase()}</span> : null}
                 {next.pick.bloodFlow.length ? <span>Light blood-flow only: {listText(next.pick.bloodFlow)} (sore)</span> : null}
                 {next.pick.accessory.length ? <span>Accessory at the end: {listText(next.pick.accessory)}</span> : null}
+              </>
+            ) : next.readiness?.rest && !next.illness?.rest ? (
+              <>
+                <strong>Rest or active recovery</strong>
+                <span>A walk, yoga or mobility. The body needs today more than the muscles do.</span>
               </>
             ) : next.illness?.rest ? (
               <>

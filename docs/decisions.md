@@ -2,6 +2,17 @@
 
 Product and design decisions, newest first. One entry per decision: what was decided, why, and what it replaced or ruled out. Add an entry whenever the owner settles something that future work should follow; link the doc that holds the detail. Data shapes live in their specs ([body-state.md](body-state.md) keeps the body state's schema versions); this log says why they are what they are.
 
+## 2026-11-06
+
+### Next up reads readiness: recovery, drinks, strain run and food
+- **Decided:** Next up takes the body state's readiness (`readinessOf` in `lib/body-state/build.ts`, scored in [body-state.md](body-state.md#physicaltraining-whats-due)): red recovery, drinks last night, hard days in a row and a rough food day add points; 2-3 is an easy day (nothing hard, leg day last), 4+ is rest or active recovery. A strenuous watch day (strain 14+) now counts as a hard day, not only sessions logged hard. Training's Next up for tomorrow doesn't use it: tomorrow is planned again in the morning.
+- **Why:** on November 3 it suggested leg day after wine, a big food day and three strenuous days in a row (the owner: "the worst idea"). The rules only knew soreness, days since and illness.
+- **Instead of:** soreness and days since alone; letting Claude make the call (planned, feedback a21ebf4a, inside these guardrails).
+
+### The body map reads the body state
+- **Decided:** Training's body map takes each muscle's soreness, points, days to fresh and out reason from the body state, so it agrees with Today and the chat. Tapping a muscle shows how long since it was last hit (today, yesterday, N days ago). Days since hit counts any work, today's session as 0; day types count medium or hard only.
+- **Why:** the chat said Lats and Chest were 4 and 6 days since hit right after a pull-up and pushup session (`lastHitOf` leaves out the planned day, which is right for Next up, not for the state).
+
 ## 2026-11-01
 
 ### Weekly targets go by the calendar week; recovery stays rolling

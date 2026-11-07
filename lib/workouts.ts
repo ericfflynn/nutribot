@@ -494,6 +494,34 @@ function skippedOn(sessions: readonly TrainedSession[], date: string, rules: rea
   return skipped;
 }
 
+// Days since a muscle was last worked at `minimum` or harder, today's work
+// counting as 0. NEVER when not in the sessions. What the body state reports;
+// lastHitOf below is for planning and leaves out the planned day.
+export function daysSinceWorked(
+  sessions: readonly TrainedSession[],
+  muscle: TrackedMuscle,
+  date: string,
+  minimum: Intensity = "light"
+) {
+  return recentHitDays(sessions, muscle, date, 1, minimum)[0] ?? NEVER;
+}
+
+// Days ago of a muscle's last `count` days worked at `minimum` or harder,
+// newest first, one per day: [0, 4] is today and 4 days ago.
+export function recentHitDays(
+  sessions: readonly TrainedSession[],
+  muscle: TrackedMuscle,
+  date: string,
+  count: number,
+  minimum: Intensity = "light"
+) {
+  const floor = INTENSITY_RULES[minimum].points;
+  const days = hitsOf(sessions, muscle, date)
+    .filter((hit) => INTENSITY_RULES[hit.intensity].points >= floor)
+    .map((hit) => hit.ago);
+  return [...new Set(days)].sort((a, b) => a - b).slice(0, count);
+}
+
 // Days since a muscle's last medium or hard work before `date`, and whether
 // that included a hard day in the last 7. NEVER when not in the sessions.
 export function lastHitOf(sessions: readonly TrainedSession[], muscle: TrackedMuscle, date: string) {
@@ -531,10 +559,17 @@ export type IllnessState =
   | { kind: "watch" }
   | null;
 
+// How ready the body is on the day, from the body state (readinessOf in
+// lib/body-state/build.ts): recovery, drinks, strain run and food. Easy keeps
+// it off hard and leg day last; rest is rest or active recovery.
+export type Readiness = { level: "normal" | "easy" | "rest"; reasons: string[] };
+
 export type Suggestion = {
   date: string;
   // Why illness changed the suggestion, for a line above it.
   illness: { rest: boolean; note: string } | null;
+  // Why readiness did, the same way.
+  readiness: { rest: boolean; note: string } | null;
   // Muscles with any soreness (slight or more), sorest first, then fresh ones
   // a not_after rule keeps out (`because` is its tag).
   out: { muscle: TrackedMuscle; level: number; because: string | null }[];
@@ -555,10 +590,20 @@ export function suggestNext(
   date: string,
   soreness: readonly SorenessReport[] = [],
   rules: readonly TrainingRule[] = DEFAULT_RULES,
-  illness: IllnessState = null
+  illness: IllnessState = null,
+  readiness: Readiness | null = null
 ): Suggestion {
-  const rest = illness?.kind === "sick" && illness.severity >= 2;
-  const illnessCap: Intensity = illness?.kind === "sick" ? "light" : illness ? "medium" : "hard";
+  const sickRest = illness?.kind === "sick" && illness.severity >= 2;
+  const tiredRest = readiness?.level === "rest";
+  const rest = sickRest || tiredRest;
+  const easy = readiness?.level === "easy";
+  const illnessCap: Intensity = illness?.kind === "sick" ? "light" : illness || easy ? "medium" : "hard";
+  const reasons = listOf(readiness?.reasons ?? []);
+  const readinessNote = tiredRest
+    ? `${capitalize(reasons)}: rest or active recovery today (a walk, yoga, mobility).`
+    : easy
+      ? `${capitalize(reasons)}: nothing hard, and not legs if anything else is due.`
+      : null;
   const illnessNote =
     illness?.kind === "sick"
       ? rest
@@ -590,6 +635,8 @@ export function suggestNext(
   })
     .filter((option) => option.due.length >= MIN_DUE)
     .sort((a, b) => b.overdue - a.overdue || b.due.length - a.due.length);
+  // On an easy day, leg day (the most taxing) goes last.
+  if (easy) options.sort((a, b) => Number(a.type.name === "Leg day") - Number(b.type.name === "Leg day"));
 
   let pick: SuggestedDay | null = null;
   const best = rest ? undefined : options[0];
@@ -640,7 +687,8 @@ export function suggestNext(
   const ruledOut = (item: (typeof all)[number]) => !isSore(item) && skipped.has(item.muscle);
   return {
     date,
-    illness: illnessNote ? { rest, note: illnessNote } : null,
+    illness: illnessNote ? { rest: sickRest, note: illnessNote } : null,
+    readiness: readinessNote ? { rest: tiredRest, note: readinessNote } : null,
     out: [
       ...all
         .filter(isSore)
@@ -660,6 +708,9 @@ export function suggestNext(
     after
   };
 }
+
+const listOf = (items: string[]) => (items.length > 1 ? `${items.slice(0, -1).join(", ")} and ${items.at(-1)}` : (items[0] ?? ""));
+const capitalize = (text: string) => text.replace(/^./, (letter) => letter.toUpperCase());
 
 export function groupOf(name: MuscleName): MuscleGroup {
   if ((MUSCLE_GROUPS as readonly string[]).includes(name)) return name as MuscleGroup;

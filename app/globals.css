@@ -4089,21 +4089,6 @@ details[open] .journal-preview {
   font-size: 13px;
 }
 
-.muscle-detail-list {
-  display: grid;
-  gap: 4px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  font-size: 14px;
-}
-
-.muscle-detail-list li {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-}
-
 .muscle-detail-sore {
   display: flex;
   flex-wrap: wrap;

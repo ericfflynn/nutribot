@@ -18,7 +18,8 @@ import {
   SORENESS_LEVELS,
   TRACKED_MUSCLES,
   intensityOf,
-  lastHitOf,
+  daysSinceWorked,
+  recentHitDays,
   muscleWeekOf,
   sorenessStep,
   splitKinds,
@@ -27,6 +28,7 @@ import {
   suggestNext,
   trackedOf,
   type IllnessState,
+  type Readiness,
   type TrackedMuscle
 } from "../workouts";
 import {
@@ -325,9 +327,15 @@ function vitalsArea(c: Context): VitalsArea {
   return { ...byName, status, headline };
 }
 
+// The day strain from which a day counts as hard: Whoop's strenuous band.
+const STRENUOUS_STRAIN = 14;
+
+// A hard day: a session logged hard, or a strenuous day on the watch.
 function hardOn(c: Context, date: string) {
-  return c.sources.sessions.some(
-    (session) => session.date === date && session.muscleGroups.some((name) => intensityOf(session, name) === "hard")
+  const strain = dayStrain(c.healthByDay.get(date), c.workoutsByDay.get(date) ?? []);
+  return (
+    (strain ?? 0) >= STRENUOUS_STRAIN ||
+    c.sources.sessions.some((session) => session.date === date && session.muscleGroups.some((name) => intensityOf(session, name) === "hard"))
   );
 }
 
@@ -466,13 +474,42 @@ export function illnessStateOf(illness: Pick<IllnessArea, "phase" | "told">): Il
   return illness.phase === "recovering" ? { kind: "easing" } : illness.phase === "early_signs" ? { kind: "watch" } : null;
 }
 
-function trainingArea(c: Context, illness: IllnessArea): TrainingArea {
+// How ready the body is to train today (docs/body-state.md, Training): points
+// for what's against it; 2 or more is an easy day, 4 or more a rest day.
+// Nov 3, 2026 (red recovery after 4 drinks, three strenuous days, a big
+// food day) is 7, a rest day; it had picked leg day.
+export function readinessOf(recovery: RecoveryArea, load: LoadArea, drinks: Explanation[], fuel: FuelArea): Readiness {
+  const against: [number, string][] = [];
+  if (recovery.band === "red") against.push([2, `recovery red (${recovery.score})`]);
+  else if (recovery.band === "yellow") against.push([1, `recovery yellow (${recovery.score})`]);
+  if (drinks.length) against.push([2, drinks[0].detail]);
+  if (load.hardStreak >= 2) against.push([2, `${load.hardStreak} hard days in a row`]);
+  else if (load.hardStreak === 1) against.push([1, "a hard day yesterday"]);
+  const food = fuel.yesterday;
+  if (
+    food &&
+    (food.calories > food.caloriesTarget * 1.2 || food.calories < food.caloriesTarget * 0.7 || food.proteinG < food.proteinTarget * 0.7)
+  ) {
+    against.push([1, "a rough food day yesterday"]);
+  }
+  const points = against.reduce((sum, [value]) => sum + value, 0);
+  return {
+    level: points >= 4 ? "rest" : points >= 2 ? "easy" : "normal",
+    reasons: [...against].sort((a, b) => b[0] - a[0]).map(([, reason]) => reason)
+  };
+}
+
+const NOT_HIT = 99;
+
+function trainingArea(c: Context, illness: IllnessArea, readiness: Readiness): TrainingArea {
   const { sessions, soreness, fitbit } = c.sources;
-  const next = suggestNext(sessions, c.date, soreness, undefined, illnessStateOf(illness));
+  const next = suggestNext(sessions, c.date, soreness, undefined, illnessStateOf(illness), readiness);
   const outBy = new Map(next.out.map((item) => [item.muscle, item.because ?? SORENESS_LEVELS[sorenessStep(item.level)].toLowerCase()]));
   const muscles: MuscleState[] = TRACKED_MUSCLES.map((muscle) => {
     const week = muscleWeekOf(sessions, soreness, muscle, c.date);
-    const since = lastHitOf(sessions, muscle, c.date).since;
+    // Any work counts, today's too: the chat reads this right after a save.
+    const hitDays = recentHitDays(sessions, muscle, c.date, 2).filter((days) => days < 30);
+    const since = hitDays[0] ?? NOT_HIT;
     const told = soreness.some((report) => report.muscle === muscle && report.date >= c.yesterday);
     return {
       muscle,
@@ -480,15 +517,16 @@ function trainingArea(c: Context, illness: IllnessArea): TrainingArea {
       sorenessSource: week.soreness > 0.5 ? (told ? "told" : "workout") : null,
       points7: week.points,
       daysSinceHit: since >= 30 ? null : since,
+      recentHits: hitDays,
       readyIn: week.readyIn,
       out: outBy.get(muscle) ?? null
     };
   });
-  const sinceOf = new Map(muscles.map((item) => [item.muscle, item.daysSinceHit]));
   // A day type's days since: its middle muscle, so lower back worked on back
-  // day doesn't make legs look recent. Null when most weren't hit in 30 days.
+  // day doesn't make legs look recent. Medium or hard work only, so a few
+  // light pushups don't count as a push day. Null when most weren't hit in 30 days.
   const groupSince = (list: readonly TrackedMuscle[]) => {
-    const days = list.map((muscle) => sinceOf.get(muscle) ?? 99).sort((a, b) => a - b);
+    const days = list.map((muscle) => daysSinceWorked(sessions, muscle, c.date, "medium")).sort((a, b) => a - b);
     const middle = days[Math.floor((days.length - 1) / 2)];
     return middle >= 30 ? null : middle;
   };
@@ -506,9 +544,9 @@ function trainingArea(c: Context, illness: IllnessArea): TrainingArea {
   const suggested = {
     name: next.pick?.name ?? null,
     work: next.pick?.work.map(({ muscle, intensity }) => ({ muscle, intensity })) ?? [],
-    note: next.illness?.note ?? null
+    note: [next.illness?.note, next.readiness?.note].filter(Boolean).join(" ") || null
   };
-  const base = { muscles, groups, due, split, suggested };
+  const base = { muscles, groups, due, split, suggested, readiness };
   if (!sessions.length) return { ...base, status: "unknown", headline: "No workouts logged in 30 days" };
   // Watch when a whole day type has gone a week: one muscle slipping is
   // normal, legs untouched for 8 days is the weekly goal slipping.
@@ -774,7 +812,8 @@ export function buildBodyState(
   const sleepCause = explanations.find((item) => item.affects.includes("sleep") && item.kind !== "late_night");
   if (sleepCause && (sleep.status === "low" || sleep.status === "watch")) sleep.headline += `, after ${sleepCause.detail}`;
   const illness = illnessArea(c, vitals, explanations);
-  const training = trainingArea(c, illness);
+  const drinks = habitExplanations.filter((item) => item.kind === "habit");
+  const training = trainingArea(c, illness, readinessOf(recovery, load, drinks, fuel));
 
   const today = c.healthByDay.get(date);
   const missing = [

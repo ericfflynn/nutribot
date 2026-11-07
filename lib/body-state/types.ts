@@ -9,7 +9,7 @@ import type { JournalEntry } from "../journal";
 import type { Goals } from "../goals";
 import type { SleepNeed } from "../health/scores";
 import type { MacroEntry } from "../supabase";
-import type { FitbitWorkout, Intensity, SorenessReport, TrackedMuscle, WorkoutSession } from "../workouts";
+import type { FitbitWorkout, Intensity, Readiness, SorenessReport, TrackedMuscle, WorkoutSession } from "../workouts";
 
 export const SCHEMA_VERSION = 1;
 
@@ -115,6 +115,9 @@ export type MuscleState = {
   sorenessSource: "workout" | "told" | null;
   points7: number;
   daysSinceHit: number | null; // null: not in the last 30 days
+  // Days ago of the last two days it was worked, newest first, within 30 days
+  // (added Nov 6, 2026; older stored states lack it).
+  recentHits?: number[];
   readyIn: number;
   out: string | null; // why it's out today: "sore", "after forearms"
 };
@@ -126,6 +129,9 @@ export type TrainingArea = Head & {
   split: { kind: string; count: number; target: number | null }[];
   // The rule-based pick for today (Training's Next up), with illness applied.
   suggested: { name: string | null; work: { muscle: TrackedMuscle; intensity: Intensity }[]; note: string | null };
+  // Added Nov 6, 2026 (older stored states lack it): how ready the body is to
+  // train, and what's against it (readinessOf).
+  readiness?: Readiness;
 };
 
 export type FuelDay = {

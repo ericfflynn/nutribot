@@ -17,8 +17,11 @@ export type MuscleView = {
   level: number;
   today: { id: string; level: number } | null;
   points: number;
-  // "Thu, Oct 16 · Push day · hard", newest first.
-  sessions: string[];
+  // Why Next up leaves it out today ("sore", "after forearms"), from the body state.
+  out: string | null;
+  // Days ago of the last two days it was worked (body state recentHits),
+  // newest first, 0 today; empty when not in the last 30 days.
+  recentHits: number[];
 };
 
 const BUCKET_LABELS: Record<WeekBucket, string> = { due: "Due", recovering: "Recovering", covered: "Covered" };
@@ -32,6 +35,10 @@ function fillOf(fatigue: number) {
   if (fatigue <= 0) return GREY;
   const mix = LIGHT_RED.map((value, index) => Math.round(value + (RED[index] - value) * fatigue));
   return `rgb(${mix.join(" ")})`;
+}
+
+function agoText(days: number) {
+  return days === 0 ? "today" : days === 1 ? "yesterday" : `${days} days ago`;
 }
 
 function fatigueLabel(view: MuscleView) {
@@ -145,16 +152,11 @@ function MuscleDetail({ view, onClose }: { view: MuscleView; onClose: () => void
           Done
         </button>
       </div>
-      <p className="muscle-detail-points">{fatigueLabel(view)}</p>
-      {view.sessions.length ? (
-        <ul className="muscle-detail-list">
-          {view.sessions.map((line) => (
-            <li key={line}>{line}</li>
-          ))}
-        </ul>
-      ) : (
-        <p className="muscle-detail-points">Not trained this week.</p>
-      )}
+      <p className="muscle-detail-points">
+        {fatigueLabel(view)}
+        {view.out && !SORENESS_LEVELS.some((label) => label.toLowerCase() === view.out) ? ` · out today (${view.out})` : ""}
+      </p>
+      <p className="muscle-detail-points">Last hit: {view.recentHits.length ? view.recentHits.map(agoText).join(", ") : "not in 30 days"}</p>
       <div className="muscle-detail-sore" role="group" aria-label={`How ${view.muscle} feels today`}>
         <span>Feels</span>
         {SORENESS_LEVELS.map((label, level) => (
