@@ -1,8 +1,8 @@
 # NutriBot
 
-A personal health app built around one idea: **a single daily model of body and mind**, built from everything a person's watch records and everything they tell it.
+A personal health app built around the **body state**: one data representation of a person's body, health and mind, built from real body signals from their fitness tracker along with what they tell it in chat.
 
-A Fitbit supplies sleep, heart rate, HRV, temperature, breathing and every workout on its own. Meals, workouts, moods, habits and sick days are logged by chatting with Claude, which turns plain sentences into structured records and waits for a tap on Save. Code then combines all of it into the **body state**: one stored JSON picture per day, organized into domains, areas and signals. The Today screen, Training's suggestion, illness detection and the chat all read that same picture.
+A Fitbit supplies sleep, heart rate, HRV, temperature, breathing and every workout on its own. Meals, workouts, moods, habits and sick days are logged by chatting with Claude, which turns plain sentences into structured records and waits for a tap on Save. Code combines all of it into the body state, organized into domains, areas and signals. The Today screen, Training's suggestion, illness detection and the chat all read it.
 
 **Live:** https://nutribot-dusky.vercel.app (private) · **Body state spec:** [docs/body-state.md](docs/body-state.md) · **Agent guidelines:** [AGENTS.md](AGENTS.md)
 
@@ -28,30 +28,33 @@ A Fitbit supplies sleep, heart rate, HRV, temperature, breathing and every worko
 
 ## The body state
 
-Most health apps show each source on its own screen: a sleep chart here, a workout log there, a mood graph somewhere else. Nothing ties them together, so they can disagree. On October 30, 2026, NutriBot's workout planner suggested a hard pull day while the owner was sick and the watch showed it. The body state was built to fix that: **one model, every reader**. If two screens disagree, one of them is a bug.
+The body state represents a person's body, health and mind programmatically: one structured object per day covering sleep, recovery, vitals, illness, training load, food, mood, habits, work and relationships. Each part carries a status, a one-line headline and the signals behind it, so code and Claude can both reason over a day: what's off, how far off, and what might explain it.
 
 ### Shape
 
 One JSON object per user per day, built by a pure function, `buildBodyState(sources, date)`, and unit-tested.
 
+```mermaid
+flowchart LR
+  B((Body state)) --> P[Physical] & M[Mental] & L[Lifestyle] & E[Explanations]
+  P --> PA["Sleep · Recovery · Vitals<br/>Illness · Load · Training · Fuel"]
+  M --> MA[Mood]
+  L --> LA["Habits · Career · Relationships"]
+  E --> EA["What else could explain<br/>today's numbers"]
 ```
-body state
-├── physical                 domain: status + headline
-│   ├── sleep                area: status + headline + signals
-│   ├── recovery
-│   ├── vitals               resting HR, HRV, sleep temperature, breathing, SpO2, each against a personal baseline
-│   ├── illness              well → early signs → sick → easing back
-│   ├── load                 strain, hard-day streaks, days since rest
-│   ├── training             which day types are due
-│   └── fuel                 calories, protein, water, caffeine, added sugar
-├── mental
-│   └── mood                 mood, stress and energy from the journal
-├── lifestyle
-│   ├── habits               goals met or missed, streaks
-│   ├── career               work stress and work tags
-│   └── relationships        family, partner, friends
-└── explanations[]           what else could explain today's numbers
-```
+
+| Area | Signals |
+| --- | --- |
+| Sleep | time asleep against need, bedtime, stages, the last 7 nights |
+| Recovery | score and band, against the last 7 days |
+| Vitals | resting HR, HRV, sleep temperature, breathing, SpO2, each against a personal baseline |
+| Illness | well → early signs → sick → easing back |
+| Load | strain, hard-day streaks, days since rest |
+| Training | which day types are due |
+| Fuel | calories, protein, water, caffeine, added sugar |
+| Mood | mood, stress and energy from the journal |
+| Habits | goals met or missed, streaks |
+| Career, Relationships | work stress and tags; family, partner, friends |
 
 Every domain and area has the same head: a `status` (`good`, `ok`, `watch`, `low` or `unknown`) and a one-line `headline` that names its evidence. An area's status comes from a simple rule a person can check in their head, such as "watch when resting HR is 2+ above usual". A domain takes its worst known area. So a day reads "Physical: low · Mental: ok · Lifestyle: watch", and any reader can drill down to the signal that set it.
 
@@ -114,12 +117,7 @@ The chat reads it through two tools: `get_body_state` for one day, and `list_bod
 
 ### What's next for it
 
-The spec ([docs/body-state.md](docs/body-state.md#build-order)) has six steps. Steps 1 and 2, the model and its storage, are built:
-
-3. **Causes and effects:** measure from the owner's own history how much drinks, late caffeine or work stress actually move sleep, resting HR and HRV.
-4. **Guardrails and the call:** code sets what's allowed today (rest, the most intensity, which muscles are out), and Claude makes the day's call within those limits.
-5. **Morning push:** the brief and call arrive as a notification that opens the chat.
-6. **Tuning:** check early warnings against the sick days that were logged, and adjust the thresholds.
+The spec ([docs/body-state.md](docs/body-state.md#build-order)) has six steps. Steps 1, 2 and 4 are built: the model, its storage, and the daily call (code sets what's allowed today, Claude makes the call within those limits). Still to come: causes and effects (3), a morning push (5) and tuning the illness signal (6), all on the [Roadmap](#roadmap).
 
 ## How the data flows
 
@@ -210,6 +208,23 @@ Habits are a goal plus a direction (build or limit) with optional cutoffs, weekd
 | App | `reminders`, `reminder_sends`, `push_subscriptions` | Push reminders and the phones that get them |
 
 Everything is in [`supabase/schema.sql`](supabase/schema.sql), written to be safe to rerun. Every table is scoped by `user_name`.
+
+## Roadmap
+
+In order. The working queue of bugs and ideas is `npm run feedback`; this is the plan above it.
+
+1. **Journal 2.0: tags and ailments.** One set list of tags, shared with the body-state areas. Ailments (illness, injury, pain) become their own records that last and end, built from tagged journal entries and the watch, several open at once. One chat message makes one card.
+2. **Evals for the chat brain.** Today, prompt changes are checked by hand. Build a set of synthetic chat turns, each with the drafts it should produce, and score every prompt or model change against it with `npm run evals`:
+   - code checks: the right tools called, the right cards made, nothing repeated across cards, dates and kinds right
+   - meal macros within a tolerance of labeled answers
+   - a Claude grader for what code can't check (tone, one question at a time, never "logged")
+
+   Every bug the owner reports about the chat becomes a new case. Results go in this README.
+3. **Learning from the owner's edits.** Each draft saved as is, edited or discarded is a label. Track the save-as-is rate, which fields get edited and how often the daily call is revised, and watch them move as the prompt changes.
+4. **Backtest the illness signal.** Logged sick days and recorded false alarms are labels: measure how often a warning was right, how many sick days it caught and how many days ahead, then tune the thresholds (body-state step 6).
+5. **Causes and effects.** Measure from the owner's own history how much drinks, late nights or work stress move sleep, resting HR and HRV, with how uncertain each estimate is, and run simple experiments (two weeks without drinks, then back). Habits say what they affect (body-state step 3).
+
+Later: fitness goals, body weight, a page of custom charts.
 
 ## Stack
 
