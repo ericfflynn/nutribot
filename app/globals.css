@@ -4446,7 +4446,7 @@ details[open] .journal-preview {
 
 .checkin-more {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 8px;
   min-height: 44px;
   padding: 0 5px 0 14px;
@@ -4454,10 +4454,15 @@ details[open] .journal-preview {
   background: var(--bg);
 }
 
-.checkin-more input {
+.checkin-more textarea {
   flex: 1;
   min-width: 0;
+  max-height: 160px;
+  margin: 12px 0;
+  padding: 0;
   border: 0;
+  resize: none;
+  line-height: 20px;
   background: transparent;
   color: var(--ink);
   font: inherit;
@@ -4466,6 +4471,8 @@ details[open] .journal-preview {
 }
 
 .checkin-more button {
+  flex: none;
+  margin-bottom: 5px;
   display: grid;
   place-items: center;
   width: 34px;

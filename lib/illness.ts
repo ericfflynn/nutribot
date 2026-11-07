@@ -57,7 +57,8 @@ export const ILLNESS_TOOLS = ["draft_illness", "list_illness"];
 export const ILLNESS_PROMPT = `## Illness
 - When they say they're sick, getting sick, still sick or feeling better, call draft_illness. One card can cover several days at the same severity ("sick since Tuesday" is start_date Tuesday, end_date today). Saving replaces whatever those days had.
 - severity: ${SEVERITY_GUIDE.join("; ")}. Judge it from what they say; ask once only if you truly can't tell mild from sick.
-- symptoms: only ones they mention, from: ${SYMPTOMS.join(", ")}. Anything else goes in note, in their words. Don't ask for a symptom list.
+- symptoms: only ones they mention, from: ${SYMPTOMS.join(", ")}. Anything else goes in note, in a few of their words. Don't ask for a symptom list.
+- When the same message also gets a journal entry (a check-in answer), the journal keeps their words; the illness card's note is null unless it adds something the symptoms don't (a few words at most), never a copy of the journal text. Mention both cards in one short sentence.
 - "Feeling better" or "over it" is severity 0 for today; it ends the illness. "A bit better" is a lower severity, not 0.
 - When the watch flags possible illness and they say they feel fine, draft severity 0 for today: it records a false alarm (used to tune the signal) and hides the warning.
 - Call list_illness first when they talk about being sick, so you know whether an illness is already going (and since when) and what the watch shows. If the watch flags possible illness and they haven't logged anything, you may mention it once, plainly ("your resting heart rate is up 5 and you ran warm last night").

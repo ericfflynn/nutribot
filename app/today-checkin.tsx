@@ -80,7 +80,7 @@ export function TodayCheckin({
 
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (event.pointerType === "mouse" && event.button !== 0) return;
-    if ((event.target as HTMLElement).closest("input")) return;
+    if ((event.target as HTMLElement).closest("input, textarea")) return;
     drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, dx: 0, t: event.timeStamp, active: false };
     dragged.current = false;
   };
@@ -173,12 +173,26 @@ export function TodayCheckin({
               if (!more.trim()) return;
               send(`${kicker}: ${more.trim()}`);
               setMore("");
+              const box = event.currentTarget.querySelector("textarea");
+              if (box) box.style.height = "";
             }}
           >
             <label className="visually-hidden" htmlFor="checkin-more">
               Tell it more
             </label>
-            <input id="checkin-more" value={more} onChange={(event) => setMore(event.target.value)} placeholder="Or tell me more…" />
+            <textarea
+              id="checkin-more"
+              rows={1}
+              value={more}
+              placeholder="Or tell me more…"
+              onChange={(event) => {
+                setMore(event.target.value);
+                // Grow downward with the text instead of scrolling sideways.
+                const box = event.target;
+                box.style.height = "auto";
+                box.style.height = `${box.scrollHeight}px`;
+              }}
+            />
             <button type="submit" aria-label="Send" disabled={!more.trim()}>
               <svg viewBox="0 0 16 16" aria-hidden="true">
                 <path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" />

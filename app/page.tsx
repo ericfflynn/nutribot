@@ -54,7 +54,7 @@ import {
 export const maxDuration = 60;
 
 type PageProps = {
-  searchParams?: Promise<{ error?: string; date?: string }>;
+  searchParams?: Promise<{ error?: string; date?: string; checkin?: string }>;
 };
 
 // Days shown in the scrolling strip at the top.
@@ -545,12 +545,18 @@ export default async function Home({ searchParams }: PageProps) {
   // The check-in at the top: the morning brief until 5 pm, then the evening
   // one. Each goes away once it's answered (a reply in chat or a journal entry
   // of its kind) or swiped away (a cookie of "date:kind" values).
-  const evening = isToday && Number(localDateTime().slice(11, 13)) >= 17;
+  // In development, ?checkin=morning or ?checkin=evening shows that card even
+  // when it's answered, to try it out.
+  const preview = process.env.NODE_ENV === "development" && (params?.checkin === "morning" || params?.checkin === "evening") ? params.checkin : null;
+  const evening = preview ? preview === "evening" : isToday && Number(localDateTime().slice(11, 13)) >= 17;
   const brief = morningBrief(body);
   const checkinKind: CheckinKind = evening ? "evening" : "morning";
   const dismissed = (cookieStore.get(CHECKIN_DISMISSED_COOKIE)?.value ?? "").split("|").includes(`${date}:${checkinKind}`);
   const answered =
-    dismissed || checkinReplies.has(checkinKind) || journal.some((entry) => entry.kind === checkinKind);
+    preview == null &&
+    (dismissed || checkinReplies.has(checkinKind) || journal.some((entry) => entry.kind === checkinKind));
+  // The morning card waits for Claude's call; until it's made, nothing shows.
+  const checkinReady = evening || dailyCall != null;
   const checkin = evening
     ? {
         kicker: "Evening check-in",
@@ -562,9 +568,7 @@ export default async function Home({ searchParams }: PageProps) {
           { label: "Rough day", message: "Evening check-in: rough day." }
         ] as Reply[]
       }
-    : dailyCall
-      ? { kicker: "Morning check-in", headline: dailyCall.headline, text: dailyCall.note, ask: dailyCall.ask, call: null, replies: brief.replies }
-      : { kicker: "Morning check-in", text: brief.text, call: brief.call, replies: brief.replies };
+    : { kicker: "Morning check-in", headline: dailyCall?.headline ?? null, text: dailyCall?.note ?? "", ask: dailyCall?.ask ?? null, call: null, replies: brief.replies };
 
   // Nutrition
   const dayEntries = entries.filter((entry) => entry.entry_date === date);
@@ -734,7 +738,7 @@ export default async function Home({ searchParams }: PageProps) {
         </p>
       ) : null}
 
-      {isToday && !answered ? (
+      {isToday && checkinReady && !answered ? (
         <TodayCheckin key={checkinKind} date={date} kind={checkinKind} kicker={checkin.kicker} headline={"headline" in checkin ? checkin.headline : null} text={checkin.text} ask={"ask" in checkin ? checkin.ask : null} call={checkin.call} replies={checkin.replies} allowMore={!evening} />
       ) : null}
 
