@@ -1,6 +1,6 @@
 # NutriBot
 
-A personal health app built around the **body state**: one data representation of a person's body, health and mind, built from everything their watch records and everything they tell it.
+A personal health app built around the **body state**: one data representation of a person's body, health and mind, built from real body signals from their fitness tracker along with what they tell it in chat.
 
 A Fitbit supplies sleep, heart rate, HRV, temperature, breathing and every workout on its own. Meals, workouts, moods, habits and sick days are logged by chatting with Claude, which turns plain sentences into structured records and waits for a tap on Save. Code combines all of it into the body state, organized into domains, areas and signals. The Today screen, Training's suggestion, illness detection and the chat all read it.
 
