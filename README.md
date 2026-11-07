@@ -114,12 +114,7 @@ The chat reads it through two tools: `get_body_state` for one day, and `list_bod
 
 ### What's next for it
 
-The spec ([docs/body-state.md](docs/body-state.md#build-order)) has six steps. Steps 1 and 2, the model and its storage, are built:
-
-3. **Causes and effects:** measure from the owner's own history how much drinks, late caffeine or work stress actually move sleep, resting HR and HRV.
-4. **Guardrails and the call:** code sets what's allowed today (rest, the most intensity, which muscles are out), and Claude makes the day's call within those limits.
-5. **Morning push:** the brief and call arrive as a notification that opens the chat.
-6. **Tuning:** check early warnings against the sick days that were logged, and adjust the thresholds.
+The spec ([docs/body-state.md](docs/body-state.md#build-order)) has six steps. Steps 1, 2 and 4 are built: the model, its storage, and the daily call (code sets what's allowed today, Claude makes the call within those limits). Still to come: causes and effects (3), a morning push (5) and tuning the illness signal (6), all on the [Roadmap](#roadmap).
 
 ## How the data flows
 
@@ -210,6 +205,23 @@ Habits are a goal plus a direction (build or limit) with optional cutoffs, weekd
 | App | `reminders`, `reminder_sends`, `push_subscriptions` | Push reminders and the phones that get them |
 
 Everything is in [`supabase/schema.sql`](supabase/schema.sql), written to be safe to rerun. Every table is scoped by `user_name`.
+
+## Roadmap
+
+In order. The working queue of bugs and ideas is `npm run feedback`; this is the plan above it.
+
+1. **Journal 2.0: tags and ailments.** One set list of tags, shared with the body-state areas. Ailments (illness, injury, pain) become their own records that last and end, built from tagged journal entries and the watch, several open at once. One chat message makes one card.
+2. **Evals for the chat brain.** Today, prompt changes are checked by hand. Build a set of synthetic chat turns, each with the drafts it should produce, and score every prompt or model change against it with `npm run evals`:
+   - code checks: the right tools called, the right cards made, nothing repeated across cards, dates and kinds right
+   - meal macros within a tolerance of labeled answers
+   - a Claude grader for what code can't check (tone, one question at a time, never "logged")
+
+   Every bug the owner reports about the chat becomes a new case. Results go in this README.
+3. **Learning from the owner's edits.** Each draft saved as is, edited or discarded is a label. Track the save-as-is rate, which fields get edited and how often the daily call is revised, and watch them move as the prompt changes.
+4. **Backtest the illness signal.** Logged sick days and recorded false alarms are labels: measure how often a warning was right, how many sick days it caught and how many days ahead, then tune the thresholds (body-state step 6).
+5. **Causes and effects.** Measure from the owner's own history how much drinks, late nights or work stress move sleep, resting HR and HRV, with how uncertain each estimate is, and run simple experiments (two weeks without drinks, then back). Habits say what they affect (body-state step 3).
+
+Later: fitness goals, body weight, a page of custom charts.
 
 ## Stack
 
