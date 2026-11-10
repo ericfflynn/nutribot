@@ -19,6 +19,8 @@ Calibration: picked October 30, 2026 against the owner's data from June. The ill
 
 ## Logging
 
+Since November 10, 2026 illnesses are ailments ([ailments.md](ailments.md)): reported on the journal card, open until the owner says they're over, several at once, with the morning call asking about each. The rest of this section is how it worked from October 30.
+
 Through chat only: `draft_illness` and `list_illness` (`lib/illness.ts`, prompt in `ILLNESS_PROMPT`). One card covers a day or a run of days at the same severity ("sick since Tuesday"); saving sets each day in `illness_days`, replacing what was there.
 
 - **Severity:** 0 Better (ends an illness, and on a flagged day records a false alarm), 1 Mild (a bit off, above the neck), 2 Sick (clearly unwell, below the neck or a fever), 3 Very sick (in bed).

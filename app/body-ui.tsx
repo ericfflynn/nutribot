@@ -1,6 +1,8 @@
 // Pieces of the body state (docs/body-state.md) shown on Today: the sick
 // line under the day scores, and the trends each score opens.
 import type { ReactNode } from "react";
+import Link from "next/link";
+import { ailmentLine, type OpenAilment } from "@/lib/ailments-core";
 import { ColumnChart, SleepWindowChart, VitalsChart } from "./charts";
 import { addDays } from "@/lib/dates";
 import { formatClockTime } from "@/lib/habits";
@@ -19,15 +21,44 @@ const BAND_INK = { green: "#0a7f0a", yellow: "#8a5d00", red: "#b42f2f" } as cons
 const lastDays = (date: string, count: number) => Array.from({ length: count }, (_, index) => addDays(date, index - count + 1));
 const round = (value: number | null, places = 0) => (value == null ? "–" : (Math.round(value * 10 ** places) / 10 ** places).toString());
 
-// While sick, easing back or showing early signs: one line with its dot.
-export function SickLine({ state }: { state: BodyState }) {
+// Under the day scores: early signs from the watch, then one line per open
+// ailment (illness, injury, pain; docs/ailments.md), each opening the chat to
+// say how it is. Ended in the last day shows once. Null when there's nothing.
+export function BodyLines({ state }: { state: BodyState }) {
   const { illness } = state.physical;
-  if (illness.phase === "well") return null;
+  const open = state.physical.ailments?.open ?? [];
+  const endedToday = (state.physical.ailments?.ended7 ?? []).filter((item) => item.endedOn === state.meta.date);
+  if (illness.phase !== "early_signs" && !open.length && !endedToday.length) return null;
+  const status = (item: OpenAilment): Status =>
+    item.phase === "easing" ? "ok" : item.severity >= 3 || (item.kind === "illness" && item.severity >= 2) ? "low" : "watch";
   return (
-    <p className="sick-line">
-      <span className={`status-dot ${illness.status}`} aria-label={STATUS_LABELS[illness.status]} />
-      {illness.headline}
-    </p>
+    <div className="body-lines">
+      {illness.phase === "early_signs" ? (
+        <p className="sick-line">
+          <span className={`status-dot ${illness.status}`} aria-label={STATUS_LABELS[illness.status]} />
+          {illness.headline}
+        </p>
+      ) : null}
+      {open.map((item) => {
+        const [name, ...rest] = ailmentLine(item).split(" · ");
+        return (
+          <Link key={item.id} className="sick-line" href={`/chat?${new URLSearchParams({ prompt: `${item.name}: ` }).toString()}`}>
+            <span className={`status-dot ${status(item)}`} aria-label={STATUS_LABELS[status(item)]} />
+            <span>
+              <strong>{name}</strong> · {rest.join(" · ")}
+            </span>
+          </Link>
+        );
+      })}
+      {endedToday.map((item) => (
+        <p key={item.id} className="sick-line">
+          <span className="status-dot good" aria-label={STATUS_LABELS.good} />
+          <span>
+            <strong>{item.name}</strong> · over
+          </span>
+        </p>
+      ))}
+    </div>
   );
 }
 

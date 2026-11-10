@@ -7,7 +7,8 @@ import { baselineDays, illnessSignal } from "../health/illness";
 import type { HealthDay, HealthWorkout } from "../health/queries";
 import { SLEEP_NEED_MINUTES, dayStrain, recoveryScore, sleepScoresFor, type SleepScore } from "../health/scores";
 import { formatClockTime, formatHabitAmount, habitOutcome, summarizeHabitDay, trackedOn, type Habit } from "../habits";
-import { SEVERITY_LABELS, SYMPTOMS, easingOn, sickOn, type IllnessDay, type Symptom } from "../illness-days";
+import { SEVERITY_LABELS } from "../illness-days";
+import { ailmentLine, combinedLimits, illnessDates, limitsLine, openAilmentsOn, type CombinedLimits, type OpenAilment } from "../ailments-core";
 import { ENERGY_LABELS, MOOD_LABELS, type JournalEntry } from "../journal";
 import { TAG_CATEGORIES } from "../journal-tags";
 import { summarizeEntries } from "../supabase";
@@ -28,6 +29,7 @@ import {
   suggestNext,
   trackedOf,
   type IllnessState,
+  type MuscleLimits,
   type Readiness,
   type TrackedMuscle
 } from "../workouts";
@@ -35,6 +37,7 @@ import {
   SCHEMA_VERSION,
   type BodySources,
   type BodyState,
+  type AilmentsArea,
   type CareerArea,
   type Explanation,
   type FuelArea,
@@ -91,36 +94,14 @@ function eveningMinutes(timestamp: string) {
   return (h * 60 + m - 18 * 60 + 1440) % 1440;
 }
 
-// A journal entry tagged "sick" counts as a sick day (severity Sick, its
-// symptom tags as symptoms) until the journal records illness itself
-// (docs/body-state.md, Reports). A logged sick day for the date wins.
-export function journalSickDays(entries: readonly JournalEntry[], logged: readonly IllnessDay[]): IllnessDay[] {
-  const loggedDates = new Set(logged.map((day) => day.date));
-  const byDate = new Map<string, IllnessDay>();
-  for (const entry of entries) {
-    if (!entry.tags.includes("sick") || loggedDates.has(entry.date)) continue;
-    const symptoms = entry.tags.filter((tag): tag is Symptom => (SYMPTOMS as readonly string[]).includes(tag));
-    const before = byDate.get(entry.date);
-    byDate.set(entry.date, {
-      id: `journal-${entry.id}`,
-      date: entry.date,
-      severity: 2,
-      symptoms: [...new Set([...(before?.symptoms ?? []), ...symptoms])],
-      note: null
-    });
-  }
-  return [...byDate.values()];
-}
-
 type Context = {
   date: string;
   yesterday: string;
   sources: BodySources;
   healthByDay: Map<string, HealthDay>;
   workoutsByDay: Map<string, HealthWorkout[]>;
-  sickDates: Set<string>;
-  illnessDays: IllnessDay[]; // logged plus journal-tagged
-  journalSick: Set<string>; // dates whose sick day came from the journal
+  sickDates: Set<string>; // days an illness covered, for baselines and sleep need
+  open: OpenAilment[]; // ailments open or easing on the date, worst first
   sleepScores: Map<string, SleepScore>; // every night in the health window
 };
 
@@ -371,12 +352,17 @@ function loadArea(c: Context): LoadArea {
   return { ...base, status: "good", headline: strainYesterday != null ? `Strain ${strainYesterday} yesterday, normal week` : "Normal week" };
 }
 
+// The illness phase: sick while an illness is open, easing back after one
+// that reached Sick, early signs when the watch flags a day nothing explains
+// and nothing answers. Illnesses are ailments (docs/ailments.md).
 function illnessArea(c: Context, vitals: VitalsArea, explanations: Explanation[]): IllnessArea {
-  const days = c.illnessDays;
   const signal = illnessSignal(c.sources.health, c.date, c.sickDates);
-  const sick = sickOn(days, c.date);
-  const easing = easingOn(days, c.date);
-  const answered = days.some((day) => day.date === c.date);
+  const sick = c.open.find((item) => item.kind === "illness" && item.phase === "active") ?? null;
+  const easing = c.open.find((item) => item.kind === "illness" && item.phase === "easing") ?? null;
+  // Answered today: a "fine" answer, or any illness report for today.
+  const answered =
+    c.sources.illness.some((day) => day.date === c.date) ||
+    c.sources.ailments.some((item) => item.kind === "illness" && item.days.some((day) => day.date === c.date));
   // An explanation only counts when it moves what drove the signal (its
   // first reason): work stress can explain a low HRV, not a raised resting HR.
   const driver = signal.reasons[0] ?? "";
@@ -393,9 +379,10 @@ function illnessArea(c: Context, vitals: VitalsArea, explanations: Explanation[]
         severity: sick.severity,
         symptoms: sick.symptoms,
         since: sick.since,
-        day: sick.dayNumber,
-        reportedOn: sick.episode.last,
-        source: (c.journalSick.has(sick.episode.last) ? "journal" : "logged") as "journal" | "logged"
+        day: sick.day,
+        reportedOn: sick.reportedOn ?? sick.since,
+        source: "ailment" as const,
+        name: sick.name
       }
     : null;
   const signalOut = { level: signal.level, points: signal.points, reasons: signal.reasons };
@@ -405,7 +392,7 @@ function illnessArea(c: Context, vitals: VitalsArea, explanations: Explanation[]
     const symptoms = sick.symptoms.length ? `: ${sick.symptoms.join(", ")}` : "";
     return {
       status: "low",
-      headline: `${SEVERITY_LABELS[sick.severity]}, day ${sick.dayNumber} (since ${dayName(sick.since)})${symptoms}`,
+      headline: `${sick.name}, ${SEVERITY_LABELS[sick.severity].toLowerCase()}, day ${sick.day} (since ${dayName(sick.since)})${symptoms}`,
       signal: signalOut,
       told,
       phase: "sick",
@@ -416,11 +403,11 @@ function illnessArea(c: Context, vitals: VitalsArea, explanations: Explanation[]
   if (easing) {
     return {
       status: "ok",
-      headline: "Easing back after being sick",
+      headline: `Easing back after ${easing.name.toLowerCase()}`,
       signal: signalOut,
       told,
       phase: "recovering",
-      phaseSince: easing.ended ?? addDays(easing.last, 1),
+      phaseSince: addDays(easing.since, easing.day),
       explainedBy: []
     };
   }
@@ -453,6 +440,36 @@ function illnessArea(c: Context, vitals: VitalsArea, explanations: Explanation[]
     phaseSince: null,
     explainedBy
   };
+}
+
+// Every ailment open on the day (docs/ailments.md): low with an illness at
+// Sick or anything at its worst (3), watch with anything open, ok while only
+// easing back.
+function ailmentsArea(c: Context): AilmentsArea {
+  const open = c.open;
+  const ended7 = c.sources.ailments
+    .filter((item) => item.endedOn && item.endedOn <= c.date && item.endedOn > addDays(c.date, -7))
+    .map((item) => ({ id: item.id, name: item.name, endedOn: item.endedOn! }));
+  const active = open.filter((item) => item.phase === "active");
+  if (!open.length) return { status: "good", headline: "Nothing open", open, ended7 };
+  const low = active.some((item) => item.severity >= 3 || (item.kind === "illness" && item.severity >= 2));
+  const more = open.length > 1 ? ` (+${open.length - 1} more)` : "";
+  return { status: low ? "low" : active.length ? "watch" : "ok", headline: `${ailmentLine(open[0])}${more}`, open, ended7 };
+}
+
+// What open ailments take away from training: each muscle's limit, nothing
+// hard after a bad one, and a line saying why. Next up and the guardrails
+// both read this.
+export function ailmentLimitsOf(open: readonly OpenAilment[]): MuscleLimits & CombinedLimits {
+  const active = open.filter((item) => item.phase === "active");
+  const combined = combinedLimits(active);
+  const notes = active
+    .map((item) => {
+      const line = limitsLine(item.limits);
+      return line ? `${item.name}: ${line.replace(/^./, (letter) => letter.toLowerCase())}.` : null;
+    })
+    .filter(Boolean);
+  return { ...combined, note: notes.join(" ") || null };
 }
 
 const GROUP_KEYS: Record<string, string> = {
@@ -503,7 +520,7 @@ const NOT_HIT = 99;
 
 function trainingArea(c: Context, illness: IllnessArea, readiness: Readiness): TrainingArea {
   const { sessions, soreness, fitbit } = c.sources;
-  const next = suggestNext(sessions, c.date, soreness, undefined, illnessStateOf(illness), readiness);
+  const next = suggestNext(sessions, c.date, soreness, undefined, illnessStateOf(illness), readiness, ailmentLimitsOf(c.open));
   const outBy = new Map(next.out.map((item) => [item.muscle, item.because ?? SORENESS_LEVELS[sorenessStep(item.level)].toLowerCase()]));
   const muscles: MuscleState[] = TRACKED_MUSCLES.map((muscle) => {
     const week = muscleWeekOf(sessions, soreness, muscle, c.date);
@@ -544,7 +561,7 @@ function trainingArea(c: Context, illness: IllnessArea, readiness: Readiness): T
   const suggested = {
     name: next.pick?.name ?? null,
     work: next.pick?.work.map(({ muscle, intensity }) => ({ muscle, intensity })) ?? [],
-    note: [next.illness?.note, next.readiness?.note].filter(Boolean).join(" ") || null
+    note: [next.illness?.note, next.ailments?.note, next.readiness?.note].filter(Boolean).join(" ") || null
   };
   const base = { muscles, groups, due, split, suggested, readiness };
   if (!sessions.length) return { ...base, status: "unknown", headline: "No workouts logged in 30 days" };
@@ -785,15 +802,10 @@ export function buildBodyState(
     sources,
     healthByDay: new Map(sources.health.map((day) => [day.day, day])),
     workoutsByDay,
-    sickDates: new Set(),
-    illnessDays: [],
-    journalSick: new Set(),
+    sickDates: illnessDates(sources.ailments, date),
+    open: openAilmentsOn(sources.ailments, date),
     sleepScores: new Map()
   };
-  const fromJournal = journalSickDays(sources.journal, sources.illness);
-  c.illnessDays = [...sources.illness, ...fromJournal].sort((a, b) => a.date.localeCompare(b.date));
-  c.journalSick = new Set(fromJournal.map((day) => day.date));
-  c.sickDates = new Set(c.illnessDays.filter((day) => day.severity > 0).map((day) => day.date));
   c.sleepScores = sleepScoresFor(sources.health, sources.health.map((day) => day.day), workoutsByDay, c.sickDates);
 
   const sleep = sleepArea(c);
@@ -812,6 +824,7 @@ export function buildBodyState(
   const sleepCause = explanations.find((item) => item.affects.includes("sleep") && item.kind !== "late_night");
   if (sleepCause && (sleep.status === "low" || sleep.status === "watch")) sleep.headline += `, after ${sleepCause.detail}`;
   const illness = illnessArea(c, vitals, explanations);
+  const ailments = ailmentsArea(c);
   const drinks = habitExplanations.filter((item) => item.kind === "habit");
   const training = trainingArea(c, illness, readinessOf(recovery, load, drinks, fuel));
 
@@ -825,7 +838,7 @@ export function buildBodyState(
     habits.status === "unknown" ? "habits" : null
   ].filter((item): item is string => Boolean(item));
 
-  const physicalAreas = { sleep, recovery, vitals, illness, load, training, fuel };
+  const physicalAreas = { sleep, recovery, vitals, illness, ailments, load, training, fuel };
   const lifestyleAreas = { habits, career, relationships };
   return {
     meta: {
@@ -839,7 +852,7 @@ export function buildBodyState(
     },
     // How the body is, not what's due: training keeps its own status but
     // doesn't set the domain's. Ties go to the first listed.
-    physical: { ...physicalHead([illness, recovery, vitals, sleep, load, fuel], [recovery, sleep, vitals, illness, load, fuel]), ...physicalAreas },
+    physical: { ...physicalHead([illness, ailments, recovery, vitals, sleep, load, fuel], [recovery, sleep, vitals, illness, ailments, load, fuel]), ...physicalAreas },
     mental: { ...worstOf([mood]), mood },
     lifestyle: { ...worstOf(Object.values(lifestyleAreas)), ...lifestyleAreas },
     explanations

@@ -4,7 +4,8 @@
 import type { HealthDay, HealthSyncRun, HealthWorkout } from "../health/queries";
 import type { IllnessLevel } from "../health/illness";
 import type { Habit, HabitLog, HabitOutcome } from "../habits";
-import type { IllnessDay, Symptom } from "../illness-days";
+import type { Ailment, OpenAilment } from "../ailments-core";
+import type { IllnessDay } from "../illness-days";
 import type { JournalEntry } from "../journal";
 import type { Goals } from "../goals";
 import type { SleepNeed } from "../health/scores";
@@ -88,15 +89,25 @@ export type IllnessArea = Head & {
   signal: { level: IllnessLevel; points: number; reasons: string[] };
   told: {
     severity: number;
-    symptoms: Symptom[];
+    symptoms: string[];
     since: string;
     day: number;
     reportedOn: string;
-    source: "logged" | "journal"; // logged sick days, or a journal entry tagged "sick"
+    // ailment since Nov 10, 2026 (the open illness); before: logged sick
+    // days, or a journal entry tagged "sick".
+    source: "ailment" | "logged" | "journal";
+    name?: string; // the illness ("Head cold"), since Nov 10, 2026
   } | null;
   phase: IllnessPhase;
   phaseSince: string | null;
   explainedBy: string[]; // explanation details that account for a raised signal
+};
+
+// Illness, injury and pain open on the day (docs/ailments.md), worst first,
+// with what each limits. Added Nov 10, 2026.
+export type AilmentsArea = Head & {
+  open: OpenAilment[];
+  ended7: { id: string; name: string; endedOn: string }[]; // over in the last 7 days
 };
 
 export type LoadArea = Head & {
@@ -202,6 +213,7 @@ export type BodyState = {
     recovery: RecoveryArea;
     vitals: VitalsArea;
     illness: IllnessArea;
+    ailments?: AilmentsArea; // added Nov 10, 2026; older stored states lack it
     load: LoadArea;
     training: TrainingArea;
     fuel: FuelArea;
@@ -219,7 +231,8 @@ export type BodySources = {
   sessions: WorkoutSession[]; // date − 30 to date
   fitbit: FitbitWorkout[]; // date − 7 to date
   soreness: SorenessReport[]; // date − 14 to date
-  illness: IllnessDay[]; // date − 60 to date
+  illness: IllnessDay[]; // date − 60 to date: "fine" answers (severity 0) on flagged days
+  ailments: Ailment[]; // overlapping date − 60 to date
   journal: JournalEntry[]; // date − 7 to date
   habits: Habit[];
   habitLogs: HabitLog[]; // date − 10 to date

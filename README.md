@@ -168,8 +168,8 @@ Chat runs **Claude through the [Claude Agent SDK](https://code.claude.com/docs/e
 
 | Kind | Tools |
 | --- | --- |
-| **Drafts** (cards the owner saves) | `draft_meal` (items with macros, caffeine and added sugar), `draft_workout` (muscles, intensity, the matching watch workout), `draft_journal`, `draft_habits`, `draft_habit`, `draft_illness`, `draft_ignore_workout`, `draft_feedback` |
-| **Reads** | `get_body_state`, `list_body_states`, `get_health`, `get_goals`, `list_meals`, `list_workouts`, `list_journal`, `list_habits`, `list_habit_logs`, `list_illness`, `list_feedback` |
+| **Drafts** (cards the owner saves) | `draft_meal` (items with macros, caffeine and added sugar), `draft_workout` (muscles, intensity, the matching watch workout), `draft_journal` (with ailment lines), `draft_habits`, `draft_habit`, `draft_ailment`, `draft_ignore_workout`, `draft_feedback` |
+| **Reads** | `get_body_state`, `list_body_states`, `get_health`, `get_goals`, `list_meals`, `list_workouts`, `list_journal`, `list_habits`, `list_habit_logs`, `list_ailments`, `list_feedback` |
 
 - **Tools never write.** A draft is shown as a card, and Save writes the server's stored copy inside a transaction that also marks it saved, so it can't be saved twice.
 - **Talking comes first.** Not every message is a log. "Log that" and "just chatting" override the chat's guess. Feelings get a one-tap "Save to journal" offer instead of a form, and questions get answers from the data.
@@ -201,7 +201,7 @@ Habits are a goal plus a direction (build or limit) with optional cutoffs, weekd
 | Logged | `macro_entries` | Meals: items, macros, caffeine, added sugar, meal type, time |
 | Logged | `workout_sessions` | Workouts: muscles, per-muscle intensity, RPE, link to a watch recording |
 | Logged | `journal_entries`, `habits`, `habit_logs` | Mood, stress, tags; habits with goals and bands; daily amounts |
-| Logged | `illness_days`, `body_log` | Sick days with severity and symptoms; soreness per muscle |
+| Logged | `ailments`, `ailment_days`, `body_log` | Illness, injury and pain that last until they're over, with a severity per day; soreness per muscle |
 | Logged | `water_entries`, `user_macro_goals` | Water; calorie, macro, water, caffeine and sugar goals |
 | Model | `body_states`, `body_state_current` | The body state, one versioned JSON per day |
 | App | `chat_conversations`, `chat_messages`, `app_feedback` | Chat threads with their drafts; bugs and ideas told to the chat |
@@ -213,7 +213,7 @@ Everything is in [`supabase/schema.sql`](supabase/schema.sql), written to be saf
 
 In order. The working queue of bugs and ideas is `npm run feedback`; this is the plan above it.
 
-1. **Journal 2.0: tags and ailments.** One set list of tags, shared with the body-state areas. Ailments (illness, injury, pain) become their own records that last and end, built from tagged journal entries and the watch, several open at once. One chat message makes one card.
+1. **Journal 2.0: tags and ailments.** Ailments are built (November 10, 2026, [docs/ailments.md](docs/ailments.md)): illness, injury and pain as records that last until they're over, several open at once, reported on the journal card and limiting training by body part. Next: one set list of tags, shared with the body-state areas.
 2. **Evals for the chat brain.** Today, prompt changes are checked by hand. Build a set of synthetic chat turns, each with the drafts it should produce, and score every prompt or model change against it with `npm run evals`:
    - code checks: the right tools called, the right cards made, nothing repeated across cards, dates and kinds right
    - meal macros within a tolerance of labeled answers
@@ -339,7 +339,8 @@ lib/
   claude-brain.ts         runs Claude through the Agent SDK
   workouts.ts             workouts, soreness, volume, Next up, Fitbit matching
   habits.ts, journal.ts   habits with bands; journal entries and tags
-  illness.ts              sick days and their chat tools
+  ailments.ts             illness, injury and pain: tables and chat tools (rules in ailments-core.ts)
+  illness.ts              the old sick days (now only "fine" answers)
   nutrients.ts            caffeine and added sugar per day
   auth.ts, dates.ts, goals.ts, supabase.ts
 

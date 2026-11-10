@@ -151,6 +151,8 @@ Status: **good** when no vital is past its threshold; **watch** when any is; **l
 
 ### `physical.illness`
 
+Since November 10, 2026 illnesses are ailments ([ailments.md](ailments.md)): `told` reads the open illness (`source: "ailment"`), an illness stays open until the owner says it's over, and sick days for the baselines are every day an illness covered. The table below describes the October 30 rules (a report carried 2 days).
+
 | Signal | Meaning |
 | --- | --- |
 | `signal` | The watch's read: `none`, `possible`, `likely`, with `points` and `reasons` (`illnessSignal`). |
@@ -168,6 +170,10 @@ Status: **good** when no vital is past its threshold; **watch** when any is; **l
 | `well` | Anything else. | **good** |
 
 "I feel fine" on a flagged day is stored as a report (a false alarm), which moves the phase back to `well` and is what the detector is tuned against.
+
+### `physical.ailments`: illness, injury and pain
+
+Built November 10, 2026 ([ailments.md](ailments.md#in-the-body-state)): every ailment open or easing on the day, worst first, each with what it limits (`out`, `light`, `noHard`, `easyCardio`), plus those over in the last 7 days. Status: **low** with an illness at Sick or worse or anything at 3, **watch** with anything open, **ok** while only easing, **good** with nothing open. It rolls up into the physical domain.
 
 ### `physical.load`: how hard recent days were
 
@@ -415,6 +421,7 @@ type Guardrails = {
 | Muscle sore (any level) | That muscle is out. |
 | Training rules (`DEFAULT_RULES`) | Muscles out after forearms or biceps (back), after triceps (chest); medium after a heavy upper-body day; at most 2 hard days in a row. |
 | One hard day per muscle a week | That muscle at most medium. |
+| Injury or pain (since November 10, 2026, [ailments.md](ailments.md#what-it-does-to-training)) | Mild: its muscles light; hurts: out; bad: its whole region out and nothing hard. |
 
 Rules only take things away. The strictest wins.
 
@@ -452,9 +459,9 @@ Things the owner tells the app are reports, and they win over data. They're stor
 
 | Report | Stored in | Comes from |
 | --- | --- | --- |
-| Sick, better, "I feel fine" | `illness_days` (severity 0-3; 0 on a flagged day is a false alarm) | Journal entry, quick button, chat |
+| Sick, injured, in pain, better | `ailments`, `ailment_days` (since November 10, 2026; [ailments.md](ailments.md)) | The journal card's ailment lines, chat |
+| "I feel fine" on a flagged day | `illness_days` (severity 0, a false alarm) | The journal card's `fine_today` |
 | Muscle soreness | `body_log` (kind `sore`, level) | Body map, chat |
-| Pain | `body_log` (kind `pain`) | Chat |
 | Mood, stress, energy | `journal_entries` ratings | Journal |
 
 A journal draft gains an optional `illness` part (severity, symptoms) so saying "still sick, throat's better" in a check-in saves one card that writes both. Saving any report rebuilds the day's state (trigger `report`).

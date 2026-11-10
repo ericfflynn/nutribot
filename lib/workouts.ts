@@ -577,12 +577,23 @@ export type IllnessState =
 // it off hard and leg day last; rest is rest or active recovery.
 export type Readiness = { level: "normal" | "easy" | "rest"; reasons: string[] };
 
+// What open injuries and pain take away (ailmentLimitsOf in
+// lib/body-state/build.ts): each limited muscle's most (null is out) and the
+// ailment that set it, nothing hard after a bad one, and a line saying why.
+export type MuscleLimits = {
+  muscles: Map<TrackedMuscle, { max: Intensity | null; because: string }>;
+  noHard: string | null;
+  note: string | null;
+};
+
 export type Suggestion = {
   date: string;
   // Why illness changed the suggestion, for a line above it.
   illness: { rest: boolean; note: string } | null;
   // Why readiness did, the same way.
   readiness: { rest: boolean; note: string } | null;
+  // What open injuries and pain take away.
+  ailments: { note: string } | null;
   // Muscles with any soreness (slight or more), sorest first, then fresh ones
   // a not_after rule keeps out (`because` is its tag).
   out: { muscle: TrackedMuscle; level: number; because: string | null }[];
@@ -604,13 +615,17 @@ export function suggestNext(
   soreness: readonly SorenessReport[] = [],
   rules: readonly TrainingRule[] = DEFAULT_RULES,
   illness: IllnessState = null,
-  readiness: Readiness | null = null
+  readiness: Readiness | null = null,
+  limits: MuscleLimits | null = null
 ): Suggestion {
+  // Muscles an injury limits aren't due: no day is picked for them, light
+  // ones included (the call may still add light rehab work).
+  const limited = limits?.muscles ?? new Map<TrackedMuscle, { max: Intensity | null; because: string }>();
   const sickRest = illness?.kind === "sick" && illness.severity >= 2;
   const tiredRest = readiness?.level === "rest";
   const rest = sickRest || tiredRest;
   const easy = readiness?.level === "easy";
-  const illnessCap: Intensity = illness?.kind === "sick" ? "light" : illness || easy ? "medium" : "hard";
+  const illnessCap: Intensity = illness?.kind === "sick" ? "light" : illness || easy || limits?.noHard ? "medium" : "hard";
   const reasons = listOf(readiness?.reasons ?? []);
   const readinessNote = tiredRest
     ? `${capitalize(reasons)}: rest or active recovery today (a walk, yoga, mobility).`
@@ -638,7 +653,7 @@ export function suggestNext(
     const item = state.get(muscle)!;
     return sorenessStep(item.level) === 0 && item.since >= DUE_AFTER_DAYS;
   };
-  const isDue = (muscle: TrackedMuscle) => isReady(muscle) && !skipped.has(muscle);
+  const isDue = (muscle: TrackedMuscle) => isReady(muscle) && !skipped.has(muscle) && !limited.has(muscle);
   const options = DAY_TYPES.map((type) => {
     const due = type.muscles.filter(isDue);
     // How overdue: each due muscle's days past DUE_AFTER_DAYS (capped), so
@@ -683,7 +698,7 @@ export function suggestNext(
     for (let wait = 0; wait <= 14; wait += 1) {
       const due = type.muscles.filter((muscle) => {
         const item = state.get(muscle)!;
-        if (wait === 0 && skipped.has(muscle)) return false;
+        if ((wait === 0 && skipped.has(muscle)) || limited.has(muscle)) return false;
         return sorenessStep(Math.max(0, item.level - SORENESS_FADE_PER_DAY * wait)) === 0 && item.since + wait >= DUE_AFTER_DAYS;
       });
       if (due.length >= MIN_DUE) return wait;
@@ -697,17 +712,20 @@ export function suggestNext(
 
   const all = [...state.values()];
   const isSore = (item: (typeof all)[number]) => sorenessStep(item.level) >= 1;
-  const ruledOut = (item: (typeof all)[number]) => !isSore(item) && skipped.has(item.muscle);
+  const ruledOut = (item: (typeof all)[number]) => !isSore(item) && (skipped.has(item.muscle) || limited.has(item.muscle));
   return {
     date,
     illness: illnessNote ? { rest: sickRest, note: illnessNote } : null,
     readiness: readinessNote ? { rest: tiredRest, note: readinessNote } : null,
+    ailments: limits?.note ? { note: limits.note } : null,
     out: [
       ...all
         .filter(isSore)
         .sort((a, b) => b.level - a.level)
-        .map(({ muscle, level }) => ({ muscle, level, because: null })),
+        .map(({ muscle, level }) => ({ muscle, level, because: limited.get(muscle)?.because ?? null })),
       ...all.filter(ruledOut).map(({ muscle, level }) => {
+        const limit = limited.get(muscle);
+        if (limit) return { muscle, level, because: limit.because };
         const rule = skipped.get(muscle)!;
         return { muscle, level, because: rule.kind === "not_after" ? rule.tag : rule.label };
       })

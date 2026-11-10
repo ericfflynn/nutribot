@@ -4,16 +4,17 @@ import { listSoreness } from "../body-log";
 import { addDays } from "../dates";
 import { getLatestHealthSyncRun, listHealthDays, listHealthWorkouts } from "../health/queries";
 import { listHabitLogs, listHabits } from "../habits";
+import { illnessDates, listAilments } from "../ailments";
 import { listIllnessDays } from "../illness";
 import { listJournalEntries } from "../journal";
 import { getUserGoals, getWaterOunces, listEntriesForDateRange } from "../supabase";
 import { listFitbitWorkouts, listWorkoutSessions } from "../workouts";
-import { buildBodyState, journalSickDays } from "./build";
+import { buildBodyState } from "./build";
 import type { BodySources, BodyState } from "./types";
 
 export async function loadBodySources(db: Pool, userName: string, date: string): Promise<BodySources> {
   const yesterday = addDays(date, -1);
-  const [health, healthWorkouts, sessions, fitbit, soreness, illness, journal, habits, habitLogs, meals, waterYesterday, waterToday, goals, lastSync] =
+  const [health, healthWorkouts, sessions, fitbit, soreness, illness, ailments, journal, habits, habitLogs, meals, waterYesterday, waterToday, goals, lastSync] =
     await Promise.all([
       listHealthDays(userName, addDays(date, -62), date),
       listHealthWorkouts(userName, addDays(date, -30), date),
@@ -21,6 +22,7 @@ export async function loadBodySources(db: Pool, userName: string, date: string):
       listFitbitWorkouts(db, userName, addDays(date, -7), date),
       listSoreness(db, userName, addDays(date, -14), date),
       listIllnessDays(db, userName, addDays(date, -60), date),
+      listAilments(db, userName, addDays(date, -60), date),
       listJournalEntries(db, userName, addDays(date, -7), date),
       listHabits(db, userName),
       listHabitLogs(db, userName, addDays(date, -10), date),
@@ -37,6 +39,7 @@ export async function loadBodySources(db: Pool, userName: string, date: string):
     fitbit,
     soreness,
     illness,
+    ailments,
     journal,
     habits,
     habitLogs,
@@ -56,12 +59,9 @@ export async function getBodyState(
   return buildBodyState(await loadBodySources(db, userName, date), date, { trigger });
 }
 
-// Sick dates in a range, the way the body state counts them: logged sick
-// days plus journal entries tagged sick. Sleep need rises on these.
+// Sick dates in a range, the way the body state counts them: every day an
+// illness covered. Sleep need rises on these.
 export async function listSickDates(db: Pool, userName: string, startDate: string, endDate: string): Promise<Set<string>> {
-  const [logged, journal] = await Promise.all([
-    listIllnessDays(db, userName, startDate, endDate),
-    listJournalEntries(db, userName, startDate, endDate)
-  ]);
-  return new Set([...logged, ...journalSickDays(journal, logged)].filter((day) => day.severity > 0).map((day) => day.date));
+  const ailments = await listAilments(db, userName, startDate, endDate);
+  return new Set([...illnessDates(ailments, endDate)].filter((day) => day >= startDate));
 }

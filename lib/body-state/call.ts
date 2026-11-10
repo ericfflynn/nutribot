@@ -12,7 +12,8 @@ import { describeMemories, listMemories } from "../memories";
 import { appendAssistantMessage, currentConversation } from "../chat";
 import { INTENSITIES, TRACKED_MUSCLES, muscleCapsOn, type Intensity, type TrackedMuscle } from "../workouts";
 import { callOf, morningBrief } from "./brief";
-import { buildBodyState } from "./build";
+import { ailmentLimitsOf, buildBodyState } from "./build";
+import { limitsLine, severityLabel } from "../ailments-core";
 import { loadBodySources } from "./load";
 import { saveBodyState } from "./store";
 import type { BodySources, BodyState } from "./types";
@@ -76,13 +77,29 @@ export function guardrailsOf(state: BodyState, sources: Pick<BodySources, "sessi
     max = lower(max, "medium");
     because.push(`Readiness says easy: ${readiness.reasons.join(", ")}.`);
   }
+  // Open injuries and pain (docs/ailments.md): each limits its muscles.
+  const open = (state.physical.ailments?.open ?? []).filter((item) => item.phase === "active" && item.kind !== "illness");
+  const limits = ailmentLimitsOf(open);
+  for (const item of open) {
+    const line = limitsLine(item.limits);
+    if (line) because.push(`${item.name} (${severityLabel(item.kind, item.severity).toLowerCase()}, day ${item.day}): ${line.toLowerCase()}.`);
+  }
+  if (limits.noHard) {
+    max = lower(max, "medium");
+    because.push(`${limits.noHard} is bad: nothing hard anywhere.`);
+  }
+  if (limits.easyCardio) because.push(`${limits.easyCardio}: easy cardio only (walk, bike), nothing pounding.`);
   if (rest) kinds = kinds.filter((kind) => kind !== "strength" && kind !== "cardio");
   const caps = muscleCapsOn(sources.sessions, state.meta.date);
   const outBy = new Map(training.muscles.map((item) => [item.muscle, item.out]));
   const muscles = TRACKED_MUSCLES.map((muscle) => {
+    const limit = limits.muscles.get(muscle);
     const out = outBy.get(muscle) ?? null;
-    if (out) return { muscle, max: null, because: out };
-    return { muscle, max: lower(max, caps.get(muscle) ?? "hard"), because: null };
+    if (limit && limit.max == null) return { muscle, max: null, because: limit.because };
+    // Light only: out in Next up (no day is picked for it), light in the call.
+    if (out && !(limit && out === limit.because)) return { muscle, max: null, because: out };
+    const most = lower(max, caps.get(muscle) ?? "hard");
+    return { muscle, max: limit?.max ? lower(most, limit.max) : most, because: limit?.because ?? null };
   });
   return { rest, maxIntensity: max, allowedKinds: kinds, muscles, because };
 }
@@ -100,10 +117,21 @@ export function rulesCall(state: BodyState, madeAt: string): DailyCall {
     headline,
     note: [brief.text, pick.note].filter(Boolean).join(" "),
     reasons: state.physical.training.readiness?.reasons ?? [],
-    ask: null,
+    ask: ailmentAsk(state),
     source: "rules",
     madeAt
   };
+}
+
+// The morning's follow-up on open ailments not reported today: "How's the
+// right shoulder today?" Every morning until it's over (the owner, Nov 10, 2026).
+export function ailmentAsk(state: BodyState): string | null {
+  const names = (state.physical.ailments?.open ?? [])
+    .filter((item) => item.phase === "active" && item.reportedOn !== state.meta.date)
+    .map((item) => item.name.toLowerCase());
+  if (!names.length) return null;
+  const list = names.length > 1 ? `${names.slice(0, -1).join(", ")} and the ${names.at(-1)}` : names[0];
+  return `How's the ${list} today?`;
 }
 
 // What breaks a guardrail, or null when the call fits.
@@ -144,10 +172,11 @@ How to decide:
 - Their body first: illness, readiness and recovery, sleep, what's sore. Then what's due (training.due, days since each day type) and the week's split against its targets. Then their life and goals from the journal and memories.
 - A rest or easy day is a good call when the body needs it; say what kind of movement still helps (a walk, mobility).
 - Strength muscles take an intensity each, never above their guardrail.
+- Open ailments (physical.ailments.open: illness, injury, pain) are already in the guardrails. Plan around them (a bad shoulder rests the upper body: pick legs, core or cardio) and name them in the note. Light-only muscles can take light rehab work.
 
 ${CALL_STYLE}
 
-The note is 2-4 sentences: what you see, what to do today, and one thing that helps (sleep, food, water, recovery). ask is one question you want answered this morning, about how they feel or anything that changes today; null if nothing.
+The note is 2-4 sentences: what you see, what to do today, and one thing that helps (sleep, food, water, recovery). ask is one question you want answered this morning, about how they feel or anything that changes today; null if nothing. When an ailment is open and not reported today, ask about it by name ("How's the shoulder this morning?"), in the same one question.
 
 Call submit_call once with the call. If it comes back with an error, fix that and call it again.`;
 }

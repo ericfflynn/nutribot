@@ -10,7 +10,7 @@ import { getPool } from "@/lib/supabase";
 import { listSoreness } from "@/lib/body-log";
 import { getBodyState } from "@/lib/body-state/load";
 import { getDailyCall, workLine } from "@/lib/body-state/call";
-import { illnessStateOf } from "@/lib/body-state/build";
+import { ailmentLimitsOf, illnessStateOf } from "@/lib/body-state/build";
 import { isPossibleDuplicate, type WorkoutRecord } from "@/lib/health/dedupe-rules";
 import {
   ACTIVITY_LABELS,
@@ -186,7 +186,16 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
   // Readiness (recovery, drinks, strain run, food) is today's; tomorrow is
   // planned again in the morning with last night's data.
   const readiness = nextDate === today ? (body.physical.training.readiness ?? null) : null;
-  const next = suggestNext(sessions, nextDate, soreness, undefined, illnessStateOf(body.physical.illness), readiness);
+  // Open injuries and pain carry into tomorrow too: they last until they're over.
+  const next = suggestNext(
+    sessions,
+    nextDate,
+    soreness,
+    undefined,
+    illnessStateOf(body.physical.illness),
+    readiness,
+    ailmentLimitsOf(body.physical.ailments?.open ?? [])
+  );
   // Today's plan is Claude's call (made each morning inside the same limits);
   // tomorrow, or before the call is made, it's the rules.
   const call = nextDate === today ? todayCall : null;
@@ -388,6 +397,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
           <span className="training-missing-label">Next up · {next.date === today ? "today" : "tomorrow"}</span>
           {!call && next.illness ? <p className="training-illness">{next.illness.note}</p> : null}
           {!call && next.readiness ? <p className="training-illness">{next.readiness.note}</p> : null}
+          {next.ailments ? <p className="training-illness">{next.ailments.note}</p> : null}
           <div className="training-chips-row">
             <span>Fresh</span>
             <div className="training-chips">

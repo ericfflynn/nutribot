@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildBodyState, journalSickDays, readinessOf, worstOf } from "@/lib/body-state/build";
+import { buildBodyState, readinessOf, worstOf } from "@/lib/body-state/build";
+import { guardrailsOf, rulesCall } from "@/lib/body-state/call";
+import type { Ailment } from "@/lib/ailments-core";
 import { sleepConsistency, sleepDebt, sleepNeed } from "@/lib/health/scores";
 import type { BodySources } from "@/lib/body-state/types";
 import type { HealthDay } from "@/lib/health/queries";
@@ -55,6 +57,7 @@ function sources(overrides: Partial<BodySources> = {}): BodySources {
     fitbit: [],
     soreness: [],
     illness: [],
+    ailments: [],
     journal: [],
     habits: [],
     habitLogs: [],
@@ -125,16 +128,82 @@ test("drinks last night explain a raised resting HR; work stress doesn't", () =>
   assert.equal(stressed.lifestyle.career.status, "watch");
 });
 
-test("a journal entry tagged sick is a sick day that carries, and rests training", () => {
-  const journal = [entry(shift(TODAY, -2), ["sick", "headache"])];
-  assert.deepEqual(journalSickDays(journal, []).map((day) => [day.severity, day.symptoms]), [[2, ["headache"]]]);
-  const state = buildBodyState(sources({ journal, sessions: [session(shift(TODAY, -6), ["Legs"], 8)] }), TODAY);
+const ailment = (overrides: Partial<Ailment> & Pick<Ailment, "days">): Ailment => ({
+  id: "a1",
+  kind: "illness",
+  name: "Head cold",
+  bodyParts: [],
+  muscles: [],
+  startedOn: overrides.days[0].date,
+  endedOn: null,
+  cause: null,
+  causeRefs: [],
+  note: null,
+  ...overrides
+});
+const day = (date: string, severity: number, symptoms: string[] = []) => ({ id: date, date, severity, symptoms, note: null, journalEntryId: null });
+
+test("an open illness is sick until it's over, however long since the last report, then eases back", () => {
+  const cold = ailment({ days: [day(shift(TODAY, -6), 2, ["congestion"])] });
+  const state = buildBodyState(sources({ ailments: [cold], sessions: [session(shift(TODAY, -6), ["Legs"], 8)] }), TODAY);
   assert.equal(state.physical.illness.phase, "sick");
-  assert.equal(state.physical.illness.told?.source, "journal");
-  assert.equal(state.physical.illness.told?.day, 3);
+  assert.equal(state.physical.illness.told?.source, "ailment");
+  assert.equal(state.physical.illness.told?.day, 7);
+  assert.equal(state.physical.ailments?.status, "low");
   assert.equal(state.physical.training.suggested.name, null);
-  // A logged day for the same date wins over the journal.
-  assert.deepEqual(journalSickDays(journal, [{ id: "x", date: shift(TODAY, -2), severity: 1, symptoms: [], note: null }]), []);
+  assert.equal(rulesCall(state, `${TODAY}T07:00`).ask, "How's the head cold today?");
+
+  const over = { ...cold, days: [...cold.days, day(shift(TODAY, -1), 0)], endedOn: shift(TODAY, -1) };
+  const easing = buildBodyState(sources({ ailments: [over] }), TODAY);
+  assert.equal(easing.physical.illness.phase, "recovering");
+  assert.equal(easing.physical.ailments?.open[0].phase, "easing");
+  assert.equal(buildBodyState(sources({ ailments: [over] }), shift(TODAY, 1)).physical.illness.phase, "well");
+});
+
+test("a sore shoulder rests the upper body, and a bad one all of it", () => {
+  const shoulder = (severity: number) =>
+    ailment({
+      kind: "pain",
+      name: "Right shoulder",
+      bodyParts: ["right shoulder"],
+      muscles: ["Chest", "Front Delts", "Side Delts", "Rear Delts", "Triceps", "Lats", "Upper Back", "Traps"],
+      days: [day(shift(TODAY, -1), severity)]
+    });
+  const sessions = [session(shift(TODAY, -8), ["Chest", "Back", "Shoulders", "Arms", "Legs"], 7)];
+  const hurts = buildBodyState(sources({ ailments: [shoulder(2)], sessions }), TODAY);
+  assert.equal(hurts.physical.illness.phase, "well");
+  assert.equal(hurts.physical.ailments?.status, "watch");
+  assert.match(hurts.physical.ailments!.headline, /Right shoulder · day 2, hurts/);
+  assert.equal(hurts.physical.training.suggested.name, "Leg day");
+  const out = new Map(hurts.physical.training.muscles.map((item) => [item.muscle, item.out]));
+  assert.equal(out.get("Rear Delts"), "right shoulder");
+  assert.equal(out.get("Biceps"), null);
+  const guard = guardrailsOf(hurts, { sessions });
+  const cap = new Map(guard.muscles.map((item) => [item.muscle, item.max]));
+  assert.equal(cap.get("Chest"), null);
+  assert.equal(cap.get("Biceps"), "hard");
+  assert.equal(rulesCall(hurts, `${TODAY}T07:00`).ask, "How's the right shoulder today?");
+
+  const mild = guardrailsOf(buildBodyState(sources({ ailments: [shoulder(1)], sessions }), TODAY), { sessions });
+  assert.equal(mild.muscles.find((item) => item.muscle === "Chest")?.max, "light");
+
+  const bad = buildBodyState(sources({ ailments: [shoulder(3)], sessions }), TODAY);
+  const badGuard = guardrailsOf(bad, { sessions });
+  assert.equal(bad.physical.ailments?.status, "low");
+  assert.equal(badGuard.muscles.find((item) => item.muscle === "Biceps")?.max, null);
+  assert.equal(badGuard.muscles.find((item) => item.muscle === "Forearms")?.max, null);
+  assert.equal(badGuard.muscles.find((item) => item.muscle === "Quads")?.max, "medium");
+  assert.equal(badGuard.maxIntensity, "medium");
+  assert.match(bad.physical.ailments!.headline, /Upper body out, nothing hard/);
+});
+
+test("an illness and an injury can be open together", () => {
+  const cold = ailment({ id: "c", days: [day(shift(TODAY, -1), 1)] });
+  const wrist = ailment({ id: "w", kind: "injury", name: "Wrist", bodyParts: ["wrist"], muscles: ["Forearms"], days: [day(shift(TODAY, -3), 2)] });
+  const state = buildBodyState(sources({ ailments: [cold, wrist] }), TODAY);
+  assert.equal(state.physical.ailments?.open.length, 2);
+  assert.equal(state.physical.illness.phase, "sick");
+  assert.equal(rulesCall(state, `${TODAY}T07:00`).ask, "How's the wrist and the head cold today?");
 });
 
 test("training watches whole day types, not single muscles", () => {

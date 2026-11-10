@@ -2,6 +2,13 @@
 
 Product and design decisions, newest first. One entry per decision: what was decided, why, and what it replaced or ruled out. Add an entry whenever the owner settles something that future work should follow; link the doc that holds the detail. Data shapes live in their specs ([body-state.md](body-state.md) keeps the body state's schema versions); this log says why they are what they are.
 
+## 2026-11-10
+
+### Ailments: illness, injury and pain last until they're over
+- **Decided:** illness, injury and pain are ailments, records that last and end, several open at once, shown together under Today's scores ([ailments.md](ailments.md)). They're reported on the journal card, never logged separately. Nothing expires: an ailment stays open until the owner says it's gone, and each morning's call asks about every open one not reported that day. Injuries limit training by body part: mild keeps its muscles light, hurts takes them out, bad rests its whole region (a bad shoulder is the whole upper body) and nothing hard. The cause is a guess at first, linked to the workouts it may have come from, so causes and effects can be measured later.
+- **Why:** shoulder pain on November 10 reached nothing: the plan still allowed shoulders. Illness was one severity per day and couldn't hold a cold and an injury at once. Pain fades without being mentioned, but guessing when it's over is worse than asking.
+- **Instead of:** `illness_days` and `draft_illness`; injuries expiring after a few days without a report; journal tags as the record. The journal tag rework is on hold until ailments settle.
+
 ## 2026-11-06
 
 ### Claude makes the day's call each morning

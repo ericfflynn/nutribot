@@ -2,6 +2,7 @@
 // brief and the month's "What happened" list. Plain rules for now; Claude's
 // daily call replaces the brief's wording later (docs/body-state.md, The call).
 import { addDays, weekdayOf } from "../dates";
+import { limitsLine } from "../ailments-core";
 import type { BodyState } from "./types";
 
 const WEEKDAY = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -46,6 +47,12 @@ export function morningBrief(state: BodyState): Brief {
     parts.push("You're over being sick, so ease back in.");
   } else if (recovery.score != null) {
     parts.push(`Recovery is ${recovery.headline}.`);
+  }
+  // Open injuries and pain say what they rest.
+  for (const item of state.physical.ailments?.open ?? []) {
+    if (item.kind === "illness" || item.phase !== "active") continue;
+    const line = limitsLine(item.limits);
+    parts.push(`${item.name}, day ${item.day}${line ? `: ${line.toLowerCase()}` : ""}.`);
   }
   const call = callOf(state);
   const question =

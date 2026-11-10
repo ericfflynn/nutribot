@@ -2581,6 +2581,21 @@ button.fab {
   font-weight: 600;
 }
 
+.draft-ailments {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+}
+
+.draft-ailments small {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .draft-watch {
   display: flex;
   align-items: baseline;
@@ -4768,6 +4783,26 @@ details[open] .journal-preview {
 
 .sick-line .status-dot {
   flex: none;
+}
+
+.body-lines {
+  display: grid;
+  gap: 0;
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+}
+
+.body-lines .sick-line {
+  padding-top: 8px;
+  border-top: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.body-lines .sick-line small {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 /* Sleep's details: last night by stage */

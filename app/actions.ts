@@ -11,6 +11,8 @@ import { parseGoals } from "@/lib/goals";
 import { parseMacroObject } from "@/lib/macros";
 import { syncRecentHealth } from "@/lib/health/recent-sync";
 import type { Draft } from "@/lib/brain";
+import type { JournalDraft } from "@/lib/brain-checkin";
+import type { PoolClient } from "pg";
 import { newConversation, withDraft } from "@/lib/chat";
 import {
   HABIT_DIRECTIONS,
@@ -27,7 +29,7 @@ import {
 import { deleteJournalEntry, listJournalTags, overwriteJournalEntry, saveJournalEntry, updateJournalEntry } from "@/lib/journal";
 import { normalizeTags } from "@/lib/journal-tags";
 import { saveFeedback } from "@/lib/feedback";
-import { saveIllnessDays } from "@/lib/illness";
+import { saveAilmentDraft, saveAilmentReports, saveFeelingFine } from "@/lib/ailments";
 import {
   deletePushSubscription,
   deleteReminder,
@@ -291,6 +293,8 @@ function draftDate(draft: Draft): string | null {
       return draft.edits && draft.edits.date < draft.date ? draft.edits.date : draft.date;
     case "illness":
       return draft.start_date;
+    case "ailment":
+      return [draft.ailment.started_on, ...draft.days.map((day) => day.date)].sort()[0];
     case "workout":
     case "habits":
     case "ignore":
@@ -300,6 +304,15 @@ function draftDate(draft: Draft): string | null {
     default:
       return todayLocalDate();
   }
+}
+
+// A journal card's ailment lines and its "fine today" answer.
+async function saveJournalExtras(client: PoolClient, userName: string, draft: JournalDraft, entryId: string) {
+  if (draft.ailments?.length) {
+    await saveAilmentReports(client, userName, draft.date, entryId, draft.ailments);
+    revalidatePath("/training");
+  }
+  if (draft.fine_today) await saveFeelingFine(client, userName, draft.date);
 }
 
 export type DraftActionResult = { ok: true; draft: Draft } | { ok: false; error: string };
@@ -350,9 +363,11 @@ export async function saveDraftAction(
           throw new Error("That journal entry no longer exists.");
         }
         savedId = stored.edits.id;
+        await saveJournalExtras(client, user.name, stored, savedId);
         saved = { ...stored, saved_id: savedId };
       } else if (stored.type === "journal") {
         savedId = await saveJournalEntry(client, user.name, stored);
+        await saveJournalExtras(client, user.name, stored, savedId);
         saved = { ...stored, saved_id: savedId };
       } else if (stored.type === "habits") {
         // A correction removes the logs it replaces first.
@@ -362,7 +377,9 @@ export async function saveDraftAction(
         savedId = ids.join(",") || "none";
         saved = { ...stored, saved_id: savedId };
       } else if (stored.type === "illness") {
-        savedId = await saveIllnessDays(client, user.name, stored);
+        throw new Error("Sick days are ailments now: tell the chat again and save the new card.");
+      } else if (stored.type === "ailment") {
+        savedId = await saveAilmentDraft(client, user.name, stored);
         saved = { ...stored, saved_id: savedId };
         revalidatePath("/training");
       } else if (stored.type === "feedback") {

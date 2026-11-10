@@ -36,6 +36,7 @@ import {
   type Rating
 } from "./journal";
 import { TAG_CATEGORIES, normalizeTags } from "./journal-tags";
+import { reportShape, resolveReports, type AilmentReport } from "./ailments";
 
 // A saved entry a journal draft rewrites (draft_journal with edits).
 export type JournalEditTarget = { id: string; date: string; kind: JournalKind };
@@ -48,6 +49,11 @@ export type JournalDraft = JournalInput & {
   // Offered in conversation, not asked for: the chat shows a small "Save to
   // journal" button instead of the full card.
   offer?: boolean;
+  // Ailment lines (docs/ailments.md): a day of each illness, injury or pain
+  // the entry mentions, set when it's saved.
+  ailments?: AilmentReport[];
+  // "Fine" on a day the watch flagged: a false alarm.
+  fine_today?: boolean;
   saved_id: string | null;
   discarded?: boolean;
 };
@@ -86,6 +92,7 @@ export const CHECKIN_PROMPT = `## Journal
 - Mood is the main rating: ${MOOD_LABELS.map((label, index) => `${index + 1} ${label}`).join(", ")}. It's how they feel emotionally.
 - Stress is optional and separate: ${STRESS_LABELS.map((label, index) => `${index + 1} ${label}`).join(", ")}. It's pressure or strain, not mood. Set it only when they talk about pressure, worry or calm; never work it out from mood, and never set mood from stress. A great mood can come with high stress.
 - energy (1 drained, 5 energized) and soreness (1 none, 5 very sore) are optional too. Every rating the text doesn't support is null, never a guess.
+- Pain, injury or illness the entry mentions goes in ailments (see Ailments), not in tags.
 - tags: one to four lowercase tags for what came up. Prefer these, by category: ${TAG_CATEGORIES.map((category) => `${category.label}: ${category.tags.join(", ")}`).join("; ")}. Add a custom tag only for something specific that none of these cover ("sore legs"), and reuse the owner's earlier tags (list_journal) over new wording.
 - kind is morning before noon, evening after 5 pm, other in between, except that an answer to a check-in takes that check-in's kind whatever the time: a message starting "Morning check-in:" (from Today's card) is morning, "Evening check-in:" is evening. An entry written before 4 am about the night before belongs to the previous date.
 - A day can have several entries of the same kind. New writing about their day, even a follow-up to an earlier entry, is a new entry: call draft_journal without edits.
@@ -176,7 +183,9 @@ export function checkinTools(context: {
       offer: z
         .boolean()
         .optional()
-        .describe("True when they shared this in conversation without asking to journal it: shown as a small Save to journal button.")
+        .describe("True when they shared this in conversation without asking to journal it: shown as a small Save to journal button. Never with ailments."),
+      ailments: z.array(reportShape).max(4).optional().describe("One line per illness, injury or pain the entry mentions (see Ailments)."),
+      fine_today: z.boolean().optional().describe("True when they say they feel fine on a day the watch flagged possible illness.")
     },
     async (args) => {
       const target = resolveDraftId(args.replaces);
@@ -194,6 +203,8 @@ export function checkinTools(context: {
       if ("error" in day) return errorText(day.error);
       const ratings = { mood: args.mood, energy: args.energy, stress: args.stress, soreness: args.soreness };
       const known = (await listJournalTags(db, userName, day.date)).map((row) => row.tag);
+      const resolved = args.ailments?.length ? await resolveReports(db, userName, day.date, args.ailments) : { reports: [] };
+      if ("error" in resolved) return errorText(resolved.error);
       putDraft({
         type: "journal",
         id: target.id,
@@ -203,13 +214,16 @@ export function checkinTools(context: {
         ratings,
         tags: normalizeTags(args.tags, known),
         edits,
-        ...(args.offer && !edits ? { offer: true } : {}),
+        ...(args.offer && !edits && !resolved.reports.length ? { offer: true } : {}),
+        ...(resolved.reports.length ? { ailments: resolved.reports } : {}),
+        ...(args.fine_today ? { fine_today: true } : {}),
         saved_id: null
       });
       return text({
         draft_id: target.id,
         date: day.date,
         ratings,
+        ...(resolved.reports.length ? { ailments: resolved.reports.map((report) => `${report.ailment_id ? "" : "new: "}${report.name}, day ${report.day}, severity ${report.severity}`) } : {}),
         ...(edits ? { rewrites: `saved ${edits.kind} entry ${edits.id} (${edits.date})` } : {})
       });
     }
