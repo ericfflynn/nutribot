@@ -169,7 +169,7 @@ function describeWorkout(w: FitbitWorkout) {
 function describeSession(s: WorkoutSession) {
   const rpe = s.rpe != null ? `, RPE ${s.rpe}` : "";
   const groups = s.muscleGroups.length ? ` [${describeMuscles(s.muscleGroups, s.muscleIntensity).join("; ")}]` : "";
-  return `logged as "${s.name}" (${s.workoutType})${groups}${rpe}`;
+  return `logged as "${s.name}" (${s.workoutType})${groups}${rpe} (session id ${s.id})`;
 }
 
 const clockFormat = new Intl.DateTimeFormat("en-US", {

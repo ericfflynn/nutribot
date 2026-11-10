@@ -58,6 +58,8 @@ export type JournalDraft = JournalInput & {
   discarded?: boolean;
 };
 
+const AILMENT_TAGS = new Set(["sick", "pain", "injury", "sore", "headache", "health", "doctor"]);
+
 export type HabitLogDraft = HabitLogInput & Pick<Habit, "name" | "measure" | "unit">;
 
 // One card for a day's habit logs, zeros included. Saving adds them to the
@@ -212,7 +214,8 @@ export function checkinTools(context: {
         kind: args.kind,
         body: args.body.trim(),
         ratings,
-        tags: normalizeTags(args.tags, known),
+        // Ailment lines carry pain and illness; tags don't repeat them.
+        tags: normalizeTags(args.tags, known).filter((tag) => !resolved.reports.length || !AILMENT_TAGS.has(tag)),
         edits,
         ...(args.offer && !edits && !resolved.reports.length ? { offer: true } : {}),
         ...(resolved.reports.length ? { ailments: resolved.reports } : {}),

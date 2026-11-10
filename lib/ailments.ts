@@ -206,7 +206,7 @@ export const AILMENT_PROMPT = `## Ailments: illness, injury, pain
 - Severity 0-3. Illness: ${SEVERITY_GUIDES.illness.join("; ")}. Injury or pain: ${SEVERITY_GUIDES.pain.join("; ")}. Judge it from their words; ask once only if you truly can't tell.
 - Reports go on the journal card: draft_journal's ailments, one line per ailment mentioned, for the entry's date. A message about pain, an injury or feeling sick is a report even mid-conversation: make a full journal card (not an offer), since it changes the plan.
 - Call list_ailments first whenever they mention how their body feels (pain, sick, better), so you know what's open. Same or new: an open cold plus a sore throat is the same cold; a shoulder that ended weeks ago is new; the same body part still open is the same. Ask "same as the shoulder from last week, or something new?" only when you truly can't tell.
-- A new one needs kind, a short plain name ("Right shoulder", "Head cold", "Canker sore"), body_parts (from: ${BODY_PART_NAMES.join(", ")}, or a muscle such as "rear delts"; with left or right when they say: "right shoulder"; empty for most illnesses) and cause: their words or guess, or null. Link the workouts it likely came from (cause_workout_ids from list_workouts) when they point at them.
+- A new one needs kind, a short plain name ("Right shoulder", "Head cold", "Canker sore"), body_parts (from: ${BODY_PART_NAMES.join(", ")}, or a muscle such as "rear delts"; pain at or near a joint is the joint even when they name a muscle by it ("the back of my rear delt" is the shoulder), a muscle only for a clear strain in its belly; with left or right when they say: "right shoulder"; empty for most illnesses) and cause: their words or guess, or null. Link the workouts it likely came from (cause_workout_ids: the session ids list_workouts shows) when they point at them.
 - What injuries do to training: each body part affects the muscles whose work loads it (a shoulder: chest, delts, triceps, lats, upper back and traps). Below bad, the day's call weighs it (severity, how many days, whether it's easing) rather than following a fixed rule; a bad (3) one rests its whole region (a bad shoulder rests the whole upper body) and nothing hard. If they say a movement is fine ("curls don't bother it"), change its muscles with draft_ailment.
 - "It's gone", "over the cold" is severity 0 for today: it ends the ailment. "A bit better" is a lower severity, not 0.
 - Each morning, ask about every open ailment they haven't mentioned today ("How's the shoulder?"), in the same one short question as the check-in. Their answer is a line on the journal card.
@@ -224,7 +224,7 @@ export const newAilmentShape = z.object({
   body_parts: z.array(z.string()).max(4).describe('From the body part list or a muscle, with a side when they say: "right shoulder". Empty for most illnesses.'),
   started_on: localDate.optional().describe("When it started, if before the entry's date."),
   cause: z.string().max(200).nullable().describe("Their words or guess; null when unknown."),
-  cause_workout_ids: z.array(z.string()).max(4).optional().describe("Workouts it likely came from (list_workouts ids).")
+  cause_workout_ids: z.array(z.string()).max(4).optional().describe("Logged workouts it likely came from: the session ids list_workouts shows.")
 });
 
 export const reportShape = z.object({
@@ -248,7 +248,7 @@ function checkParts(parts: readonly string[]): { parts: string[] } | { error: st
 
 async function causeRefsOf(db: Queryable, userName: string, ids: readonly string[] = []): Promise<CauseRef[] | { error: string }> {
   const valid = ids.filter((id) => z.string().uuid().safeParse(id).success);
-  if (valid.length < ids.length) return { error: "cause_workout_ids must be workout ids from list_workouts." };
+  if (valid.length < ids.length) return { error: "cause_workout_ids must be session ids from list_workouts (\"session id ...\"), not watch workout ids." };
   if (!valid.length) return [];
   const { rows } = await db.query<{ id: string; name: string; date: string }>(
     `select id::text, name, entry_date::text as date from public.workout_sessions where user_name = $1 and id = any($2::uuid[]) order by entry_date`,

@@ -43,7 +43,7 @@ Open until the owner says it's over (a 0 day) or an end date is set (the owner, 
 
 ## What it does to training
 
-Each body part limits the muscles whose work loads it (`BODY_PARTS`):
+Each body part affects the muscles whose work loads it (`BODY_PARTS`):
 
 | Body part | Muscles | Region |
 | --- | --- | --- |
