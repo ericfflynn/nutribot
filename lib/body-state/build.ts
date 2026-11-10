@@ -8,7 +8,7 @@ import type { HealthDay, HealthWorkout } from "../health/queries";
 import { SLEEP_NEED_MINUTES, dayStrain, recoveryScore, sleepScoresFor, type SleepScore } from "../health/scores";
 import { formatClockTime, formatHabitAmount, habitOutcome, summarizeHabitDay, trackedOn, type Habit } from "../habits";
 import { SEVERITY_LABELS } from "../illness-days";
-import { ailmentLine, combinedLimits, illnessDates, limitsLine, openAilmentsOn, type CombinedLimits, type OpenAilment } from "../ailments-core";
+import { ailmentLine, illnessDates, limitsLine, musclesLine, openAilmentsOn, type OpenAilment } from "../ailments-core";
 import { ENERGY_LABELS, MOOD_LABELS, type JournalEntry } from "../journal";
 import { TAG_CATEGORIES } from "../journal-tags";
 import { summarizeEntries } from "../supabase";
@@ -457,19 +457,25 @@ function ailmentsArea(c: Context): AilmentsArea {
   return { status: low ? "low" : active.length ? "watch" : "ok", headline: `${ailmentLine(open[0])}${more}`, open, ended7 };
 }
 
-// What open ailments take away from training: each muscle's limit, nothing
-// hard after a bad one, and a line saying why. Next up and the guardrails
-// both read this.
-export function ailmentLimitsOf(open: readonly OpenAilment[]): MuscleLimits & CombinedLimits {
-  const active = open.filter((item) => item.phase === "active");
-  const combined = combinedLimits(active);
-  const notes = active
-    .map((item) => {
-      const line = limitsLine(item.limits);
-      return line ? `${item.name}: ${line.replace(/^./, (letter) => letter.toLowerCase())}.` : null;
-    })
-    .filter(Boolean);
-  return { ...combined, note: notes.join(" ") || null };
+// What the rule-based pick (Next up's default and fallback) steers around
+// for open injuries and pain. The rules can't weigh an ailment, so they stay
+// cautious: no day is picked for the muscles it affects, and a bad one rests
+// its region. Claude's call weighs the same ailments itself; only the bad
+// one's limits are hard (guardrailsOf).
+export function ailmentAvoidOf(open: readonly OpenAilment[]): MuscleLimits {
+  const muscles: MuscleLimits["muscles"] = new Map();
+  let noHard: string | null = null;
+  const notes: string[] = [];
+  for (const item of open) {
+    if (item.phase !== "active" || item.kind === "illness") continue;
+    const tag = item.name.toLowerCase();
+    for (const muscle of item.limits.out) muscles.set(muscle, { max: null, because: `${tag}, resting` });
+    for (const muscle of item.affects) if (!muscles.has(muscle)) muscles.set(muscle, { max: "light", because: tag });
+    if (item.limits.noHard) noHard ??= item.name;
+    const hard = limitsLine(item.limits);
+    notes.push(hard ? `${item.name}: ${hard.toLowerCase()}.` : `${item.name}: skipping ${musclesLine(item.affects)} work.`);
+  }
+  return { muscles, noHard, note: notes.join(" ") || null };
 }
 
 const GROUP_KEYS: Record<string, string> = {
@@ -520,7 +526,7 @@ const NOT_HIT = 99;
 
 function trainingArea(c: Context, illness: IllnessArea, readiness: Readiness): TrainingArea {
   const { sessions, soreness, fitbit } = c.sources;
-  const next = suggestNext(sessions, c.date, soreness, undefined, illnessStateOf(illness), readiness, ailmentLimitsOf(c.open));
+  const next = suggestNext(sessions, c.date, soreness, undefined, illnessStateOf(illness), readiness, ailmentAvoidOf(c.open));
   const outBy = new Map(next.out.map((item) => [item.muscle, item.because ?? SORENESS_LEVELS[sorenessStep(item.level)].toLowerCase()]));
   const muscles: MuscleState[] = TRACKED_MUSCLES.map((muscle) => {
     const week = muscleWeekOf(sessions, soreness, muscle, c.date);

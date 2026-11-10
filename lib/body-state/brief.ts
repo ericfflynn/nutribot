@@ -52,7 +52,7 @@ export function morningBrief(state: BodyState): Brief {
   for (const item of state.physical.ailments?.open ?? []) {
     if (item.kind === "illness" || item.phase !== "active") continue;
     const line = limitsLine(item.limits);
-    parts.push(`${item.name}, day ${item.day}${line ? `: ${line.toLowerCase()}` : ""}.`);
+    parts.push(`${item.name}, day ${item.day}${line ? `: ${line.toLowerCase()}` : ", go easy on it"}.`);
   }
   const call = callOf(state);
   const question =

@@ -10,7 +10,7 @@ import { getPool } from "@/lib/supabase";
 import { listSoreness } from "@/lib/body-log";
 import { getBodyState } from "@/lib/body-state/load";
 import { getDailyCall, workLine } from "@/lib/body-state/call";
-import { ailmentLimitsOf, illnessStateOf } from "@/lib/body-state/build";
+import { ailmentAvoidOf, illnessStateOf } from "@/lib/body-state/build";
 import { isPossibleDuplicate, type WorkoutRecord } from "@/lib/health/dedupe-rules";
 import {
   ACTIVITY_LABELS,
@@ -194,7 +194,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     undefined,
     illnessStateOf(body.physical.illness),
     readiness,
-    ailmentLimitsOf(body.physical.ailments?.open ?? [])
+    ailmentAvoidOf(body.physical.ailments?.open ?? [])
   );
   // Today's plan is Claude's call (made each morning inside the same limits);
   // tomorrow, or before the call is made, it's the rules.

@@ -207,11 +207,11 @@ export const AILMENT_PROMPT = `## Ailments: illness, injury, pain
 - Reports go on the journal card: draft_journal's ailments, one line per ailment mentioned, for the entry's date. A message about pain, an injury or feeling sick is a report even mid-conversation: make a full journal card (not an offer), since it changes the plan.
 - Call list_ailments first whenever they mention how their body feels (pain, sick, better), so you know what's open. Same or new: an open cold plus a sore throat is the same cold; a shoulder that ended weeks ago is new; the same body part still open is the same. Ask "same as the shoulder from last week, or something new?" only when you truly can't tell.
 - A new one needs kind, a short plain name ("Right shoulder", "Head cold", "Canker sore"), body_parts (from: ${BODY_PART_NAMES.join(", ")}, or a muscle such as "rear delts"; with left or right when they say: "right shoulder"; empty for most illnesses) and cause: their words or guess, or null. Link the workouts it likely came from (cause_workout_ids from list_workouts) when they point at them.
-- What injuries do to training (code sets it from body part and severity): mild keeps the part's muscles light; hurts takes them out; bad rests the whole region (a bad shoulder rests the whole upper body) and nothing hard. A shoulder covers chest, delts, triceps, lats, upper back and traps. If they say a movement is fine ("curls don't bother it"), change its muscles with draft_ailment.
+- What injuries do to training: each body part affects the muscles whose work loads it (a shoulder: chest, delts, triceps, lats, upper back and traps). Below bad, the day's call weighs it (severity, how many days, whether it's easing) rather than following a fixed rule; a bad (3) one rests its whole region (a bad shoulder rests the whole upper body) and nothing hard. If they say a movement is fine ("curls don't bother it"), change its muscles with draft_ailment.
 - "It's gone", "over the cold" is severity 0 for today: it ends the ailment. "A bit better" is a lower severity, not 0.
 - Each morning, ask about every open ailment they haven't mentioned today ("How's the shoulder?"), in the same one short question as the check-in. Their answer is a line on the journal card.
 - When the watch flags possible illness and they say they feel fine, set fine_today on the journal card: it records a false alarm and hides the warning. If the watch flags it and nothing is logged, you may mention it once, plainly.
-- draft_ailment changes an ailment itself (name, body parts, the muscles it limits, the cause, start or end date; send its current values for everything that isn't changing) or logs one from the past with its days ("I had a cold Oct 27 to Nov 1"). Not for today's report: that's the journal card.
+- draft_ailment changes an ailment itself (name, body parts, the muscles it affects, the cause, start or end date; send its current values for everything that isn't changing) or logs one from the past with its days ("I had a cold Oct 27 to Nov 1"). Not for today's report: that's the journal card.
 - If a new or worse ailment conflicts with today's call, revise the call (submit_call) and say so in a sentence. Never give medical advice beyond common sense; for something severe or lasting (pain past two weeks, numbness), suggest seeing a doctor once.`;
 
 const localDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("Local date, YYYY-MM-DD.");
@@ -341,7 +341,7 @@ function describeAilment(ailment: Ailment) {
     kind: ailment.kind,
     name: ailment.name,
     body_parts: ailment.bodyParts,
-    limits_muscles: ailment.muscles,
+    affects_muscles: ailment.muscles,
     started_on: ailment.startedOn,
     ended_on: ailment.endedOn,
     cause: ailment.cause,
@@ -367,7 +367,7 @@ export function ailmentTools(context: {
 
   const listTool = tool(
     "list_ailments",
-    "Read ailments (illness, injury, pain): those open today with what they limit, and those over in the range (default the last 60 days), each with its days. Also today's watch illness signal.",
+    "Read ailments (illness, injury, pain): those open today with the muscles they affect, and those over in the range (default the last 60 days), each with its days. Also today's watch illness signal.",
     { start_date: localDate.optional(), end_date: localDate.optional() },
     async (args) => {
       const end = args.end_date ?? today;
@@ -381,7 +381,7 @@ export function ailmentTools(context: {
       const signal = illnessSignal(health, today, illnessDates(ailments, today));
       return text({
         today,
-        open_today: open.map((item) => ({ id: item.id, line: ailmentLine(item), phase: item.phase, reported_on: item.reportedOn })),
+        open_today: open.map((item) => ({ id: item.id, line: ailmentLine(item), phase: item.phase, reported_on: item.reportedOn, affects: item.affects })),
         watch_signal_today: fine.length ? "answered: feeling fine" : signal.level === "none" ? "nothing unusual" : { level: signal.level, reasons: signal.reasons },
         ailments: ailments.filter((item) => item.startedOn <= end && (!item.endedOn || item.endedOn >= start)).map(describeAilment)
       });
@@ -391,13 +391,13 @@ export function ailmentTools(context: {
 
   const draftTool = tool(
     "draft_ailment",
-    "Create or revise a draft that changes an ailment itself (name, body parts, muscles it limits, cause, dates) or logs a past one with its days. Today's report goes on the journal card instead. Saved on Save.",
+    "Create or revise a draft that changes an ailment itself (name, body parts, muscles it affects, cause, dates) or logs a past one with its days. Today's report goes on the journal card instead. Saved on Save.",
     {
       ailment_id: z.string().optional().describe("The ailment to change (list_ailments); leave out to log a new one."),
       kind: z.enum(AILMENT_KINDS),
       name: z.string().min(2).max(40),
       body_parts: z.array(z.string()).max(4),
-      muscles: z.array(muscle).optional().describe("The muscles it limits; leave out to use the body parts' own."),
+      muscles: z.array(muscle).optional().describe("The muscles it affects; leave out to use the body parts' own."),
       started_on: localDate,
       ended_on: localDate.nullable().describe("When it was over; null while open."),
       cause: z.string().max(200).nullable(),

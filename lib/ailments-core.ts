@@ -131,34 +131,32 @@ export type OpenAilment = {
   phase: AilmentPhase;
   reportedOn: string | null; // the latest report's date
   peak: number;
-  limits: AilmentLimits;
+  // The muscles whose work loads it (an injury or pain): Claude weighs these
+  // when it makes the call. Empty for illness.
+  affects: TrackedMuscle[];
+  easyCardio: boolean; // a knee, ankle or foot that hurts: pounding cardio loads it too
+  limits: AilmentLimits; // the hard limits, only from a bad (3) injury
   cause: string | null;
 };
 
-export type AilmentLimits = {
-  out: TrackedMuscle[];
-  light: TrackedMuscle[];
-  noHard: boolean; // nothing hard anywhere
-  easyCardio: boolean; // a knee, ankle or foot: walk or bike, nothing pounding
-};
+// Hard limits: only a bad (3) injury or pain sets them, resting its whole
+// region with nothing hard anywhere (the owner, November 10, 2026). Below 3,
+// Claude weighs the ailment when it makes the call.
+export type AilmentLimits = { out: TrackedMuscle[]; noHard: boolean };
 
-const NO_LIMITS: AilmentLimits = { out: [], light: [], noHard: false, easyCardio: false };
+const NO_LIMITS: AilmentLimits = { out: [], noHard: false };
 
 const daysBetween = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
 
-// What an injury or pain does to training at a severity: mild keeps its
-// muscles light, hurts takes them out, bad rests its whole region and keeps
-// everything off hard. Illness works through the illness phase instead.
 export function limitsOf(ailment: Pick<Ailment, "kind" | "bodyParts" | "muscles">, severity: number): AilmentLimits {
-  if (ailment.kind === "illness" || severity <= 0) return NO_LIMITS;
+  if (ailment.kind === "illness" || severity < 3) return NO_LIMITS;
   const parts = ailment.bodyParts.map(partOf).filter((part): part is string => Boolean(part));
-  const easyCardio = severity >= 2 && parts.some((part) => BODY_PARTS[part]?.cardio);
-  if (severity === 1) return { out: [], light: [...ailment.muscles], noHard: false, easyCardio };
-  if (severity === 2) return { out: [...ailment.muscles], light: [], noHard: false, easyCardio };
   const regions = new Set(parts.map(regionOf).filter((region): region is Region => Boolean(region)));
   const out = new Set<TrackedMuscle>([...ailment.muscles, ...[...regions].flatMap((region) => REGIONS[region])]);
-  return { out: TRACKED_MUSCLES.filter((muscle) => out.has(muscle)), light: [], noHard: true, easyCardio };
+  return { out: TRACKED_MUSCLES.filter((muscle) => out.has(muscle)), noHard: true };
 }
+
+const loadsCardio = (ailment: Pick<Ailment, "bodyParts">) => ailment.bodyParts.some((name) => BODY_PARTS[partOf(name) ?? ""]?.cardio);
 
 // Where an ailment stands on `date`, reading only what was known by then.
 // Open until a 0 report or its end date: nothing expires on its own (the
@@ -185,11 +183,20 @@ export function ailmentOn(ailment: Ailment, date: string): OpenAilment | null {
   };
   if (ended) {
     if (ailment.kind !== "illness" || peak < 2 || addDays(ended, EASE_DAYS) <= date) return null;
-    return { ...base, day: daysBetween(ailment.startedOn, ended), severity: 0, phase: "easing", limits: NO_LIMITS };
+    return { ...base, day: daysBetween(ailment.startedOn, ended), severity: 0, phase: "easing", affects: [], easyCardio: false, limits: NO_LIMITS };
   }
   // No report yet (created ahead of its first day): count it as mild.
   const severity = latest?.severity ?? 1;
-  return { ...base, day: daysBetween(ailment.startedOn, date) + 1, severity, phase: "active", limits: limitsOf(ailment, severity) };
+  const injury = ailment.kind !== "illness";
+  return {
+    ...base,
+    day: daysBetween(ailment.startedOn, date) + 1,
+    severity,
+    phase: "active",
+    affects: injury ? [...ailment.muscles] : [],
+    easyCardio: injury && severity >= 2 && loadsCardio(ailment),
+    limits: limitsOf(ailment, severity)
+  };
 }
 
 // Every ailment open or easing on `date`, worst first.
@@ -213,47 +220,20 @@ export function illnessDates(ailments: readonly Ailment[], date: string): Set<st
   return dates;
 }
 
-// Each muscle's limit across every open ailment (the strictest wins), with
-// the ailment that set it, plus the day-wide limits. What Next up and the
-// guardrails read.
-export type MuscleLimit = { max: Intensity | null; because: string };
-export type CombinedLimits = {
-  muscles: Map<TrackedMuscle, MuscleLimit>;
-  noHard: string | null; // the ailment keeping everything off hard
-  easyCardio: string | null;
-};
-
-export function combinedLimits(open: readonly Pick<OpenAilment, "name" | "limits">[]): CombinedLimits {
-  const muscles = new Map<TrackedMuscle, MuscleLimit>();
-  let noHard: string | null = null;
-  let easyCardio: string | null = null;
-  for (const item of open) {
-    const tag = item.name.toLowerCase();
-    for (const muscle of item.limits.out) muscles.set(muscle, { max: null, because: tag });
-    for (const muscle of item.limits.light) if (!muscles.has(muscle)) muscles.set(muscle, { max: "light", because: `${tag}, light only` });
-    if (item.limits.noHard) noHard ??= item.name;
-    if (item.limits.easyCardio) easyCardio ??= item.name;
+// The muscle names a set covers, short: "upper body", "shoulders, chest".
+export function musclesLine(list: readonly TrackedMuscle[]) {
+  for (const [region, muscles] of Object.entries(REGIONS) as [Region, TrackedMuscle[]][]) {
+    const label = region === "upper" ? "upper body" : region === "lower" ? "legs" : "core";
+    if (muscles.every((muscle) => list.includes(muscle)) && list.every((muscle) => muscles.includes(muscle))) return label;
   }
-  return { muscles, noHard, easyCardio };
+  const groups = Object.entries(MUSCLES).filter(([, members]) => members.length && (members as readonly TrackedMuscle[]).every((muscle) => list.includes(muscle)));
+  const covered = new Set(groups.flatMap(([, members]) => members as readonly string[]));
+  return [...groups.map(([group]) => group.toLowerCase()), ...list.filter((muscle) => !covered.has(muscle))].join(", ");
 }
 
-// "Upper body out", "Chest, Triceps light only": what the limits mean, short.
+// "Upper body out, nothing hard": what the hard limits mean, or null.
 export function limitsLine(limits: AilmentLimits) {
-  const named = (list: TrackedMuscle[]) => {
-    for (const [region, muscles] of Object.entries(REGIONS) as [Region, TrackedMuscle[]][]) {
-      const label = region === "upper" ? "upper body" : region === "lower" ? "legs" : "core";
-      if (muscles.every((muscle) => list.includes(muscle)) && list.every((muscle) => muscles.includes(muscle))) return label;
-    }
-    const groups = Object.entries(MUSCLES).filter(([, members]) => members.length && (members as readonly TrackedMuscle[]).every((muscle) => list.includes(muscle)));
-    const covered = new Set(groups.flatMap(([, members]) => members as readonly string[]));
-    return [...groups.map(([group]) => group.toLowerCase()), ...list.filter((muscle) => !covered.has(muscle))].join(", ");
-  };
-  const parts = [
-    limits.out.length ? `${named(limits.out)} out` : null,
-    limits.light.length ? `${named(limits.light)} light only` : null,
-    limits.noHard ? "nothing hard" : null,
-    limits.easyCardio ? "easy cardio only" : null
-  ].filter(Boolean);
+  const parts = [limits.out.length ? `${musclesLine(limits.out)} out` : null, limits.noHard ? "nothing hard" : null].filter(Boolean);
   const line = parts.join(", ");
   return line ? line.replace(/^./, (letter) => letter.toUpperCase()) : null;
 }

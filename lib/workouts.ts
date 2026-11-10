@@ -577,7 +577,7 @@ export type IllnessState =
 // it off hard and leg day last; rest is rest or active recovery.
 export type Readiness = { level: "normal" | "easy" | "rest"; reasons: string[] };
 
-// What open injuries and pain take away (ailmentLimitsOf in
+// What the rule-based pick steers around for open injuries (ailmentAvoidOf in
 // lib/body-state/build.ts): each limited muscle's most (null is out) and the
 // ailment that set it, nothing hard after a bad one, and a line saying why.
 export type MuscleLimits = {

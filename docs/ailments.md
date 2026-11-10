@@ -1,6 +1,6 @@
 # Ailments
 
-Status: built November 10, 2026 (feedback d9344d23, first half). Illness, injury and pain as records that last and end, several open at once, feeding the body state, the guardrails and the day's call. Code: `lib/ailments-core.ts` (pure rules), `lib/ailments.ts` (database and chat tools). The journal tag rework, the other half of Journal 2.0, is on hold until ailments settle ([Tags, on hold](#tags-on-hold)).
+Status: built November 10, 2026 (feedback d9344d23, first half). Illness, injury and pain as records that last and end, several open at once, feeding the body state and the day's call, which weighs them. Code: `lib/ailments-core.ts` (pure rules), `lib/ailments.ts` (database and chat tools). The journal tag rework, the other half of Journal 2.0, is on hold until ailments settle ([Tags, on hold](#tags-on-hold)).
 
 ## Why
 
@@ -21,7 +21,7 @@ Status: built November 10, 2026 (feedback d9344d23, first half). Illness, injury
 | `kind` | `illness` (cold, flu, stomach bug, canker sore), `injury` (something happened: a tweak, a fall), `pain` (it hurts, cause unclear). |
 | `name` | Short and plain: "Right shoulder", "Head cold". |
 | `body_parts` | From `BODY_PARTS` or a muscle ("rear delts"), with a side when there is one: "right shoulder". Empty for most illnesses. |
-| `muscles` | The tracked muscles it limits. Filled from the body parts; the owner can change it through chat ("curls don't bother it"). |
+| `muscles` | The tracked muscles it affects. Filled from the body parts; the owner can change it through chat ("curls don't bother it"). |
 | `started_on`, `ended_on` | `ended_on` is null while it's open. |
 | `cause`, `cause_refs` | The owner's words or guess, plus the workouts it likely came from, so causes and effects can be measured later. Often unknown at first. |
 | days | `ailment_days`: one per day mentioned, with `severity`, `symptoms`, a short `note` and the journal entry it came from. |
@@ -62,15 +62,14 @@ Each body part limits the muscles whose work loads it (`BODY_PARTS`):
 
 Regions: upper is chest, shoulders, arms, lats, upper back and traps; lower is legs and lower back; core is abs, obliques and lower back.
 
-| Severity (injury or pain) | Effect |
-| --- | --- |
-| 1 Mild | Its muscles light only. No day is picked for them; the call may add light rehab work. |
-| 2 Hurts | Its muscles out. |
-| 3 Bad | Its whole region out (a bad shoulder rests the whole upper body, the owner, November 10, 2026), and nothing hard anywhere. |
+**Claude weighs it; one hard rule** (the owner, November 10, 2026: limits shouldn't be hard-coded, they should be weighed when Claude decides):
 
-Illness works as before, through the illness phase: Sick or Very sick is rest, Mild is light only, easing back is medium at most. Several open at once: the strictest wins per muscle.
+- **Bad (3):** the one hard rule. Its whole region is out (a bad shoulder rests the whole upper body, arms included) and nothing is hard anywhere. Enforced in the guardrails.
+- **Mild or hurts (1-2):** no fixed limit. The guardrails list the ailment with the muscles it affects (`guardrails.ailments`), and the morning call, or the chat revising it, decides how much to spare them from the severity, the day, the trend and what the owner wrote. The one check (`checkCall`): working an affected muscle past light needs a reason that names the ailment, so the judgment is visible and can be evaluated.
+- **The rule-based pick** (Next up's default, its fallback when Claude fails, and tomorrow's preview) can't weigh anything, so it stays cautious: no day is picked for affected muscles, and they show in Out tagged with the ailment ("Lats · right shoulder"). `ailmentAvoidOf` in `lib/body-state/build.ts`.
+- A knee, ankle or foot at 2+ flags `easyCardio` for Claude: nothing pounding.
 
-`ailmentLimitsOf` (`lib/body-state/build.ts`) combines the open ones; `suggestNext` keeps limited muscles out of Next up, tagged with the ailment ("Lats · right shoulder"), and `guardrailsOf` caps each muscle and says why. Limits carry into tomorrow's Next up too.
+Illness works as before, through the illness phase: Sick or Very sick is rest, Mild is light only, easing back is medium at most.
 
 ## In the body state
 
@@ -78,10 +77,10 @@ Illness works as before, through the illness phase: Sick or Very sick is rest, M
 
 | Signal | Meaning |
 | --- | --- |
-| `open[]` | Each open or easing ailment: `id`, `kind`, `name`, `bodyParts`, `since`, `day`, `severity`, `symptoms`, `phase` (`active`, `easing`), `reportedOn`, `peak`, `limits` (`out`, `light`, `noHard`, `easyCardio`), `cause`. Worst first. |
+| `open[]` | Each open or easing ailment: `id`, `kind`, `name`, `bodyParts`, `since`, `day`, `severity`, `symptoms`, `phase` (`active`, `easing`), `reportedOn`, `peak`, `affects` (muscles), `easyCardio`, `limits` (the hard ones, from a bad one: `out`, `noHard`), `cause`. Worst first. |
 | `ended7[]` | Over in the last 7 days. |
 
-Status: **low** with an illness at Sick or worse, or anything at 3; **watch** with anything open; **ok** while only easing; **good** with nothing open. Headline: the worst one's line, "Right shoulder · day 2, hurts · Upper body out".
+Status: **low** with an illness at Sick or worse, or anything at 3; **watch** with anything open; **ok** while only easing; **good** with nothing open. Headline: the worst one's line, "Right shoulder · day 2, hurts", with "Upper body out, nothing hard" when it's bad.
 
 `physical.illness` keeps the watch signal and its phases; `told` comes from the open illness (`source: "ailment"`, with its `name`), and sick days for the vitals' baselines are every day an illness covered. The old stopgap that read a `sick` journal tag as a sick day is gone.
 
@@ -97,7 +96,7 @@ Status: **low** with an illness at Sick or worse, or anything at 3; **watch** wi
 
 - **Today:** under the scores, early signs from the watch, then one line per open ailment ("Right shoulder · day 2, hurts · Upper body out"), each opening the chat with its name; one that ended today shows as over.
 - **Timeline:** a journal row lists its ailment lines after the ratings.
-- **Training:** Next up's out muscles carry the ailment's name, with a line saying what it rests.
+- **Training:** Next up shows the day's call; the rule-based preview's out muscles carry the ailment's name, with a line saying what it skips.
 
 ## Storage
 

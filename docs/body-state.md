@@ -421,7 +421,7 @@ type Guardrails = {
 | Muscle sore (any level) | That muscle is out. |
 | Training rules (`DEFAULT_RULES`) | Muscles out after forearms or biceps (back), after triceps (chest); medium after a heavy upper-body day; at most 2 hard days in a row. |
 | One hard day per muscle a week | That muscle at most medium. |
-| Injury or pain (since November 10, 2026, [ailments.md](ailments.md#what-it-does-to-training)) | Mild: its muscles light; hurts: out; bad: its whole region out and nothing hard. |
+| Injury or pain (since November 10, 2026, [ailments.md](ailments.md#what-it-does-to-training)) | Bad (3): its whole region out and nothing hard. Below that, no limit: listed in `guardrails.ailments` for Claude to weigh; working an affected muscle past light needs a reason naming it. |
 
 Rules only take things away. The strictest wins.
 

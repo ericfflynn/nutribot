@@ -12,8 +12,8 @@ import { describeMemories, listMemories } from "../memories";
 import { appendAssistantMessage, currentConversation } from "../chat";
 import { INTENSITIES, TRACKED_MUSCLES, muscleCapsOn, type Intensity, type TrackedMuscle } from "../workouts";
 import { callOf, morningBrief } from "./brief";
-import { ailmentLimitsOf, buildBodyState } from "./build";
-import { limitsLine, severityLabel } from "../ailments-core";
+import { buildBodyState } from "./build";
+import { limitsLine, partOf, severityLabel } from "../ailments-core";
 import { loadBodySources } from "./load";
 import { saveBodyState } from "./store";
 import type { BodySources, BodyState } from "./types";
@@ -28,6 +28,10 @@ export type Guardrails = {
   // Each muscle's most today; null is out.
   muscles: { muscle: TrackedMuscle; max: Intensity | null; because: string | null }[];
   because: string[]; // what set the limits, in words
+  // Open injuries and pain below bad, for Claude to weigh (added Nov 10,
+  // 2026): the muscles each affects, and the words a reason must use to
+  // work them past light.
+  ailments?: { name: string; severity: string; day: number; affects: TrackedMuscle[]; easyCardio: boolean; terms: string[] }[];
 };
 
 export type DailyCall = {
@@ -77,31 +81,38 @@ export function guardrailsOf(state: BodyState, sources: Pick<BodySources, "sessi
     max = lower(max, "medium");
     because.push(`Readiness says easy: ${readiness.reasons.join(", ")}.`);
   }
-  // Open injuries and pain (docs/ailments.md): each limits its muscles.
+  // Open injuries and pain (docs/ailments.md). Only a bad (3) one sets hard
+  // limits: its region out, nothing hard. The rest Claude weighs: they're
+  // listed in `ailments`, and working their muscles past light needs a reason
+  // that names them (checkCall).
   const open = (state.physical.ailments?.open ?? []).filter((item) => item.phase === "active" && item.kind !== "illness");
-  const limits = ailmentLimitsOf(open);
+  const resting = new Map<TrackedMuscle, string>();
   for (const item of open) {
+    for (const muscle of item.limits.out) if (!resting.has(muscle)) resting.set(muscle, `${item.name.toLowerCase()}, resting`);
     const line = limitsLine(item.limits);
-    if (line) because.push(`${item.name} (${severityLabel(item.kind, item.severity).toLowerCase()}, day ${item.day}): ${line.toLowerCase()}.`);
+    if (line) because.push(`${item.name} is bad (day ${item.day}): ${line.toLowerCase()}.`);
+    if (item.limits.noHard) max = lower(max, "medium");
   }
-  if (limits.noHard) {
-    max = lower(max, "medium");
-    because.push(`${limits.noHard} is bad: nothing hard anywhere.`);
-  }
-  if (limits.easyCardio) because.push(`${limits.easyCardio}: easy cardio only (walk, bike), nothing pounding.`);
+  const ailments = open.map((item) => ({
+    name: item.name,
+    severity: severityLabel(item.kind, item.severity),
+    day: item.day,
+    affects: item.affects,
+    easyCardio: item.easyCardio,
+    terms: [item.name.toLowerCase(), ...item.bodyParts.map((part) => partOf(part)?.toLowerCase() ?? part)]
+  }));
+  // Next up's rules skip the muscles an ailment affects; here that's Claude's call.
+  const weighed = new Set(open.map((item) => item.name.toLowerCase()));
   if (rest) kinds = kinds.filter((kind) => kind !== "strength" && kind !== "cardio");
   const caps = muscleCapsOn(sources.sessions, state.meta.date);
   const outBy = new Map(training.muscles.map((item) => [item.muscle, item.out]));
   const muscles = TRACKED_MUSCLES.map((muscle) => {
-    const limit = limits.muscles.get(muscle);
+    if (resting.has(muscle)) return { muscle, max: null, because: resting.get(muscle)! };
     const out = outBy.get(muscle) ?? null;
-    if (limit && limit.max == null) return { muscle, max: null, because: limit.because };
-    // Light only: out in Next up (no day is picked for it), light in the call.
-    if (out && !(limit && out === limit.because)) return { muscle, max: null, because: out };
-    const most = lower(max, caps.get(muscle) ?? "hard");
-    return { muscle, max: limit?.max ? lower(most, limit.max) : most, because: limit?.because ?? null };
+    if (out && !weighed.has(out)) return { muscle, max: null, because: out };
+    return { muscle, max: lower(max, caps.get(muscle) ?? "hard"), because: null };
   });
-  return { rest, maxIntensity: max, allowedKinds: kinds, muscles, because };
+  return { rest, maxIntensity: max, allowedKinds: kinds, muscles, ailments, because };
 }
 
 // The call the rules make: Training's suggestion with illness and readiness.
@@ -135,7 +146,7 @@ export function ailmentAsk(state: BodyState): string | null {
 }
 
 // What breaks a guardrail, or null when the call fits.
-export function checkCall(call: Pick<DailyCall, "kind" | "work" | "accessory">, guardrails: Guardrails): string | null {
+export function checkCall(call: Pick<DailyCall, "kind" | "work" | "accessory"> & Partial<Pick<DailyCall, "reasons" | "note">>, guardrails: Guardrails): string | null {
   if (!guardrails.allowedKinds.includes(call.kind)) return `Kind ${call.kind} isn't allowed today; allowed: ${guardrails.allowedKinds.join(", ")}.`;
   if (call.kind !== "strength" && call.work.length) return "Only a strength call lists muscles to work.";
   if (call.kind === "strength" && !call.work.length) return "A strength call needs muscles to work.";
@@ -147,6 +158,15 @@ export function checkCall(call: Pick<DailyCall, "kind" | "work" | "accessory">, 
   }
   for (const muscle of call.accessory) {
     if (capOf.get(muscle)?.max == null) return `${muscle} is out today, so it can't be an accessory.`;
+  }
+  // Working a muscle an open ailment affects past light is allowed, but the
+  // reasons have to say why (it's the judgment the evals check).
+  const said = [...(call.reasons ?? []), call.note ?? ""].join(" ").toLowerCase();
+  for (const ailment of guardrails.ailments ?? []) {
+    const loaded = call.work.filter((item) => item.intensity !== "light" && ailment.affects.includes(item.muscle)).map((item) => item.muscle);
+    if (loaded.length && !ailment.terms.some((term) => said.includes(term))) {
+      return `${loaded.join(", ")} past light loads the ${ailment.name.toLowerCase()} (${ailment.severity.toLowerCase()}, day ${ailment.day}): go lighter, or say in reasons why it's fine today.`;
+    }
   }
   return null;
 }
@@ -172,7 +192,7 @@ How to decide:
 - Their body first: illness, readiness and recovery, sleep, what's sore. Then what's due (training.due, days since each day type) and the week's split against its targets. Then their life and goals from the journal and memories.
 - A rest or easy day is a good call when the body needs it; say what kind of movement still helps (a walk, mobility).
 - Strength muscles take an intensity each, never above their guardrail.
-- Open ailments (physical.ailments.open: illness, injury, pain) are already in the guardrails. Plan around them (a bad shoulder rests the upper body: pick legs, core or cardio) and name them in the note. Light-only muscles can take light rehab work.
+- Open ailments (physical.ailments.open) are yours to weigh. Illness is already in the guardrails, and so is a bad (3) injury, which rests its whole region. For a mild or hurting injury or pain, guardrails.ailments lists the muscles it affects (the ones whose work loads it); decide how much to spare them from its severity, its day and trend (reportedOn, the days in the journal), what they wrote about it, and what's due. Usually that means skipping them or keeping them light for a few days (light rehab work is fine) and training something else; easyCardio means nothing pounding (a walk or a bike instead of a run). If you work one past light, say why in reasons, naming the ailment. Name open ailments in the note.
 
 ${CALL_STYLE}
 

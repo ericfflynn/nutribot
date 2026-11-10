@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildBodyState, readinessOf, worstOf } from "@/lib/body-state/build";
-import { guardrailsOf, rulesCall } from "@/lib/body-state/call";
+import { checkCall, guardrailsOf, rulesCall } from "@/lib/body-state/call";
 import type { Ailment } from "@/lib/ailments-core";
 import { sleepConsistency, sleepDebt, sleepNeed } from "@/lib/health/scores";
 import type { BodySources } from "@/lib/body-state/types";
@@ -160,7 +160,7 @@ test("an open illness is sick until it's over, however long since the last repor
   assert.equal(buildBodyState(sources({ ailments: [over] }), shift(TODAY, 1)).physical.illness.phase, "well");
 });
 
-test("a sore shoulder rests the upper body, and a bad one all of it", () => {
+test("a sore shoulder: the rules skip it, Claude weighs it, and a bad one rests the whole upper body", () => {
   const shoulder = (severity: number) =>
     ailment({
       kind: "pain",
@@ -178,14 +178,16 @@ test("a sore shoulder rests the upper body, and a bad one all of it", () => {
   const out = new Map(hurts.physical.training.muscles.map((item) => [item.muscle, item.out]));
   assert.equal(out.get("Rear Delts"), "right shoulder");
   assert.equal(out.get("Biceps"), null);
+  // Not a hard limit below bad: Claude may work it, but has to say why.
   const guard = guardrailsOf(hurts, { sessions });
   const cap = new Map(guard.muscles.map((item) => [item.muscle, item.max]));
-  assert.equal(cap.get("Chest"), null);
-  assert.equal(cap.get("Biceps"), "hard");
+  assert.equal(cap.get("Chest"), "hard");
+  assert.deepEqual(guard.ailments?.map((item) => item.name), ["Right shoulder"]);
+  const push = { kind: "strength" as const, work: [{ muscle: "Chest" as const, intensity: "medium" as const }], accessory: [] };
+  assert.match(checkCall({ ...push, reasons: ["Chest due, 8 days"], note: "Push day." }, guard) ?? "", /loads the right shoulder/);
+  assert.equal(checkCall({ ...push, reasons: ["Shoulder felt fine on pushups yesterday"], note: "Push day." }, guard), null);
+  assert.equal(checkCall({ ...push, work: [{ muscle: "Chest", intensity: "light" }], reasons: [], note: "Light push." }, guard), null);
   assert.equal(rulesCall(hurts, `${TODAY}T07:00`).ask, "How's the right shoulder today?");
-
-  const mild = guardrailsOf(buildBodyState(sources({ ailments: [shoulder(1)], sessions }), TODAY), { sessions });
-  assert.equal(mild.muscles.find((item) => item.muscle === "Chest")?.max, "light");
 
   const bad = buildBodyState(sources({ ailments: [shoulder(3)], sessions }), TODAY);
   const badGuard = guardrailsOf(bad, { sessions });
