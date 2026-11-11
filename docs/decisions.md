@@ -4,10 +4,15 @@ Product and design decisions, newest first. One entry per decision: what was dec
 
 ## 2026-11-10
 
+### Journal tags: a key, a value, and how it felt
+- **Decided:** tags are four fixed keys, each feeding a body-state area: `with` (who), `did` (what other data doesn't cover), `work`, `stressor` (what was behind stress). Each tag can say how that part felt (good or bad), and a key alone carries a feeling ("work felt bad"). No tags for what other data has. The owner's 33 entries were retagged from their text ([journal-tags.md](journal-tags.md)).
+- **Why:** free tags drifted into 30 different words that said little. Research on mood trackers and daily-experience studies (the Day Reconstruction Method, the Daily Inventory of Stressful Events) points to who, what, and how each part felt. Retagging showed neutral tags lose "work feels dreadful" on a good day; the owner wouldn't take an exception for work on the first try, so feelings became part of every tag.
+- **Instead of:** free tags in categories; neutral key:value tags (October 17 plan); a work-only exception; a work-motivation rating (one more question at check-ins).
+
 ### Ailments: illness, injury and pain last until they're over
 - **Decided:** illness, injury and pain are ailments, records that last and end, several open at once, shown together under Today's scores ([ailments.md](ailments.md)). They're reported on the journal card, never logged separately. Nothing expires: an ailment stays open until the owner says it's gone, and each morning's call asks about every open one not reported that day. Claude weighs injuries when it makes the day's call: each body part affects the muscles that load it, and below bad there's no fixed limit, only a check that working them past light comes with a reason naming the ailment. The one hard rule: a bad (3) one rests its whole region (a bad shoulder is the whole upper body) and nothing hard. The rule-based fallback stays cautious and skips affected muscles. The cause is a guess at first, linked to the workouts it may have come from, so causes and effects can be measured later.
 - **Why:** shoulder pain on November 10 reached nothing: the plan still allowed shoulders. Illness was one severity per day and couldn't hold a cold and an injury at once. Pain fades without being mentioned, but guessing when it's over is worse than asking.
-- **Instead of:** `illness_days` and `draft_illness`; fixed limits per severity (mild light, hurts out), which the owner rejected the same day: limits should be weighed when Claude decides; injuries expiring after a few days without a report; journal tags as the record. The journal tag rework is on hold until ailments settle.
+- **Instead of:** `illness_days` and `draft_illness`; fixed limits per severity (mild light, hurts out), which the owner rejected the same day: limits should be weighed when Claude decides; injuries expiring after a few days without a report; journal tags as the record. 
 
 ## 2026-11-06
 

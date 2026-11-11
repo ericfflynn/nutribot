@@ -182,11 +182,13 @@ export type HabitsArea = Head & {
 export type CareerArea = Head & {
   workStress: Dated<number>[]; // stress on Work-tagged entries, last 3 days
   workDays7: number;
-  latestTag: Dated<string> | null;
+  latestTag: Dated<string> | null; // the latest work tag's value ("deadline")
+  feel7?: { good: number; bad: number }; // days work felt good or bad, last 7 (added Nov 10, 2026)
 };
 
 export type RelationshipsArea = Head & {
-  recent: { tag: string; date: string; mood: number | null }[];
+  // Who they were with (the `with` tag's value), last 7 days; feeling since Nov 10, 2026.
+  recent: { tag: string; date: string; mood: number | null; feeling?: "good" | "bad" | null }[];
   social7: number;
 };
 

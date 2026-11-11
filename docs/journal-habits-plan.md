@@ -35,7 +35,7 @@ The Journal card on the Habits tab loads 90 days, shows tags grouped by category
 
 The morning prompt leans toward sleep and soreness; the evening one toward the day, stress and habits.
 
-### Planned: key:value tags (agreed October 17, 2026, not built)
+### key:value tags (agreed October 17, 2026; built November 10, 2026 with feelings added, [journal-tags.md](journal-tags.md))
 
 Free tags drifted (28 entries, 28 different tags, many repeating data the app already has). They become structured `key:value` pairs so trends can be read per key ("every `work:` day") and per value ("`work:deadline` days").
 

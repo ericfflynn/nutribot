@@ -25,6 +25,7 @@ import { getDailyCall } from "@/lib/body-state/call";
 import { gramsFromPercentGoals, restingKcalPerMinute, withWorkoutCalories, workoutCalories } from "@/lib/goals";
 import { listJournalEntries, recordedRatings, type JournalEntry } from "@/lib/journal";
 import { listAilments, severityLabel } from "@/lib/ailments";
+import { tagLabel } from "@/lib/journal-tags";
 import {
   getLatestHealthSyncRun,
   listHealthDays,
@@ -284,7 +285,7 @@ function journalEvent(entry: JournalEntry, date: string, ailmentLines: string[] 
     sort: sameDay ? minuteOfDay(loggedAt) : 24 * 60,
     color: CHECKIN_COLOR,
     title: `${entry.kind === "other" ? "Journal" : `${entry.kind[0].toUpperCase()}${entry.kind.slice(1)} journal`}`,
-    detail: [...ratings, ...ailmentLines].join(" · ") || entry.tags.join(", "),
+    detail: [...ratings, ...ailmentLines].join(" · ") || entry.tags.map(tagLabel).join(", "),
     details: <CheckinDetails id={entry.id} date={date} text={entry.body} />
   };
 }

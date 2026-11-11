@@ -213,7 +213,7 @@ Everything is in [`supabase/schema.sql`](supabase/schema.sql), written to be saf
 
 In order. The working queue of bugs and ideas is `npm run feedback`; this is the plan above it.
 
-1. **Journal 2.0: tags and ailments.** Ailments are built (November 10, 2026, [docs/ailments.md](docs/ailments.md)): illness, injury and pain as records that last until they're over, several open at once, reported on the journal card and weighed by Claude in the day's call (only a bad one is a hard limit). Next: one set list of tags, shared with the body-state areas.
+1. **Journal 2.0: tags and ailments.** Ailments are built (November 10, 2026, [docs/ailments.md](docs/ailments.md)): illness, injury and pain as records that last until they're over, several open at once, reported on the journal card and weighed by Claude in the day's call (only a bad one is a hard limit). Tags are built too ([docs/journal-tags.md](docs/journal-tags.md)): four keys (with, did, work, stressor), each saying how that part felt, feeding the body-state areas.
 2. **Evals for the chat brain.** Today, prompt changes are checked by hand. Build a set of synthetic chat turns, each with the drafts it should produce, and score every prompt or model change against it with `npm run evals`:
    - code checks: the right tools called, the right cards made, nothing repeated across cards, dates and kinds right
    - meal macros within a tolerance of labeled answers

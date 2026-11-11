@@ -35,7 +35,7 @@ import {
   type JournalKind,
   type Rating
 } from "./journal";
-import { TAG_CATEGORIES, normalizeTags } from "./journal-tags";
+import { FEELINGS, TAG_KEY_NAMES, describeTagKeys, normalizeTags } from "./journal-tags";
 import { reportShape, resolveReports, type AilmentReport } from "./ailments";
 
 // A saved entry a journal draft rewrites (draft_journal with edits).
@@ -57,8 +57,6 @@ export type JournalDraft = JournalInput & {
   saved_id: string | null;
   discarded?: boolean;
 };
-
-const AILMENT_TAGS = new Set(["sick", "pain", "injury", "sore", "headache", "health", "doctor"]);
 
 export type HabitLogDraft = HabitLogInput & Pick<Habit, "name" | "measure" | "unit">;
 
@@ -95,7 +93,9 @@ export const CHECKIN_PROMPT = `## Journal
 - Stress is optional and separate: ${STRESS_LABELS.map((label, index) => `${index + 1} ${label}`).join(", ")}. It's pressure or strain, not mood. Set it only when they talk about pressure, worry or calm; never work it out from mood, and never set mood from stress. A great mood can come with high stress.
 - energy (1 drained, 5 energized) and soreness (1 none, 5 very sore) are optional too. Every rating the text doesn't support is null, never a guess.
 - Pain, injury or illness a check-in answer mentions goes in its ailments (see Ailments), not in tags. Pain or illness outside a check-in is an ailment card, not a journal entry.
-- tags: one to four lowercase tags for what came up. Prefer these, by category: ${TAG_CATEGORIES.map((category) => `${category.label}: ${category.tags.join(", ")}`).join("; ")}. Add a custom tag only for something specific that none of these cover ("sore legs"), and reuse the owner's earlier tags (list_journal) over new wording.
+- tags: what came up, each a key, a value and how it felt. Keys and their usual values: ${describeTagKeys()}. Reuse the owner's earlier values (list_journal shows tags as key:value, + felt good, - felt bad) and these before a new word; a new value is a short plain word or two.
+- feeling is good or bad only when they say how that part felt ("work is seeming dreadful" is work, bad; "golf with Tom was nice" is with tom, good); otherwise null. A key with no value needs a feeling ("I do not want to work at all" is work with feeling bad).
+- Tag only what the entry says, at most five. No tags for what other data already has: workouts, meals, drinks and other habits, sleep, soreness, ailments, or the ratings themselves.
 - kind is morning before noon, evening after 5 pm, other in between, except that an answer to a check-in takes that check-in's kind whatever the time: a message starting "Morning check-in:" (from Today's card) is morning, "Evening check-in:" is evening. An entry written before 4 am about the night before belongs to the previous date.
 - A day can have several entries of the same kind. New writing about their day, even a follow-up to an earlier entry, is a new entry: call draft_journal without edits.
 - Edit a saved entry only when they ask to change it ("change my mood this morning to 4", "fix that entry", "add this to my earlier entry"): call draft_journal with edits set to its id and the whole revised entry, keeping their earlier words. list_journal shows ids. Never say whether an entry exists without checking list_journal.
@@ -176,7 +176,15 @@ export function checkinTools(context: {
       energy: rating,
       stress: rating,
       soreness: rating,
-      tags: z.array(z.string()).max(8),
+      tags: z
+        .array(
+          z.object({
+            key: z.enum(TAG_KEY_NAMES),
+            value: z.string().max(30).nullable().describe("A short word or two, lowercase; null with a feeling for the key as a whole."),
+            feeling: z.enum(FEELINGS).nullable().describe("How that part felt, only when they say; null otherwise.")
+          })
+        )
+        .max(6),
       replaces: z.string().optional().describe("Id of an open draft this revises."),
       edits: z
         .string()
@@ -214,8 +222,7 @@ export function checkinTools(context: {
         kind: args.kind,
         body: args.body.trim(),
         ratings,
-        // Ailment lines carry pain and illness; tags don't repeat them.
-        tags: normalizeTags(args.tags, known).filter((tag) => !resolved.reports.length || !AILMENT_TAGS.has(tag)),
+        tags: normalizeTags(args.tags, known),
         edits,
         ...(args.offer && !edits && !resolved.reports.length ? { offer: true } : {}),
         ...(resolved.reports.length ? { ailments: resolved.reports } : {}),

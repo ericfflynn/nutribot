@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { discardDraftAction, newChatAction, saveDraftAction, undoMemoryAction } from "./actions";
 import { ChatText } from "./chat-text";
+import { TagChip } from "./journal-ui";
 import type { Draft, IgnoreDraft, MealDraft, WorkoutDraft } from "@/lib/brain";
 import type { HabitDraft, HabitsDraft, JournalDraft } from "@/lib/brain-checkin";
 import type { FeedbackDraft } from "@/lib/feedback";
@@ -315,7 +316,7 @@ function JournalCard({ draft, today, ...handlers }: { draft: JournalDraft } & Dr
       {draft.tags.length ? (
         <div className="draft-chips">
           {draft.tags.map((tag) => (
-            <span key={tag}>{tag}</span>
+            <TagChip key={tag} tag={tag} />
           ))}
         </div>
       ) : null}

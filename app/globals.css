@@ -2581,6 +2581,33 @@ button.fab {
   font-weight: 600;
 }
 
+.tag-chip {
+  display: inline-flex;
+  align-items: baseline;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tag-chip small {
+  font-weight: 500;
+}
+
+.tag-chip.bad {
+  background: color-mix(in srgb, var(--bad) 12%, transparent);
+  color: var(--bad);
+}
+
+.tag-remove {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
 .draft-ailments {
   display: grid;
   gap: 6px;

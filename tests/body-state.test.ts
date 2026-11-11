@@ -123,7 +123,7 @@ test("drinks last night explain a raised resting HR; work stress doesn't", () =>
   assert.match(withDrinks.physical.illness.headline, /likely 3 drinks/);
   assert.equal(withDrinks.explanations[0].kind, "habit");
 
-  const stressed = buildBodyState(sources({ health: health(raised), journal: [entry(shift(TODAY, -1), ["work", "deadline"], { stress: 4 })] }), TODAY);
+  const stressed = buildBodyState(sources({ health: health(raised), journal: [entry(shift(TODAY, -1), ["work:deadline", "stressor:work"], { stress: 4 })] }), TODAY);
   assert.equal(stressed.physical.illness.phase, "early_signs");
   assert.equal(stressed.lifestyle.career.status, "watch");
 });
@@ -206,6 +206,21 @@ test("an illness and an injury can be open together", () => {
   assert.equal(state.physical.ailments?.open.length, 2);
   assert.equal(state.physical.illness.phase, "sick");
   assert.equal(rulesCall(state, `${TODAY}T07:00`).ask, "How's the wrist and the head cold today?");
+});
+
+test("work and people read the tags' keys and how they felt", () => {
+  const journal = [
+    entry(shift(TODAY, -1), ["work-", "with:partner-"], { mood: 3 }),
+    entry(shift(TODAY, -3), ["work:deadline-"], { mood: 4 }),
+    entry(shift(TODAY, -5), ["work-", "did:watched sports+"], { mood: 4 })
+  ];
+  const state = buildBodyState(sources({ journal }), TODAY);
+  assert.equal(state.lifestyle.career.status, "watch");
+  assert.equal(state.lifestyle.career.headline, "Work felt bad 3 of the last 7 days");
+  assert.equal(state.lifestyle.relationships.status, "watch");
+  assert.match(state.lifestyle.relationships.headline, /Time with partner felt bad/);
+  const stressed = buildBodyState(sources({ journal: [entry(TODAY, ["stressor:money"], { mood: 2, stress: 4 })] }), TODAY);
+  assert.match(stressed.mental.mood.headline, /stress 4 from money/);
 });
 
 test("training watches whole day types, not single muscles", () => {

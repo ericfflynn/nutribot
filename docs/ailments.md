@@ -1,6 +1,6 @@
 # Ailments
 
-Status: built November 10, 2026 (feedback d9344d23, first half). Illness, injury and pain as records that last and end, several open at once, feeding the body state and the day's call, which weighs them. Code: `lib/ailments-core.ts` (pure rules), `lib/ailments.ts` (database and chat tools). The journal tag rework, the other half of Journal 2.0, is on hold until ailments settle ([Tags, on hold](#tags-on-hold)).
+Status: built November 10, 2026 (feedback d9344d23, first half). Illness, injury and pain as records that last and end, several open at once, feeding the body state and the day's call, which weighs them. Code: `lib/ailments-core.ts` (pure rules), `lib/ailments.ts` (database and chat tools). The other half of Journal 2.0, the tag rework, is [journal-tags.md](journal-tags.md).
 
 ## Why
 
@@ -111,60 +111,3 @@ From the watch and the journal, confirmed by the owner: an early October illness
 - Causes and effects ([body-state.md](body-state.md#causes-and-effects)): ailments with their cause workouts are the labels for "what gets my shoulder" (the owner suspects pushups, then a shoulder day, then golf, November 2026).
 - An ailment history view; ailments on the trend charts.
 - The evals ([README](../README.md#roadmap)): "my shoulder hurts" must make a journal card with a new shoulder ailment and a call without the upper body.
-
-## Tags, on hold
-
-Spec from November 10, 2026, on hold until ailments settle (the owner wants to dig into the journal more first).
-
-
-### Shape
-
-A tag is a key and a word: `work:deadline`, shown as "Work · deadline". A key alone (`work`) means it came up with nothing more specific. Stored in the same `journal_entries.tags` column, so no table change. One to four per entry.
-
-Rules (agreed October 17, 2026): no numbers; neutral, since how it felt is the mood and stress ratings ("mood on `family:visit` days"); no tags for what other data covers (workouts, sleep, meals, drinks and other habits, soreness, and now ailments).
-
-### The keys
-
-One registry (`lib/body-state/areas.ts`): each key belongs to an area, and the journal's vocabulary is generated from it. Values are suggestions; the chat reuses the owner's earlier values (`list_journal`) before inventing one, and values are normalized as now (synonyms, plurals).
-
-| Key | Area | Suggested values |
-| --- | --- | --- |
-| `work` | `lifestyle.career` | deadline, meeting, coding, presentation, launch, travel, long day, day off |
-| `social` | `lifestyle.relationships` | friends, party, dinner out, hosting, game, alone time |
-| `relationship` | `lifestyle.relationships` | date, time together, apart, argument |
-| `family` | `lifestyle.relationships` | visit, call, holiday, argument |
-| `leisure` | `lifestyle` (stored; an area when wanted) | sports, outdoors, tv, music, hobby, trip |
-| `stressor` | `mental.mood` | work, money, health, family, relationship, logistics: what's behind the stress, only when they say |
-| `health` | `physical.illness` | fine (the false-alarm answer), doctor, dentist, meds |
-
-The keys are fixed in code (the draft schema rejects others). A new key means an area or a home in one, per [Adding an area](body-state.md#adding-an-area).
-
-### What reads them
-
-- **`lifestyle.career`:** entries with a `work` tag. The `burnout` rule becomes stress 5 on a work day in the last 3 days, or `stressor:work` 3 days running.
-- **`lifestyle.relationships`:** `social`, `relationship` and `family` tags; `conflict` becomes an `argument` value.
-- **`mental.mood`:** `stressor` values in the headline when stress is 4+ ("Stress 4, work").
-- **Causes and effects** (later): one column per key, so "HRV after `social:party` nights" is a query.
-
-### Habits tab
-
-The Journal card groups tags by key with counts, filters by a key or a `key:value`, and keeps mood and stress with the tag against without. The entry editor picks a key, then a value (or types one).
-
-### Moving old tags
-
-A script (`npm run journal:retag`, dry run; `-- --apply` writes after the owner approves) maps the 30 existing tags:
-
-| Old | New |
-| --- | --- |
-| work | `work` |
-| coding, deadline | `work:coding`, `work:deadline` |
-| partner | `relationship` |
-| friends, social | `social:friends`, `social` |
-| family time | `family` |
-| relaxing | `leisure` |
-| stress | `stressor` when the text names a cause (Claude reads the entry); otherwise dropped, since the stress rating has it |
-| sick, headache, morning headache, health, canker sore, swollen lymph nodes, tooth | Dropped as tags; they fed the ailment backfill |
-| workout, sore, sore X, diet, tired, good sleep, poor sleep, productive, low motivation, gratitude | Dropped: other data or the ratings cover them |
-
-The dry run prints each entry's old and new tags by id, never the text.
-

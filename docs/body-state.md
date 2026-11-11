@@ -246,7 +246,7 @@ Status: **unknown** with nothing logged yesterday; **watch** with a miss streak 
 | `workDays7` | Days in the last 7 with a Work tag. |
 | `latestTag` | The most recent Work tag and its date ("deadline", Tuesday). |
 
-Status: **unknown** with no Work tag in 7 days; **low** with a `burnout` tag in 3 days; **watch** with work stress 4+ in the last 3 days; otherwise **ok**.
+Status: **unknown** with no Work tag in 7 days; **low** with a `burnout` tag in 3 days; **watch** with work stress 4+ in the last 3 days; otherwise **ok**. Since November 10, 2026 it reads the `work` and `stressor` tags with their feelings ([journal-tags.md](journal-tags.md#what-reads-them)); the burnout tag became stress 5 on a work day or stress from work 3 days running, and work feeling bad 3 of 7 days is watch.
 
 ### `lifestyle.relationships`: the people around him
 
@@ -255,7 +255,7 @@ Status: **unknown** with no Work tag in 7 days; **low** with a `burnout` tag in 
 | `recent[]` | Relationships-category tags (`family`, `partner`, `friends`, `conflict`) in the last 7 days, with dates and the mood of that entry. |
 | `social7` | Days in the last 7 with a Social-category tag (`social`, `party`, `date night`...). |
 
-Status: **unknown** with no tag in 7 days; **watch** with a `conflict` tag in 3 days; **good** when the last 7 days have a relationships or social tag with mood 4+; otherwise **ok**.
+Status: **unknown** with no tag in 7 days; **watch** with a `conflict` tag in 3 days; **good** when the last 7 days have a relationships or social tag with mood 4+; otherwise **ok**. Since November 10, 2026 it reads `with` tags ([journal-tags.md](journal-tags.md#what-reads-them)): time with someone that felt bad, or stress from the relationship or family, is watch.
 
 Both areas read journal tags ([journal-habits-plan.md](journal-habits-plan.md)), so they're only as good as the tagging. The planned key:value tag rework would make them sharper.
 
