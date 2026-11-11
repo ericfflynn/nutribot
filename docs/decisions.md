@@ -7,7 +7,12 @@ Product and design decisions, newest first. One entry per decision: what was dec
 ### Lean on Claude's judgment, not lists and patterns
 - **Decided:** where something needs judgment (which muscles an injury affects, whether two words mean the same thing, how much to spare a sore shoulder), Claude decides and says why; code keeps only structure (the tag keys, the severity scale, the tracked muscles), facts and the owner's own rules (a bad injury rests its region). Open vocabularies (tag values, symptoms, body parts) take any words and only fold exact variants together. Claude's call names how it treats each open injury, and code checks that it did, not what it said.
 - **Why:** a fixed body-part table filed a jaw under the neck; a closed symptom list pushed "ringing ears" into a note nothing counts; a synonym table and name patterns (drinking by "alcohol", "beer") break on the next new word. The owner: "I just wanna lean on Claude's intelligence where possible. I don't wanna hard code or do regex."
-- **Instead of:** `BODY_PARTS`, a closed symptom list, tag synonyms, drinking recognized by name, matching words in the call's reasons.
+- **Instead of:** `BODY_PARTS`, a closed symptom list, tag synonyms, matching words in the call's reasons.
+
+### What a habit does to the body is measured, not set
+- **Decided:** which numbers a habit moves (sleep, HRV, recovery, resting HR) comes from comparing the owner's mornings after it with mornings without it, as part of causes and effects ([body-state.md](body-state.md#causes-and-effects)). No hand-set flag. Until then drinking stays recognized by name.
+- **Why:** a hand-set `affects` flag (from feedback c16e0881) was built and got it wrong against the data the same day: alcohol barely moves resting HR, and nicotine moves HRV and recovery almost as much as alcohol. The owner: the impact should be derived from actual numbers.
+- **Instead of:** an `affects` flag per habit set from chat or the Habits tab (built and removed November 10, 2026; the column was dropped).
 
 ### Journal tags: a key, a value, and how it felt
 - **Decided:** tags are four fixed keys, each feeding a body-state area: `with` (who), `did` (what other data doesn't cover), `work`, `stressor` (what was behind stress). Each tag can say how that part felt (good or bad), and a key alone carries a feeling ("work felt bad"). No tags for what other data has. The owner's 33 entries were retagged from their text ([journal-tags.md](journal-tags.md)).
