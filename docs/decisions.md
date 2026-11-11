@@ -4,6 +4,11 @@ Product and design decisions, newest first. One entry per decision: what was dec
 
 ## 2026-11-10
 
+### Habits tab: log today, the week, streaks
+- **Decided:** the Habits tab leads with Log today (one tap per habit) and a 7-day grid with weekly paging, habit-days met against the week before, and each habit's streak and best ([journal-habits-plan.md](journal-habits-plan.md#habits-tab)); settings, reminders and the journal sit behind buttons.
+- **Why:** the owner couldn't see how he was doing, and logging in the 14-day grid was clunky. Picked B (the week as a grid) from three mockups, asking for better streak tracking.
+- **Instead of:** the 14-day grid as the logger, with the check-in, journal, settings and reminders stacked on one page; habit rows with a 28-day strip (A); weekly trend columns with a Claude note (C).
+
 ### Training shows heart-rate zones as a warm ladder; goals moderate 150, vigorous 75, peak 10
 - **Decided:** a Heart-rate zones card on Training: zones stacked by heart rate with their bpm bounds, a warm color ramp that heats up going up, this week's minutes against each goal, the 4-week average and the pace ([training-plan.md](training-plan.md)). Weekly goals drop to WHO's low ends: moderate 300 to 150 minutes, vigorous 150 to 75; peak 25 to 10.
 - **Why:** the zone goals (November 1) only showed inside Today's Strain panel, so a week that missed all three went unnoticed. Picked from four mockups (bars, tiles, the ladder, weekly columns), then warm over cool-to-hot. 300, 150 and 25 were far from averages of 124, 38 and 2.

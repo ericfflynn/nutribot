@@ -3510,7 +3510,144 @@ button.fab {
 }
 
 .habit-grid {
-  grid-template-columns: 92px minmax(0, 1fr) 32px;
+  grid-template-columns: 104px minmax(0, 1fr) 32px;
+}
+
+/* Habits tab (Nov 10, 2026): week pages with streaks, Log today, More */
+.habit-name {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.habit-streak {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.habit-streak span {
+  color: var(--muted);
+}
+
+.habit-streak.best,
+.habit-streak.best span {
+  color: var(--good);
+}
+
+.habit-streak.broken strong {
+  color: var(--bad);
+}
+
+.habit-pager {
+  display: flex;
+  gap: 4px;
+}
+
+.habit-pager button {
+  min-width: 36px;
+  min-height: 32px;
+  font-size: 20px;
+}
+
+.habit-pager button:disabled {
+  color: var(--line);
+}
+
+.habit-week-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.habit-week-summary strong {
+  color: var(--ink);
+  font-size: 26px;
+  font-variant-numeric: tabular-nums;
+}
+
+.habit-week-summary .down {
+  color: var(--bad);
+  font-size: 13px;
+}
+
+.habit-week-summary .up {
+  color: var(--good);
+  font-size: 13px;
+}
+
+.log-today-row {
+  display: grid;
+  gap: 6px;
+}
+
+.log-today-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.log-today-name small {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.log-today-options {
+  display: flex;
+  gap: 6px;
+}
+
+.log-today-options button {
+  flex: 1;
+  min-height: 40px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.log-today-options button.on {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.log-today-options button:disabled {
+  opacity: 0.6;
+}
+
+.habits-more {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.habits-more button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--accent);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.habits-more button.on {
+  background: var(--accent);
+  color: #ffffff;
 }
 
 .journal-list,

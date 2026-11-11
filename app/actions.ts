@@ -24,6 +24,7 @@ import {
   saveHabit,
   saveHabitLogs,
   deleteHabitLogs,
+  listHabitLogs,
   updateHabitLog
 } from "@/lib/habits";
 import { deleteJournalEntry, listJournalTags, overwriteJournalEntry, saveJournalEntry, updateJournalEntry } from "@/lib/journal";
@@ -693,6 +694,41 @@ export async function logHabitAction(input: z.input<typeof habitLogSchema>): Pro
   revalidatePath("/");
   revalidatePath("/habits");
   refreshBodyLater(user.name, log.date);
+  return { ok: true };
+}
+
+// Habits tab, Log today: one tap sets a habit's amount for the day,
+// replacing what that day had; null clears the day. Details and times stay
+// with the day's logger (tap its square) and the chat.
+export async function setHabitDayAction(habitId: string, date: string, amount: number | null): Promise<{ ok: boolean; error?: string }> {
+  const user = await getSessionUser();
+  const db = getPool();
+  if (!user || !db) return { ok: false, error: "Log in again." };
+  if (!z.string().uuid().safeParse(habitId).success || !isValidLocalDate(date) || date > todayLocalDate()) {
+    return { ok: false, error: "That entry isn't valid." };
+  }
+  if (amount != null && (!Number.isFinite(amount) || amount < 0 || amount > 24 * 60)) return { ok: false, error: "That amount isn't valid." };
+  const habit = (await listHabits(db, user.name)).find((item) => item.id === habitId);
+  if (!habit) return { ok: false, error: "That habit no longer exists." };
+  if (habit.measure === "intensity" && amount != null && (!Number.isInteger(amount) || amount > 3)) {
+    return { ok: false, error: "Pick none, light, moderate or heavy." };
+  }
+  const client = await db.connect();
+  try {
+    await client.query("begin");
+    const existing = await listHabitLogs(client, user.name, date, date);
+    await deleteHabitLogs(client, user.name, existing.filter((log) => log.habitId === habitId).map((log) => log.id));
+    if (amount != null) await saveHabitLogs(client, user.name, date, [{ habitId, amount, details: null, startedAt: null, endedAt: null }]);
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+  revalidatePath("/");
+  revalidatePath("/habits");
+  refreshBodyLater(user.name, date);
   return { ok: true };
 }
 

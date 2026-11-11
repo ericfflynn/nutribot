@@ -1,7 +1,7 @@
 // Editing habit entries and habit frequency (lib/habits.ts).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { bandsProblem, describeGoal, habitOutcome, normalizeDays, planHabitLogEdit, summarizeHabitDay, type Habit, type HabitLog } from "../lib/habits";
+import { bandsProblem, describeGoal, habitOutcome, habitStreaks, normalizeDays, planHabitLogEdit, summarizeHabitDay, type Habit, type HabitLog } from "../lib/habits";
 
 const reading: Habit = {
   id: "h-read",
@@ -101,4 +101,16 @@ test("color bands must fit the goal", () => {
   assert.ok(bandsProblem({ ...limit, bands: { orange: 90, red: 90 } }));
   assert.ok(bandsProblem({ ...limit, goal: null, bands: { orange: 90, red: 120 } }));
   assert.ok(bandsProblem({ measure: "minutes", direction: "build", goal: 20, bands: { orange: 25, red: 1 } }));
+});
+
+test("streaks count goal-met days in a row; unlogged days are skipped, misses break them", () => {
+  const none: Habit = { ...reading, id: "h-none", name: "Nicotine", measure: "intensity", direction: "limit", goal: 0, days: null, scaleGuide: "1 light" };
+  const log = (date: string, amount: number): HabitLog => ({ id: `${date}-${amount}`, habitId: "h-none", amount, details: null, startedAt: null, endedAt: null, date, createdAt: "" });
+  const logs = [
+    log("2026-11-01", 0), log("2026-11-02", 0), log("2026-11-03", 0), // 3 met
+    log("2026-11-04", 2), // a miss breaks it
+    log("2026-11-05", 0), log("2026-11-07", 0) // Nov 6 not logged: skipped
+  ];
+  assert.deepEqual(habitStreaks(none, logs, "2026-11-01", "2026-11-08"), { current: 2, best: 3 });
+  assert.deepEqual(habitStreaks(none, [], "2026-11-01", "2026-11-08"), { current: 0, best: 0 });
 });

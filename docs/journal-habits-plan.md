@@ -129,9 +129,11 @@ An evening check-in usually ends with two cards: the journal entry and the day's
 
 ## Habits tab
 
-- Check-in card: today's mood first, with labels, and a Check in button.
-- The 14-day grid, colored by outcome (days off the habit's frequency are outlined). Tapping a square opens that habit and day below the grid, to log a use, a "none", or edit or remove an entry (amount, day, note, times; edited in place, so no duplicates); tapping a name opens today. Intensity habits log with one tap (None, Light, Moderate, Heavy); drinks with a counter; minutes with optional start and end times.
-- Journal history, tracked habits with their goals and scale guides, and the Reminders switch.
+Redesigned November 10, 2026 (mockup B of https://claude.ai/artifact/HwykbcB2QBdLCUVUxiKUdd, with streaks added; the owner couldn't see how he was doing and found logging clunky). From the top:
+
+- **Log today** (`LogToday` in `app/habit-logger.tsx`): one row per habit with one-tap amounts on its own scale (intensity None, Light, Moderate, Heavy; counts None, 1, 2, 3; minutes None and a few steps around the goal). A tap sets the day (`setHabitDayAction`, replacing what the day had); tapping the picked one clears it. Times and details: today's square in the grid, or the chat.
+- **The week grid** (`HabitGrid`): 7 days at a time, the latest first, earlier weeks with ‹ (12 weeks loaded), colored by outcome as before. Above it, habit-days met that week against the week before. Each habit shows its streak under its name (`habitStreaks` in `lib/habits.ts`): goal-met days in a row and the best over the last year; unlogged days, days off and days that can't be judged are skipped, not breaks. Green on the best yet, red at 0. Tapping a square still opens that day's logger.
+- **Edit habits, Reminders, Journal**: one button each, opening the tracked-habits list, the Reminders card or the journal history. The check-in card left this tab (Today has it).
 
 ## On Today
 

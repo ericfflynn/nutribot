@@ -3,7 +3,7 @@
 // minutes; 0 means "didn't today", said explicitly. A day with no logs is
 // unknown, never zero. Plan: docs/journal-habits-plan.md.
 import type { Pool } from "pg";
-import { isWeeknight, weekdayOf } from "./dates";
+import { addDays, isWeeknight, weekdayOf } from "./dates";
 
 type Queryable = Pick<Pool, "query">;
 
@@ -484,4 +484,25 @@ export function formatHabitAmount(habit: Pick<Habit, "measure" | "unit">, amount
   // "1 drink", not "1 drinks".
   const unit = amount === 1 && habit.unit?.endsWith("s") ? habit.unit.slice(0, -1) : habit.unit;
   return `${amount} ${unit ?? ""}`.trim();
+}
+
+// Streaks (the Habits tab, Nov 10, 2026): days the goal was met in a row,
+// counting back from `today`, and the longest run in the logs given. Days not
+// logged, days off and days that can't be judged are skipped, not breaks, so
+// today doesn't break a streak before it's logged.
+export function habitStreaks(habit: Habit, logs: readonly HabitLog[], from: string, today: string) {
+  const byDate = new Map<string, HabitLog[]>();
+  for (const log of logs) if (log.habitId === habit.id) byDate.set(log.date, [...(byDate.get(log.date) ?? []), log]);
+  const outcomes: HabitOutcome[] = [];
+  for (let date = from; date <= today; date = addDays(date, 1)) {
+    outcomes.push(habitOutcome(summarizeHabitDay([habit], date, byDate.get(date) ?? [])[0]));
+  }
+  const judged = outcomes.filter((outcome) => outcome === "met" || outcome.startsWith("miss"));
+  let best = 0;
+  let run = 0;
+  for (const outcome of judged) {
+    run = outcome === "met" ? run + 1 : 0;
+    best = Math.max(best, run);
+  }
+  return { current: run, best };
 }
