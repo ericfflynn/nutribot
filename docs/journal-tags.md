@@ -28,7 +28,7 @@ A tag is a key, a value, and optionally how it felt, stored in `journal_entries.
 | `stressor:money` | Money was behind the stress | Stress from money |
 
 - **The keys are fixed** (`TAG_KEYS`); each belongs to a body-state area. A new key means a new area or a home in one, per [Adding an area](body-state.md#adding-an-area).
-- **Values are suggestions.** The chat reuses the owner's earlier values before a new word; values are cleaned and folded (synonyms, plurals) on save and on read.
+- **Values are open; the suggested ones are only suggestions.** The chat reuses the owner's earlier values before a new word, and judges meaning itself ("girlfriend" is `with:partner`). Code only cleans a value and folds it onto one in use when it's the same words, give or take case, plurals and order (`lib/vocab.ts`); there's no synonym table.
 - **Feeling is optional and only from their words** ("work is seeming dreadful" is `work-`; "golf with Tom was nice" is `with:tom+`). A key alone needs a feeling.
 - **Why feelings are on tags.** The first version (agreed October 17) kept tags neutral, with feelings in the ratings. Retagging the owner's history showed what that loses: November 8 was a good day (mood 4) with work feeling dreadful, and one overall rating can't hold both. The owner didn't want an exception for work on day one, so feelings became part of every tag, as the Day Reconstruction Method does (November 10, 2026).
 - **Nothing other data has:** no tags for workouts, meals, drinks and other habits, sleep, soreness, ailments or the ratings. At most five per entry.

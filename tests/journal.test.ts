@@ -12,8 +12,9 @@ test("a tag is a key, an optional value and an optional feeling", () => {
   assert.equal(parseTag("health:doctor"), null);
 });
 
-test("values are cleaned, synonyms and plurals folded, and a bare key needs a feeling", () => {
-  assert.equal(normalizeTag({ key: "with", value: "Girlfriend", feeling: null }), "with:partner");
+test("values are open, folded onto words in use, and a bare key needs a feeling", () => {
+  assert.equal(normalizeTag({ key: "with", value: "Girlfriend", feeling: null }), "with:girlfriend");
+  assert.equal(normalizeTag({ key: "did", value: "Sports, watched", feeling: null }), "did:watched sports");
   assert.equal(normalizeTag({ key: "work", value: "Deadlines", feeling: "bad" }), "work:deadline-");
   assert.equal(normalizeTag({ key: "did", value: "golf rounds", feeling: null }, ["did:golf round"]), "did:golf round");
   assert.equal(normalizeTag({ key: "work", value: null, feeling: null }), null);

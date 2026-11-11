@@ -2,7 +2,9 @@
 // and a word, and optionally how it felt. "with:partner", "work:deadline-"
 // (felt bad), "did:game+" (felt good), "work-" (work felt bad, nothing more
 // specific). Each key belongs to a body-state area, so the journal and the
-// body state share one vocabulary. Pure, no database.
+// body state share one vocabulary. The keys are fixed; values are open
+// (lib/vocab.ts). Pure, no database.
+import { cleanWord, foldOnto } from "./vocab";
 
 export const TAG_KEYS = [
   {
@@ -42,43 +44,14 @@ export type Feeling = (typeof FEELINGS)[number];
 
 export type Tag = { key: TagKey; value: string | null; feeling: Feeling | null };
 
-// Different words for the same value, per key.
-const SYNONYMS: Partial<Record<TagKey, Record<string, string>>> = {
-  with: {
-    girlfriend: "partner",
-    boyfriend: "partner",
-    wife: "partner",
-    husband: "partner",
-    friend: "friends",
-    coworker: "coworkers",
-    colleagues: "coworkers",
-    team: "coworkers",
-    "by myself": "alone",
-    "alone time": "alone",
-    parents: "family"
-  },
-  did: { "dinner out": "ate out", restaurant: "ate out", "breakfast out": "ate out", trip: "travel", movie: "tv", coding: "side project", "football game": "game", concert: "event" },
-  work: { "late night": "after hours", "evening session": "after hours", "in office": "office", "pto": "day off", vacation: "day off" },
-  stressor: { partner: "relationship", job: "work", finances: "money", sick: "health" }
-};
-
 const keyOf = (name: string) => TAG_KEYS.find((item) => item.key === name);
-
-function cleanValue(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/[_-]+/g, " ")
-    .replace(/[^\p{L}\p{N} ']+/gu, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
 
 // A tag in its stored form, or null when it isn't one: "key", "key:value",
 // either followed by + (felt good) or - (felt bad). A key alone needs a feeling.
 export function parseTag(text: string): Tag | null {
   const match = /^([a-z]+)(?::([^+-]*))?([+-])?$/.exec(text.trim().toLowerCase());
   if (!match || !keyOf(match[1])) return null;
-  const value = match[2] ? cleanValue(match[2]) || null : null;
+  const value = match[2] ? cleanWord(match[2]) || null : null;
   const feeling = match[3] === "+" ? "good" : match[3] === "-" ? "bad" : null;
   return { key: match[1] as TagKey, value, feeling };
 }
@@ -87,25 +60,18 @@ export function formatTag(tag: Tag) {
   return `${tag.key}${tag.value ? `:${tag.value}` : ""}${tag.feeling === "good" ? "+" : tag.feeling === "bad" ? "-" : ""}`;
 }
 
-// A tag tidied up: its value cleaned, synonyms folded, a plural or singular
-// folded onto a known value (`known`: the owner's earlier tags). Null when
-// it's empty: a key needs a value or a feeling.
+// A tag tidied up: its value cleaned and folded onto a value already in use
+// for that key (the suggested ones and the owner's own, `known`) when it's
+// the same words. Null when it's empty: a key needs a value or a feeling.
 export function normalizeTag(tag: Tag | string, known: readonly string[] = []): string | null {
   const parsed = typeof tag === "string" ? parseTag(tag) : tag;
   if (!parsed || !keyOf(parsed.key)) return null;
-  let value = parsed.value ? cleanValue(parsed.value) : null;
-  if (value) {
-    value = SYNONYMS[parsed.key]?.[value] ?? value;
-    const vocabulary = new Set<string>([
-      ...keyOf(parsed.key)!.values,
-      ...known.map(parseTag).filter((item): item is Tag => item?.key === parsed.key && Boolean(item.value)).map((item) => item.value!)
-    ]);
-    if (!vocabulary.has(value)) {
-      const other = value.endsWith("s") ? value.slice(0, -1) : `${value}s`;
-      if (vocabulary.has(other)) value = other;
-    }
-    if (value.length > 30) return null;
-  }
+  const vocabulary = [
+    ...known.map(parseTag).filter((item): item is Tag => item?.key === parsed.key && Boolean(item.value)).map((item) => item.value!),
+    ...keyOf(parsed.key)!.values
+  ];
+  const value = parsed.value ? foldOnto(parsed.value, vocabulary) || null : null;
+  if (value && value.length > 30) return null;
   if (!value && !parsed.feeling) return null;
   return formatTag({ key: parsed.key, value, feeling: parsed.feeling });
 }

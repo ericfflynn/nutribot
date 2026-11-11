@@ -184,9 +184,9 @@ test("a sore shoulder: the rules skip it, Claude weighs it, and a bad one rests 
   assert.equal(cap.get("Chest"), "hard");
   assert.deepEqual(guard.ailments?.map((item) => item.name), ["Right shoulder"]);
   const push = { kind: "strength" as const, work: [{ muscle: "Chest" as const, intensity: "medium" as const }], accessory: [] };
-  assert.match(checkCall({ ...push, reasons: ["Chest due, 8 days"], note: "Push day." }, guard) ?? "", /loads the right shoulder/);
-  assert.equal(checkCall({ ...push, reasons: ["Shoulder felt fine on pushups yesterday"], note: "Push day." }, guard), null);
-  assert.equal(checkCall({ ...push, work: [{ muscle: "Chest", intensity: "light" }], reasons: [], note: "Light push." }, guard), null);
+  assert.match(checkCall(push, guard) ?? "", /how today's plan treats the right shoulder/);
+  assert.equal(checkCall({ ...push, ailments: [{ name: "Right shoulder", plan: "Felt fine on pushups yesterday, medium chest only" }] }, guard), null);
+  assert.deepEqual(rulesCall(hurts, `${TODAY}T07:00`).ailments, [{ name: "Right shoulder", plan: "Skipping shoulders, chest, triceps, lats, upper back, traps work." }]);
   assert.equal(rulesCall(hurts, `${TODAY}T07:00`).ask, "How's the right shoulder today?");
 
   const bad = buildBodyState(sources({ ailments: [shoulder(3)], sessions }), TODAY);

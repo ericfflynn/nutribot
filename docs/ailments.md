@@ -20,8 +20,8 @@ Status: built November 10, 2026 (feedback d9344d23, first half). Illness, injury
 | --- | --- |
 | `kind` | `illness` (cold, flu, stomach bug, canker sore), `injury` (something happened: a tweak, a fall), `pain` (it hurts, cause unclear). |
 | `name` | Short and plain: "Right shoulder", "Head cold". |
-| `body_parts` | From `BODY_PARTS` or a muscle ("rear delts"), with a side when there is one: "right shoulder". Empty for most illnesses. |
-| `muscles` | The tracked muscles it affects. Filled from the body parts; the owner can change it through chat ("curls don't bother it"). |
+| `body_parts` | In the owner's words, with a side when there is one: "right shoulder", "jaw". A new one folds onto one already in use when it's the same words. Empty for most illnesses. |
+| `muscles` | The tracked muscles whose training loads it, picked by the chat; the owner can change them ("curls don't bother it"). |
 | `started_on`, `ended_on` | `ended_on` is null while it's open. |
 | `cause`, `cause_refs` | The owner's words or guess, plus the workouts it likely came from, so causes and effects can be measured later. Often unknown at first. |
 | days | `ailment_days`: one per day mentioned, with `severity`, `symptoms`, a short `note` and the journal entry it came from. |
@@ -35,7 +35,7 @@ Status: built November 10, 2026 (feedback d9344d23, first half). Illness, injury
 | 2 | Sick: clearly unwell, below the neck or a fever | Hurts: some movements hurt |
 | 3 | Very sick: in bed | Bad: hurts at rest or gets in the way of the day |
 
-Symptoms: illness keeps the old list plus `canker sore`, `swollen lymph nodes`, `tooth pain`, `ear pressure`; injury and pain take `sharp`, `dull ache`, `stiff`, `clicking`, `weak`, `swelling`, `numb or tingling`.
+Symptoms are open: the owner's plain words, folded onto ones already in use when it's the same words ("ear ringing" is "ringing ears", `lib/vocab.ts`). The chat gets a few common ones as suggestions (`ILLNESS_SYMPTOMS`, `PAIN_SYMPTOMS`), not a limit.
 
 ## How long it counts
 
@@ -43,31 +43,13 @@ Open until the owner says it's over (a 0 day) or an end date is set (the owner, 
 
 ## What it does to training
 
-Each body part affects the muscles whose work loads it (`BODY_PARTS`):
-
-| Body part | Muscles | Region |
-| --- | --- | --- |
-| shoulder | Chest, Front/Side/Rear Delts, Triceps, Lats, Upper Back, Traps | upper |
-| elbow | Biceps, Triceps, Forearms | upper |
-| wrist, hand | Forearms, Biceps, Lats, Upper Back, Traps (grip), Chest, Triceps (pressing) | upper |
-| neck | Traps, Upper Back | upper |
-| upper back | Upper Back, Traps, Lats | upper |
-| chest | Chest, Obliques | upper |
-| ribs | Chest, Obliques | core |
-| lower back | Lower Back, Hamstrings, Glutes | core |
-| abs | Upper Abs, Lower Abs, Obliques | core |
-| hip | Glutes, Hamstrings, Quads | lower |
-| knee, ankle, foot | Quads, Hamstrings, Calves (knee); Calves, Quads (ankle, foot); easy cardio only from 2 | lower |
-| a muscle ("rear delts") | That muscle | its own |
-
-Regions: upper is chest, shoulders, arms, lats, upper back and traps; lower is legs and lower back; core is abs, obliques and lower back.
+**What it affects is Claude's call.** Body parts are the owner's words ("right shoulder", "jaw"), and when the chat drafts an injury or pain it picks the tracked muscles whose training loads that spot (a shoulder: pressing and pulling, so chest, delts, triceps, lats, upper back and traps; a jaw: none). The owner can change them through chat ("curls don't bother it"). A fixed body-part table did this at first and was dropped the same day: it filed a jaw under the neck (the owner, November 10, 2026: lean on Claude's judgment, no hard-coded lists or pattern matching).
 
 **Claude weighs it; one hard rule** (the owner, November 10, 2026: limits shouldn't be hard-coded, they should be weighed when Claude decides):
 
-- **Bad (3):** the one hard rule. Its whole region is out (a bad shoulder rests the whole upper body, arms included) and nothing is hard anywhere. Enforced in the guardrails.
-- **Mild or hurts (1-2):** no fixed limit. The guardrails list the ailment with the muscles it affects (`guardrails.ailments`), and the morning call, or the chat revising it, decides how much to spare them from the severity, the day, the trend and what the owner wrote. The one check (`checkCall`): working an affected muscle past light needs a reason that names the ailment, so the judgment is visible and can be evaluated.
+- **Bad (3):** the one hard rule. The whole region of its muscles is out (a bad shoulder rests the whole upper body, arms included) and nothing is hard anywhere. Enforced in the guardrails. Regions: upper is chest, shoulders, arms, lats, upper back and traps; lower is legs and lower back; core is abs, obliques and lower back.
+- **Mild or hurts (1-2):** no fixed limit. The guardrails list the ailment with its muscles (`guardrails.ailments`), and the morning call, or the chat revising it, decides how much to spare them from the severity, the day, the trend and what the owner wrote, cardio included (running on a sore knee). The call must say how it treats each one (`ailments`: name and plan, "skipping pressing and rows, light band work only"); `checkCall` sends it back when one is missing. That makes the judgment visible and gives the evals something to check.
 - **The rule-based pick** (Next up's default, its fallback when Claude fails, and tomorrow's preview) can't weigh anything, so it stays cautious: no day is picked for affected muscles, and they show in Out tagged with the ailment ("Lats · right shoulder"). `ailmentAvoidOf` in `lib/body-state/build.ts`.
-- A knee, ankle or foot at 2+ flags `easyCardio` for Claude: nothing pounding.
 
 Illness works as before, through the illness phase: Sick or Very sick is rest, Mild is light only, easing back is medium at most.
 
@@ -77,7 +59,7 @@ Illness works as before, through the illness phase: Sick or Very sick is rest, M
 
 | Signal | Meaning |
 | --- | --- |
-| `open[]` | Each open or easing ailment: `id`, `kind`, `name`, `bodyParts`, `since`, `day`, `severity`, `symptoms`, `phase` (`active`, `easing`), `reportedOn`, `peak`, `affects` (muscles), `easyCardio`, `limits` (the hard ones, from a bad one: `out`, `noHard`), `cause`. Worst first. |
+| `open[]` | Each open or easing ailment: `id`, `kind`, `name`, `bodyParts`, `since`, `day`, `severity`, `symptoms`, `phase` (`active`, `easing`), `reportedOn`, `peak`, `affects` (muscles), `limits` (the hard ones, from a bad one: `out`, `noHard`), `cause`. Worst first. |
 | `ended7[]` | Over in the last 7 days. |
 
 Status: **low** with an illness at Sick or worse, or anything at 3; **watch** with anything open; **ok** while only easing; **good** with nothing open. Headline: the worst one's line, "Right shoulder · day 2, hurts", with "Upper body out, nothing hard" when it's bad.

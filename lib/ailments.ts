@@ -8,13 +8,12 @@ import { z } from "zod";
 import {
   AILMENT_KINDS,
   AILMENT_SYMPTOMS,
-  BODY_PART_NAMES,
+  ILLNESS_SYMPTOMS,
+  PAIN_SYMPTOMS,
   SEVERITY_GUIDES,
   ailmentLine,
   illnessDates,
-  musclesFor,
   openAilmentsOn,
-  partOf,
   severityLabel,
   type Ailment,
   type AilmentDay,
@@ -22,6 +21,7 @@ import {
   type CauseRef
 } from "./ailments-core";
 import { addDays } from "./dates";
+import { foldAll } from "./vocab";
 import { illnessSignal } from "./health/illness";
 import { listHealthDays } from "./health/queries";
 import { listIllnessDays } from "./illness";
@@ -201,10 +201,12 @@ export const AILMENT_TOOLS = ["list_ailments", "draft_ailment"];
 export const AILMENT_PROMPT = `## Ailments: illness, injury, pain
 - An ailment is something that lasts and ends: a cold, a sore shoulder, a canker sore. Kinds: illness, injury (something happened: a tweak, a fall), pain (it hurts, cause unclear). Several can be open at once, and each stays open until they say it's gone; nothing expires on its own.
 - Severity 0-3. Illness: ${SEVERITY_GUIDES.illness.join("; ")}. Injury or pain: ${SEVERITY_GUIDES.pain.join("; ")}. Judge it from their words; ask once only if you truly can't tell.
+- Symptoms are their plain words, one or two each ("sore throat", "ringing ears"). Reuse ones already in use (list_ailments shows them) when it's the same thing; a new one is fine when nothing fits. Common ones: ${ILLNESS_SYMPTOMS.join(", ")}; for pain: ${PAIN_SYMPTOMS.join(", ")}.
 - Where a report goes: an answer to a check-in ("Morning check-in: ...", "Evening check-in: ...", or their reply to the check-in question) is a journal entry, so its ailments are lines on that journal card (draft_journal's ailments). Anything else about pain, an injury or feeling sick ("my shoulder hurts", "shoulder's better") is an ailment card: draft_ailment with today's day, for a new ailment or an open one (ailment_id). Don't make a journal entry for it, and don't offer one; one message makes one card.
 - Call list_ailments first whenever they mention how their body feels (pain, sick, better), so you know what's open. Same or new: an open cold plus a sore throat is the same cold; a shoulder that ended weeks ago is new; the same body part still open is the same. Ask "same as the shoulder from last week, or something new?" only when you truly can't tell.
-- A new one needs kind, a short plain name ("Right shoulder", "Head cold", "Canker sore"), body_parts (from: ${BODY_PART_NAMES.join(", ")}, or a muscle such as "rear delts"; pain at or near a joint is the joint even when they name a muscle by it ("the back of my rear delt" is the shoulder), a muscle only for a clear strain in its belly; with left or right when they say: "right shoulder"; empty for most illnesses) and cause: their words or guess, or null. Link the workouts it likely came from (cause_workout_ids: the session ids list_workouts shows) when they point at them.
-- What injuries do to training: each body part affects the muscles whose work loads it (a shoulder: chest, delts, triceps, lats, upper back and traps). Below bad, the day's call weighs it (severity, how many days, whether it's easing) rather than following a fixed rule; a bad (3) one rests its whole region (a bad shoulder rests the whole upper body) and nothing hard. If they say a movement is fine ("curls don't bother it"), change its muscles with draft_ailment.
+- A new one needs kind, a short plain name ("Right shoulder", "Head cold", "Canker sore"), body_parts in plain words with a side when they say ("right shoulder", "jaw"; empty for most illnesses) and cause: their words or guess, or null. Pain at or near a joint is the joint even when they name a muscle by it ("the back of my rear delt" is the shoulder). Link the workouts it likely came from (cause_workout_ids: the session ids list_workouts shows) when they point at them.
+- muscles: for an injury or pain, the tracked muscles whose training loads that spot, which is what the plan spares. Think about which lifts load it: a shoulder is loaded by pressing and pulling (chest, delts, triceps, lats, upper back, traps), a wrist by grip and pressing, a lower back by hinging (lower back, hamstrings, glutes), a knee by squats and running (quads, hamstrings, calves). Empty when no training loads it (a jaw, a toe you can work around). If they say a movement is fine ("curls don't bother it"), change its muscles with draft_ailment.
+- What injuries do to training: below bad, the day's call weighs each one (severity, how many days, whether it's easing) rather than following a fixed rule; a bad (3) one rests the whole region of its muscles (a bad shoulder rests the whole upper body) and nothing hard.
 - "It's gone", "over the cold" is severity 0 for today: it ends the ailment. "A bit better" is a lower severity, not 0.
 - Each morning, ask about every open ailment they haven't mentioned today ("How's the shoulder?"), in the same one short question as the check-in. Their answer is a line on the journal card.
 - When the watch flags possible illness and they say they feel fine, set fine_today on the journal card: it records a false alarm and hides the warning. If the watch flags it and nothing is logged, you may mention it once, plainly.
@@ -212,13 +214,14 @@ export const AILMENT_PROMPT = `## Ailments: illness, injury, pain
 - If a new or worse ailment conflicts with today's call, revise the call (submit_call) and say so in a sentence. Never give medical advice beyond common sense; for something severe or lasting (pain past two weeks, numbness), suggest seeing a doctor once.`;
 
 const localDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("Local date, YYYY-MM-DD.");
-const symptom = z.enum(AILMENT_SYMPTOMS);
+const symptom = z.string().min(2).max(40).describe("A plain word or two, theirs or one already in use.");
 const muscle = z.enum(TRACKED_MUSCLES as unknown as [TrackedMuscle, ...TrackedMuscle[]]);
 
 export const newAilmentShape = z.object({
   kind: z.enum(AILMENT_KINDS),
   name: z.string().min(2).max(40).describe('Short and plain: "Right shoulder", "Head cold".'),
-  body_parts: z.array(z.string()).max(4).describe('From the body part list or a muscle, with a side when they say: "right shoulder". Empty for most illnesses.'),
+  body_parts: z.array(z.string().max(30)).max(4).describe('In plain words, with a side when they say: "right shoulder", "jaw". Empty for most illnesses.'),
+  muscles: z.array(muscle).optional().describe("Injury or pain: the tracked muscles whose training loads it; empty when none does."),
   started_on: localDate.optional().describe("When it started, if before the entry's date."),
   cause: z.string().max(200).nullable().describe("Their words or guess; null when unknown."),
   cause_workout_ids: z.array(z.string()).max(4).optional().describe("Logged workouts it likely came from: the session ids list_workouts shows.")
@@ -228,20 +231,9 @@ export const reportShape = z.object({
   ailment_id: z.string().optional().describe("An open or recent ailment from list_ailments; leave out for a new one."),
   new: newAilmentShape.optional().describe("Only for a new ailment."),
   severity: z.number().int().min(0).max(3),
-  symptoms: z.array(symptom).max(8).describe("Only ones they mention."),
+  symptoms: z.array(symptom).max(8).describe("Only ones they mention, in plain words; reuse ones already in use (list_ailments)."),
   note: z.string().max(200).nullable().describe("A few of their words the symptoms don't cover; null if nothing.")
 });
-
-// Body parts as stored ("right shoulder"), or an error naming the bad one.
-function checkParts(parts: readonly string[]): { parts: string[] } | { error: string } {
-  const clean: string[] = [];
-  for (const raw of parts) {
-    const value = raw.trim().toLowerCase();
-    if (!partOf(value)) return { error: `"${raw}" isn't a body part. Use one of ${BODY_PART_NAMES.join(", ")}, or a muscle.` };
-    if (!clean.includes(value)) clean.push(value);
-  }
-  return { parts: clean };
-}
 
 async function causeRefsOf(db: Queryable, userName: string, ids: readonly string[] = []): Promise<CauseRef[] | { error: string }> {
   const valid = ids.filter((id) => z.string().uuid().safeParse(id).success);
@@ -259,22 +251,34 @@ async function toNew(
   db: Queryable,
   userName: string,
   input: z.infer<typeof newAilmentShape>,
-  date: string
+  date: string,
+  partsInUse: readonly string[] = []
 ): Promise<NewAilment | { error: string }> {
-  const parts = checkParts(input.body_parts);
-  if ("error" in parts) return parts;
-  if (input.kind !== "illness" && !parts.parts.length) return { error: "An injury or pain needs its body part." };
+  const parts = foldAll(input.body_parts, partsInUse);
+  if (input.kind !== "illness" && !parts.length) return { error: "An injury or pain needs its body part." };
   const refs = await causeRefsOf(db, userName, input.cause_workout_ids);
   if ("error" in refs) return refs;
   return {
     kind: input.kind,
     name: input.name.trim(),
-    body_parts: parts.parts,
-    muscles: musclesFor(parts.parts),
+    body_parts: parts,
+    muscles: input.kind === "illness" ? [] : TRACKED_MUSCLES.filter((item) => (input.muscles ?? []).includes(item)),
     started_on: input.started_on && input.started_on < date ? input.started_on : date,
     cause: input.cause?.trim() || null,
     cause_refs: refs
   };
+}
+
+// Body parts already written down, most recent first: what a new one folds onto.
+export function partsInUse(ailments: readonly Ailment[]) {
+  return [...new Set([...ailments].reverse().flatMap((item) => item.bodyParts))];
+}
+
+// Symptoms already written down, most recent first, then the suggested ones:
+// what a new symptom folds onto when it's the same words.
+export function symptomsInUse(ailments: readonly Ailment[]) {
+  const used = [...ailments].reverse().flatMap((item) => item.days.flatMap((day) => day.symptoms));
+  return [...new Set([...used, ...AILMENT_SYMPTOMS])];
 }
 
 // draft_journal's ailment lines, checked and ready for the card.
@@ -285,9 +289,10 @@ export async function resolveReports(
   inputs: readonly z.infer<typeof reportShape>[]
 ): Promise<{ reports: AilmentReport[] } | { error: string }> {
   const known = await listAilments(db, userName, addDays(date, -120), date);
+  const vocabulary = symptomsInUse(known);
   const reports: AilmentReport[] = [];
   for (const input of inputs) {
-    const symptoms = [...new Set(input.symptoms)];
+    const symptoms = foldAll(input.symptoms, vocabulary);
     if (input.ailment_id) {
       const ailment = known.find((item) => item.id === input.ailment_id);
       if (!ailment) return { error: `No ailment with id ${input.ailment_id}. Call list_ailments.` };
@@ -306,7 +311,7 @@ export async function resolveReports(
     }
     if (!input.new) return { error: "Each ailment line needs ailment_id (from list_ailments) or new." };
     if (input.severity === 0) return { error: "A new ailment can't start at 0." };
-    const fresh = await toNew(db, userName, input.new, date);
+    const fresh = await toNew(db, userName, input.new, date, partsInUse(known));
     if ("error" in fresh) return fresh;
     const open = openAilmentsOn(known, date).find(
       (item) => item.phase === "active" && item.name.toLowerCase() === fresh.name.toLowerCase()
@@ -379,6 +384,7 @@ export function ailmentTools(context: {
       return text({
         today,
         open_today: open.map((item) => ({ id: item.id, line: ailmentLine(item), phase: item.phase, reported_on: item.reportedOn, affects: item.affects })),
+        symptoms_in_use: symptomsInUse(ailments).slice(0, 40),
         watch_signal_today: fine.length ? "answered: feeling fine" : signal.level === "none" ? "nothing unusual" : { level: signal.level, reasons: signal.reasons },
         ailments: ailments.filter((item) => item.startedOn <= end && (!item.endedOn || item.endedOn >= start)).map(describeAilment)
       });
@@ -394,7 +400,7 @@ export function ailmentTools(context: {
       kind: z.enum(AILMENT_KINDS).optional().describe("Required for a new one; leave out to keep it."),
       name: z.string().min(2).max(40).optional().describe("Required for a new one; leave out to keep it."),
       body_parts: z.array(z.string()).max(4).optional().describe("Leave out to keep them."),
-      muscles: z.array(muscle).optional().describe("The muscles it affects; leave out to keep them (or use the body parts' own)."),
+      muscles: z.array(muscle).optional().describe("Injury or pain: the tracked muscles whose training loads it. Required for a new one; leave out to keep them."),
       started_on: localDate.optional().describe("A new one: when it started, default the first day listed. Leave out to keep it."),
       ended_on: localDate.nullable().optional().describe("When it was over; leave out to keep it. A 0 day ends it on its own."),
       cause: z.string().max(200).nullable().optional().describe("Their words or guess; leave out to keep it."),
@@ -410,6 +416,8 @@ export function ailmentTools(context: {
       const target = resolveDraftId(args.replaces);
       if ("error" in target) return { ...text(target.error), isError: true };
       const existing = args.ailment_id ? await getAilment(db, userName, args.ailment_id) : null;
+      const history = await listAilments(db, userName, addDays(today, -365), today);
+      const vocabulary = symptomsInUse(history);
       if (args.ailment_id && !existing) return { ...text(`No ailment with id ${args.ailment_id}. Call list_ailments.`), isError: true };
       if (!existing && (!args.kind || !args.name)) return { ...text("A new ailment needs kind and name."), isError: true };
       if (!existing && !args.days.length) return { ...text("A new ailment needs at least one day."), isError: true };
@@ -431,13 +439,14 @@ export function ailmentTools(context: {
           kind: args.kind ?? existing!.kind,
           name: args.name ?? existing!.name,
           body_parts: args.body_parts ?? existing?.bodyParts ?? [],
+          muscles: args.muscles ?? existing?.muscles ?? [],
           cause: args.cause === undefined ? (existing?.cause ?? null) : args.cause,
           cause_workout_ids: args.cause_workout_ids
         },
-        startedOn
+        startedOn,
+        partsInUse(history)
       );
       if ("error" in fresh) return { ...text(fresh.error), isError: true };
-      const keepMuscles = existing && !args.muscles && !args.body_parts;
       putDraft({
         type: "ailment",
         id: target.id,
@@ -445,13 +454,12 @@ export function ailmentTools(context: {
         ailment: {
           ...fresh,
           started_on: startedOn,
-          muscles: args.muscles ? TRACKED_MUSCLES.filter((item) => args.muscles!.includes(item)) : keepMuscles ? existing.muscles : fresh.muscles,
           // Left out on a change: the linked workouts stay.
           cause_refs: existing && args.cause_workout_ids === undefined ? existing.causeRefs : fresh.cause_refs,
           ended_on: endedOn,
           note: args.note === undefined ? (existing?.note ?? null) : args.note?.trim() || null
         },
-        days: days.map((day) => ({ ...day, symptoms: [...new Set(day.symptoms)], note: day.note?.trim() || null })),
+        days: days.map((day) => ({ ...day, symptoms: foldAll(day.symptoms, vocabulary), note: day.note?.trim() || null })),
         saved_id: null
       });
       return text({ draft_id: target.id });

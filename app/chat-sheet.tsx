@@ -399,7 +399,7 @@ function AilmentLines({ reports }: { reports: AilmentReport[] }) {
   return (
     <ul className="draft-ailments">
       {reports.map((report) => {
-        const limits = report.new ? limitsLine(limitsOf({ kind: report.kind, bodyParts: report.new.body_parts, muscles: report.new.muscles }, report.severity)) : null;
+        const limits = report.new ? limitsLine(limitsOf({ kind: report.kind, muscles: report.new.muscles }, report.severity)) : null;
         const when = report.ailment_id ? `day ${report.day}` : report.day > 1 ? `new, since day ${report.day}` : "new";
         return (
           <li key={report.ailment_id ?? report.name}>

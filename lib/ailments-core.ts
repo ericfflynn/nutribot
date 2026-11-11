@@ -3,7 +3,7 @@
 // database and chat tools are in lib/ailments.ts. Spec: docs/ailments.md.
 import { addDays } from "./dates";
 import { SYMPTOMS } from "./illness-days";
-import { MUSCLES, TRACKED_MUSCLES, type Intensity, type TrackedMuscle } from "./workouts";
+import { MUSCLES, TRACKED_MUSCLES, type TrackedMuscle } from "./workouts";
 
 export const AILMENT_KINDS = ["illness", "injury", "pain"] as const;
 export type AilmentKind = (typeof AILMENT_KINDS)[number];
@@ -31,62 +31,23 @@ export function severityLabel(kind: AilmentKind, severity: number) {
   return labels[Math.max(0, Math.min(3, Math.round(severity)))];
 }
 
+// Suggested symptoms, not a limit: any plain words are allowed, folded onto
+// ones already in use (symptomsInUse in lib/ailments.ts, lib/vocab.ts).
 export const ILLNESS_SYMPTOMS = [...SYMPTOMS, "canker sore", "swollen lymph nodes", "tooth pain", "ear pressure"] as const;
 export const PAIN_SYMPTOMS = ["sharp", "dull ache", "stiff", "clicking", "weak", "swelling", "numb or tingling"] as const;
 export const AILMENT_SYMPTOMS = [...ILLNESS_SYMPTOMS, ...PAIN_SYMPTOMS] as const;
 
-// Upper body is everything an upper-body day loads; a bad (3) injury rests its
-// whole region so it can heal.
+// Upper body is everything an upper-body day loads; a bad (3) injury rests the
+// whole region of the muscles it affects so it can heal.
 const UPPER: TrackedMuscle[] = ["Chest", ...MUSCLES.Shoulders, ...MUSCLES.Arms, "Lats", "Upper Back", "Traps"];
 const LOWER: TrackedMuscle[] = [...MUSCLES.Legs, "Lower Back"];
 const CORE: TrackedMuscle[] = [...MUSCLES.Core, "Lower Back"];
 export const REGIONS = { upper: UPPER, lower: LOWER, core: CORE } as const;
 export type Region = keyof typeof REGIONS;
 
-// What training each body part takes: the muscles whose work loads it. A sore
-// shoulder rests pressing and pulling, not only the delts.
-export const BODY_PARTS: Record<string, { muscles: TrackedMuscle[]; region: Region; cardio?: true }> = {
-  shoulder: { muscles: ["Chest", "Front Delts", "Side Delts", "Rear Delts", "Triceps", "Lats", "Upper Back", "Traps"], region: "upper" },
-  elbow: { muscles: ["Biceps", "Triceps", "Forearms"], region: "upper" },
-  wrist: { muscles: ["Forearms", "Biceps", "Lats", "Upper Back", "Traps", "Chest", "Triceps"], region: "upper" },
-  hand: { muscles: ["Forearms", "Biceps", "Lats", "Upper Back", "Traps", "Chest", "Triceps"], region: "upper" },
-  neck: { muscles: ["Traps", "Upper Back"], region: "upper" },
-  "upper back": { muscles: ["Upper Back", "Traps", "Lats"], region: "upper" },
-  chest: { muscles: ["Chest", "Obliques"], region: "upper" },
-  ribs: { muscles: ["Chest", "Obliques"], region: "core" },
-  "lower back": { muscles: ["Lower Back", "Hamstrings", "Glutes"], region: "core" },
-  abs: { muscles: ["Upper Abs", "Lower Abs", "Obliques"], region: "core" },
-  hip: { muscles: ["Glutes", "Hamstrings", "Quads"], region: "lower" },
-  knee: { muscles: ["Quads", "Hamstrings", "Calves"], region: "lower", cardio: true },
-  ankle: { muscles: ["Calves", "Quads"], region: "lower", cardio: true },
-  foot: { muscles: ["Calves", "Quads"], region: "lower", cardio: true }
-};
-export const BODY_PART_NAMES = Object.keys(BODY_PARTS);
-export const SIDES = ["left", "right"] as const;
-
-// "right shoulder" -> shoulder; "Rear Delts" -> Rear Delts (a muscle).
-export function partOf(name: string): string | null {
-  const plain = name.trim().toLowerCase().replace(/^(left|right|both)\s+/, "");
-  if (BODY_PARTS[plain]) return plain;
-  const muscle = TRACKED_MUSCLES.find((item) => item.toLowerCase() === plain || `${item.toLowerCase()}`.replace(/s$/, "") === plain);
-  return muscle ?? null;
-}
-
-function regionOf(part: string): Region | null {
-  if (BODY_PARTS[part]) return BODY_PARTS[part].region;
-  const muscle = part as TrackedMuscle;
-  return UPPER.includes(muscle) ? "upper" : LOWER.includes(muscle) ? "lower" : CORE.includes(muscle) ? "core" : null;
-}
-
-// The muscles a list of body parts limits, in TRACKED_MUSCLES order.
-export function musclesFor(bodyParts: readonly string[]): TrackedMuscle[] {
-  const set = new Set<TrackedMuscle>();
-  for (const name of bodyParts) {
-    const part = partOf(name);
-    if (!part) continue;
-    for (const muscle of BODY_PARTS[part]?.muscles ?? [part as TrackedMuscle]) set.add(muscle);
-  }
-  return TRACKED_MUSCLES.filter((muscle) => set.has(muscle));
+// The region a muscle belongs to (upper, legs, core; lower back is both).
+function regionsOf(muscles: readonly TrackedMuscle[]): Region[] {
+  return (Object.keys(REGIONS) as Region[]).filter((region) => muscles.some((muscle) => (REGIONS[region] as readonly TrackedMuscle[]).includes(muscle)));
 }
 
 export type CauseRef = { type: "workout" | "habit_log" | "journal"; id: string; label: string };
@@ -104,8 +65,8 @@ export type Ailment = {
   id: string;
   kind: AilmentKind;
   name: string;
-  bodyParts: string[]; // "right shoulder"
-  muscles: TrackedMuscle[]; // what it limits
+  bodyParts: string[]; // in their words: "right shoulder", "jaw"
+  muscles: TrackedMuscle[]; // the muscles whose work loads it, picked by the chat
   startedOn: string;
   endedOn: string | null; // the day it was over, null while open
   cause: string | null; // the owner's words, or their guess
@@ -134,7 +95,6 @@ export type OpenAilment = {
   // The muscles whose work loads it (an injury or pain): Claude weighs these
   // when it makes the call. Empty for illness.
   affects: TrackedMuscle[];
-  easyCardio: boolean; // a knee, ankle or foot that hurts: pounding cardio loads it too
   limits: AilmentLimits; // the hard limits, only from a bad (3) injury
   cause: string | null;
 };
@@ -148,15 +108,11 @@ const NO_LIMITS: AilmentLimits = { out: [], noHard: false };
 
 const daysBetween = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
 
-export function limitsOf(ailment: Pick<Ailment, "kind" | "bodyParts" | "muscles">, severity: number): AilmentLimits {
+export function limitsOf(ailment: Pick<Ailment, "kind" | "muscles">, severity: number): AilmentLimits {
   if (ailment.kind === "illness" || severity < 3) return NO_LIMITS;
-  const parts = ailment.bodyParts.map(partOf).filter((part): part is string => Boolean(part));
-  const regions = new Set(parts.map(regionOf).filter((region): region is Region => Boolean(region)));
-  const out = new Set<TrackedMuscle>([...ailment.muscles, ...[...regions].flatMap((region) => REGIONS[region])]);
+  const out = new Set<TrackedMuscle>([...ailment.muscles, ...regionsOf(ailment.muscles).flatMap((region) => REGIONS[region])]);
   return { out: TRACKED_MUSCLES.filter((muscle) => out.has(muscle)), noHard: true };
 }
-
-const loadsCardio = (ailment: Pick<Ailment, "bodyParts">) => ailment.bodyParts.some((name) => BODY_PARTS[partOf(name) ?? ""]?.cardio);
 
 // Where an ailment stands on `date`, reading only what was known by then.
 // Open until a 0 report or its end date: nothing expires on its own (the
@@ -183,7 +139,7 @@ export function ailmentOn(ailment: Ailment, date: string): OpenAilment | null {
   };
   if (ended) {
     if (ailment.kind !== "illness" || peak < 2 || addDays(ended, EASE_DAYS) <= date) return null;
-    return { ...base, day: daysBetween(ailment.startedOn, ended), severity: 0, phase: "easing", affects: [], easyCardio: false, limits: NO_LIMITS };
+    return { ...base, day: daysBetween(ailment.startedOn, ended), severity: 0, phase: "easing", affects: [], limits: NO_LIMITS };
   }
   // No report yet (created ahead of its first day): count it as mild.
   const severity = latest?.severity ?? 1;
@@ -194,7 +150,6 @@ export function ailmentOn(ailment: Ailment, date: string): OpenAilment | null {
     severity,
     phase: "active",
     affects: injury ? [...ailment.muscles] : [],
-    easyCardio: injury && severity >= 2 && loadsCardio(ailment),
     limits: limitsOf(ailment, severity)
   };
 }
@@ -228,7 +183,7 @@ export function musclesLine(list: readonly TrackedMuscle[]) {
   }
   const groups = Object.entries(MUSCLES).filter(([, members]) => members.length && (members as readonly TrackedMuscle[]).every((muscle) => list.includes(muscle)));
   const covered = new Set(groups.flatMap(([, members]) => members as readonly string[]));
-  return [...groups.map(([group]) => group.toLowerCase()), ...list.filter((muscle) => !covered.has(muscle))].join(", ");
+  return [...groups.map(([group]) => group), ...list.filter((muscle) => !covered.has(muscle))].map((name) => name.toLowerCase()).join(", ");
 }
 
 // "Upper body out, nothing hard": what the hard limits mean, or null.
