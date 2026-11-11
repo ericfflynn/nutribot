@@ -3,7 +3,9 @@ import { BodyMap, type MuscleView } from "../body-map";
 import { WeekPages, LabelButton, MergeControls, RestoreButton, WorkoutEditor, type CoverageRow, type WeekPage } from "../training-ui";
 import { getSessionUser } from "@/lib/auth";
 import { lastWeekRows, weekItems } from "@/lib/training-week";
-import { addDays, localDateTime, todayLocalDate } from "@/lib/dates";
+import { addDays, currentWeekToDate, localDateTime, todayLocalDate } from "@/lib/dates";
+import { ZONES, getZoneBounds, zoneMinutes, type ZoneMinutes } from "@/lib/health/zones";
+import { ZoneLadder } from "../zone-ladder";
 import { listHealthWorkouts, type HealthWorkout } from "@/lib/health/queries";
 import { workoutStrain } from "@/lib/health/scores";
 import { getPool } from "@/lib/supabase";
@@ -167,7 +169,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     );
   }
 
-  const [sessions, fitbit, healthWorkouts, unlabeled, soreness, body, todayCall] = await Promise.all([
+  const [sessions, fitbit, healthWorkouts, unlabeled, soreness, body, todayCall, zoneBounds] = await Promise.all([
     listWorkoutSessions(db, user.name, start, today),
     listFitbitWorkouts(db, user.name, start, today),
     listHealthWorkouts(user.name, start, today),
@@ -175,8 +177,20 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     listSoreness(db, user.name, addDays(today, -14), today),
     // Illness comes from the body state, so Next up agrees with Today.
     getBodyState(db, user.name, today),
-    getDailyCall(db, user.name, today)
+    getDailyCall(db, user.name, today),
+    getZoneBounds(user.name, today)
   ]);
+  // Heart-rate zones: this calendar week's watch workouts so far, and the
+  // average week over the 4 full weeks before, ignored recordings left out.
+  const zoneWeek = currentWeekToDate(today);
+  const ignoredWatch = new Set(fitbit.filter((workout) => workout.ignored).map((workout) => workout.id));
+  const watchIn = (from: string, to: string) =>
+    healthWorkouts.filter((workout) => workout.day >= from && workout.day <= to && !ignoredWatch.has(workout.id));
+  const zoneThisWeek = zoneMinutes(watchIn(zoneWeek.startDate, today));
+  const pastWeeks = [1, 2, 3, 4].map((ago) => zoneMinutes(watchIn(addDays(zoneWeek.startDate, -7 * ago), addDays(zoneWeek.startDate, -7 * ago + 6))));
+  const zoneAverage = Object.fromEntries(
+    ZONES.map((zone) => [zone.key, Math.round(pastWeeks.reduce((sum, week) => sum + week[zone.key], 0) / pastWeeks.length)])
+  ) as ZoneMinutes;
   const healthById = new Map<string, HealthWorkout>(healthWorkouts.map((workout) => [workout.id, workout]));
   const fitbitById = new Map<string, FitbitWorkout>(fitbit.map((workout) => [workout.id, workout]));
 
@@ -480,6 +494,8 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
             ))}
         </div>
       </section>
+
+      <ZoneLadder week={zoneThisWeek} average={zoneAverage} bounds={zoneBounds} daysDone={zoneWeek.elapsedDays - 1} />
 
       <section className="card" aria-label="Last 7 days">
         <div className="card-heading">

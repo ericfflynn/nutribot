@@ -4283,6 +4283,116 @@ details[open] .journal-preview {
 
 /* Training: this week's split under Next up, a tile per kind with a target.
    The count turns red while it's short. */
+/* Training's heart-rate zones: warm ramp, darker going up */
+.zone-ladder {
+  --zone-light: #f2cf9b;
+  --zone-moderate: #e9a04f;
+  --zone-vigorous: #d9662a;
+  --zone-peak: #a8321c;
+  display: flex;
+  flex-direction: column;
+}
+
+.zone-row {
+  display: grid;
+  grid-template-columns: 34px 12px minmax(0, 1fr);
+  column-gap: 10px;
+}
+
+.zone-row.light { --zone: var(--zone-light); --zone-below: var(--zone-light); }
+.zone-row.moderate { --zone: var(--zone-moderate); --zone-below: var(--zone-light); }
+.zone-row.vigorous { --zone: var(--zone-vigorous); --zone-below: var(--zone-moderate); }
+.zone-row.peak { --zone: var(--zone-peak); --zone-below: var(--zone-vigorous); }
+
+.zone-bpm {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  transform: translateY(-7px);
+}
+
+.zone-strip {
+  background: linear-gradient(to top, var(--zone-below), var(--zone));
+}
+
+.zone-row.first .zone-strip { border-radius: 6px 6px 0 0; }
+.zone-row.last .zone-strip { border-radius: 0 0 6px 6px; }
+
+.zone-body {
+  display: grid;
+  gap: 6px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.zone-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.zone-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.zone-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--zone);
+}
+
+.zone-minutes {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.zone-minutes span,
+.zone-note {
+  color: var(--muted);
+}
+
+.zone-bar {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--line);
+}
+
+.zone-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 4px;
+  background: var(--zone);
+}
+
+.zone-usual {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  background: var(--ink);
+}
+
+.zone-note {
+  font-size: 13px;
+}
+
+.zone-note .behind {
+  color: var(--bad);
+  font-weight: 600;
+}
+
+.zone-row.floor .zone-note {
+  font-size: 12px;
+  transform: translateY(-7px);
+}
+
 .split-label {
   margin: 0 0 -4px;
   color: var(--muted);
