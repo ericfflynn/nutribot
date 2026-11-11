@@ -468,9 +468,8 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
         </div>
         <p className="split-label">This week, since Monday</p>
         <div className="split-tiles" aria-label="Split this week">
-          {/* Core has no target: its count only (the owner, Nov 10, 2026). */}
           {thisSplit
-            .filter((entry) => entry.target != null || entry.kind === "core")
+            .filter((entry) => entry.target != null)
             .map((entry) => (
               <div key={entry.kind} className="split-tile">
                 <strong className={entry.target != null && entry.count < entry.target ? "short" : undefined}>

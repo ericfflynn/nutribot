@@ -360,7 +360,7 @@ export function activityCategoriesOf(type: WorkoutType, muscles: readonly Muscle
 // A good week's split: sessions of each kind each calendar week (Monday to Sunday). Sport counts but
 // has no target. A workout counts for every kind it includes, so stretching
 // logged on a strength session is also a mobility session.
-export const SPLIT_TARGETS: Partial<Record<ActivityCategory, number>> = { strength: 4, cardio: 2, mobility: 2 };
+export const SPLIT_TARGETS: Partial<Record<ActivityCategory, number>> = { strength: 4, core: 3, cardio: 2, mobility: 2 };
 export const SPLIT_KINDS = ["strength", "core", "cardio", "mobility", "sport"] as const;
 
 export type SplitEntry = { kind: (typeof SPLIT_KINDS)[number]; count: number; target: number | null };

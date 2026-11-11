@@ -305,7 +305,7 @@ test("the split counts a workout for every kind it includes, against 4/2/2", () 
     split.map((entry) => [entry.kind, entry.count, entry.target]),
     [
       ["strength", 2, 4],
-      ["core", 0, null],
+      ["core", 0, 3],
       ["cardio", 1, 2],
       ["mobility", 1, 2],
       ["sport", 1, null]
