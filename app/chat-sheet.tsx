@@ -10,7 +10,7 @@ import type { FeedbackDraft } from "@/lib/feedback";
 import type { MemoryNote } from "@/lib/memories";
 import { SEVERITY_LABELS, type IllnessDraft } from "@/lib/illness-days";
 import type { AilmentDraft, AilmentReport } from "@/lib/ailments";
-import { limitsLine, limitsOf, severityLabel } from "@/lib/ailments-core";
+import { limitsLine, limitsOf, musclesLine, severityLabel } from "@/lib/ailments-core";
 import { describeGoal, formatHabitAmount, scaleGuideLines } from "@/lib/habits";
 import { recordedRatings } from "@/lib/journal";
 import type { ChatMessage } from "@/lib/chat";
@@ -416,12 +416,12 @@ function AilmentCard({ draft, ...handlers }: { draft: AilmentDraft } & DraftHand
   const item = draft.ailment;
   const range = item.ended_on ? `${item.started_on} to ${item.ended_on}` : `since ${item.started_on}`;
   return (
-    <CheckinCard draft={draft} kind={draft.ailment_id ? "edit ailment" : `${item.kind}`} {...handlers}>
+    <CheckinCard draft={draft} kind={draft.ailment_id ? (draft.days.length ? `${item.kind} update` : `edit ${item.kind}`) : `new ${item.kind}`} {...handlers}>
       <p className="draft-title">{item.name}</p>
       <p className="draft-edit-note">
         {[range, item.body_parts.join(", "), item.cause ? `cause: ${item.cause}` : null].filter(Boolean).join(" · ")}
       </p>
-      {item.kind !== "illness" && item.muscles.length ? <p className="draft-body">Limits {item.muscles.join(", ")}</p> : null}
+      {item.kind !== "illness" && item.muscles.length ? <p className="draft-edit-note">Affects {musclesLine(item.muscles)}</p> : null}
       {draft.days.length ? (
         <ul className="draft-items">
           {draft.days.map((day) => (

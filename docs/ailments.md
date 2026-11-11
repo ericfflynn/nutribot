@@ -9,9 +9,9 @@ Status: built November 10, 2026 (feedback d9344d23, first half). Illness, injury
 
 ## The model (agreed November 7, 2026)
 
-- **One message makes one card.** "My right shoulder hurts" makes one journal card with a line for the shoulder. Nothing is logged separately.
+- **One message makes one card.** "My right shoulder hurts" makes one ailment card ("New pain · Right shoulder"). A check-in answer that mentions it makes one journal card with a line for the shoulder instead. Since November 10, 2026 a pain report on its own is not a journal entry (the owner didn't want it saved as an evening journal, which also counted as answering the evening check-in).
 - **Journal entry:** what was said that day, in the owner's words.
-- **Ailment:** something that lasts and ends: a cold, a sore shoulder, a canker sore. Each journal card that mentions it adds that day to it, shown as a line on the card ("Right shoulder · day 2 · hurts").
+- **Ailment:** something that lasts and ends: a cold, a sore shoulder, a canker sore. Each report adds that day to it: an ailment card, or a line on a check-in's journal card ("Right shoulder · day 2 · hurts").
 - **Memory** (`chat_memories`): lasting facts about the owner, never ailments or events.
 
 ## What one is
@@ -87,8 +87,8 @@ Status: **low** with an illness at Sick or worse, or anything at 3; **watch** wi
 ## In the chat
 
 - `list_ailments`: open ones with their lines, those in the last 60 days with their days, and today's watch illness signal.
-- `draft_journal` takes `ailments`: one line per ailment mentioned, either `ailment_id` or `new` (kind, name, body parts, cause, workouts it came from). Saving writes the entry and the days in one transaction. Pain or illness mid-conversation gets a full card, not the "Save to journal" offer. `fine_today` records a false alarm on a flagged day (kept in `illness_days` as severity 0).
-- `draft_ailment`: changes an ailment itself (name, body parts, muscles, cause, dates) or logs a past one with its days.
+- `draft_ailment`: the card for a report outside a check-in (a new ailment with today's day, or today's day for an open one), a change to an ailment (name, body parts, muscles, cause, dates; fields left out are kept), or a past one with its days.
+- `draft_journal` takes `ailments` for a check-in answer: one line per ailment mentioned, either `ailment_id` or `new` (kind, name, body parts, cause, workouts it came from). Saving writes the entry and the days in one transaction. `fine_today` records a false alarm on a flagged day (kept in `illness_days` as severity 0).
 - `draft_illness` and `list_illness` are gone; old illness cards in the chat still show but can't be saved.
 - The morning call reads `physical.ailments`, plans around them, names them in the note and asks about each one not reported today.
 

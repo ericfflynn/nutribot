@@ -94,7 +94,7 @@ export const CHECKIN_PROMPT = `## Journal
 - Mood is the main rating: ${MOOD_LABELS.map((label, index) => `${index + 1} ${label}`).join(", ")}. It's how they feel emotionally.
 - Stress is optional and separate: ${STRESS_LABELS.map((label, index) => `${index + 1} ${label}`).join(", ")}. It's pressure or strain, not mood. Set it only when they talk about pressure, worry or calm; never work it out from mood, and never set mood from stress. A great mood can come with high stress.
 - energy (1 drained, 5 energized) and soreness (1 none, 5 very sore) are optional too. Every rating the text doesn't support is null, never a guess.
-- Pain, injury or illness the entry mentions goes in ailments (see Ailments), not in tags.
+- Pain, injury or illness a check-in answer mentions goes in its ailments (see Ailments), not in tags. Pain or illness outside a check-in is an ailment card, not a journal entry.
 - tags: one to four lowercase tags for what came up. Prefer these, by category: ${TAG_CATEGORIES.map((category) => `${category.label}: ${category.tags.join(", ")}`).join("; ")}. Add a custom tag only for something specific that none of these cover ("sore legs"), and reuse the owner's earlier tags (list_journal) over new wording.
 - kind is morning before noon, evening after 5 pm, other in between, except that an answer to a check-in takes that check-in's kind whatever the time: a message starting "Morning check-in:" (from Today's card) is morning, "Evening check-in:" is evening. An entry written before 4 am about the night before belongs to the previous date.
 - A day can have several entries of the same kind. New writing about their day, even a follow-up to an earlier entry, is a new entry: call draft_journal without edits.
