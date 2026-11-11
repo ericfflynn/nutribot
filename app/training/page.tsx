@@ -292,7 +292,8 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     });
   }
   recent.sort((a, b) => b.sort.localeCompare(a.sort));
-  const lastWeek = lastWeekRows(weekItems(sessions, fitbit), today);
+  // Newest first here (the owner, Nov 10, 2026); Today's strain trends keep oldest first.
+  const lastWeek = lastWeekRows(weekItems(sessions, fitbit), today).reverse();
   // Workout types present in the window, for the filter and the type counts.
   const typeCounts = new Map<WorkoutType, number>();
   for (const item of recent.filter((entry) => entry.date >= recentStart)) typeCounts.set(item.workoutType, (typeCounts.get(item.workoutType) ?? 0) + 1);
@@ -462,6 +463,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
             </span>
           ) : null}
         </div>
+        <p className="split-label">This week, since Monday</p>
         <div className="split-tiles" aria-label="Split this week">
           {thisSplit
             .filter((entry) => entry.target != null)

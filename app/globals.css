@@ -4283,6 +4283,12 @@ details[open] .journal-preview {
 
 /* Training: this week's split under Next up, a tile per kind with a target.
    The count turns red while it's short. */
+.split-label {
+  margin: 0 0 -4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .split-tiles {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
