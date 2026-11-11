@@ -16,19 +16,6 @@ export const INTENSITY_LABELS = ["None", "Light", "Moderate", "Heavy"] as const;
 
 export const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
-// What a habit can move in the body (docs/body-state.md, Explanations): a use
-// yesterday or last night explains those numbers. Set from chat or the
-// Habits tab (since Nov 10, 2026; drinking was recognized by name before).
-export const HABIT_EFFECTS = ["sleep", "resting_hr", "hrv", "sleep_temp", "recovery"] as const;
-export type HabitEffect = (typeof HABIT_EFFECTS)[number];
-export const HABIT_EFFECT_LABELS: Record<HabitEffect, string> = {
-  sleep: "Sleep",
-  resting_hr: "Resting HR",
-  hrv: "HRV",
-  sleep_temp: "Sleep temperature",
-  recovery: "Recovery"
-};
-
 export type HabitInput = {
   name: string;
   description: string | null; // what counts, in the owner's words
@@ -47,8 +34,6 @@ export type HabitInput = {
   // Frequency: the weekdays (0 Sunday-6 Saturday) the habit is tracked.
   // Null means every day. Unlogged days off are "off", not missed.
   days: number[] | null;
-  // What it moves in the body; empty when nothing (or not said).
-  affects: HabitEffect[];
   active: boolean;
 };
 
@@ -119,7 +104,6 @@ const HABIT_COLUMNS = `
   to_char(cutoff, 'HH24:MI') as cutoff,
   cutoff_weeknights as "cutoffWeeknights",
   days::int[] as days,
-  affects,
   active
 `;
 
@@ -163,8 +147,7 @@ export async function saveHabit(db: Queryable, userName: string, input: HabitInp
     input.description ?? null,
     normalizeDays(input.days),
     input.bands?.orange ?? null,
-    input.bands?.red ?? null,
-    HABIT_EFFECTS.filter((effect) => input.affects.includes(effect))
+    input.bands?.red ?? null
   ];
   const bandError = bandsProblem({ ...input, bands: input.bands ?? null });
   if (bandError) throw new HabitError(bandError);
@@ -188,16 +171,16 @@ export async function saveHabit(db: Queryable, userName: string, input: HabitInp
           update public.habits
           set name = $2, measure = $3, unit = $4, direction = $5, scale_guide = $6, goal = $7,
             cutoff = $8::time, cutoff_weeknights = $9, active = $10, description = $11, days = $12::smallint[],
-            band_orange = $13, band_red = $14, affects = $15::text[]
-          where user_name = $1 and id = $16::uuid
+            band_orange = $13, band_red = $14
+          where user_name = $1 and id = $15::uuid
           returning id::text
           `,
           [...values, id]
         )
       : await db.query<{ id: string }>(
           `
-          insert into public.habits (user_name, name, measure, unit, direction, scale_guide, goal, cutoff, cutoff_weeknights, active, description, days, band_orange, band_red, affects)
-          values ($1, $2, $3, $4, $5, $6, $7, $8::time, $9, $10, $11, $12::smallint[], $13, $14, $15::text[])
+          insert into public.habits (user_name, name, measure, unit, direction, scale_guide, goal, cutoff, cutoff_weeknights, active, description, days, band_orange, band_red)
+          values ($1, $2, $3, $4, $5, $6, $7, $8::time, $9, $10, $11, $12::smallint[], $13, $14)
           returning id::text
           `,
           values

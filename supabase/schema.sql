@@ -581,10 +581,6 @@ create unique index if not exists reminders_habit_idx
 
 alter table public.reminders enable row level security;
 
--- November 10, 2026: what a habit moves in the body (lib/habits.ts
--- HABIT_EFFECTS); a use explains those numbers. Drinking was matched by name before.
-alter table public.habits add column if not exists affects text[] not null default '{}';
-
 alter table public.journal_entries enable row level security;
 alter table public.habits enable row level security;
 alter table public.habit_logs enable row level security;

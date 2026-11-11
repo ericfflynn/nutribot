@@ -16,7 +16,6 @@ import type { PoolClient } from "pg";
 import { newConversation, withDraft } from "@/lib/chat";
 import {
   HABIT_DIRECTIONS,
-  HABIT_EFFECTS,
   HABIT_MEASURES,
   HabitError,
   bandsProblem,
@@ -712,7 +711,6 @@ const habitSchema = z
     cutoff: hhmmSchema.nullable(),
     cutoffWeeknights: z.boolean(),
     days: z.array(z.number().int().min(0).max(6)).nullable(),
-    affects: z.array(z.enum(HABIT_EFFECTS)),
     active: z.boolean()
   })
   .refine((habit) => habit.measure !== "count" || Boolean(habit.unit), { message: "Counted habits need a unit, like drinks." })

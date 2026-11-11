@@ -682,6 +682,10 @@ function moodArea(c: Context): MoodArea {
 
 // ---------- Lifestyle ----------
 
+// Until habits carry an `affects` flag (docs/body-state.md, Open questions),
+// drinking is recognized by name.
+const DRINKING = /\b(drinks?|drinking|alcohol|beers?|wine|booze|liquor)\b/i;
+export const affectsBody = (habit: Pick<Habit, "name" | "unit">) => DRINKING.test(habit.name) || DRINKING.test(habit.unit ?? "");
 
 function habitsArea(c: Context): { area: HabitsArea; explanations: Explanation[] } {
   const active = c.sources.habits.filter((habit) => habit.active);
@@ -703,12 +707,11 @@ function habitsArea(c: Context): { area: HabitsArea; explanations: Explanation[]
     })
     .map((habit) => habit.name);
   const explanations: Explanation[] = yesterdayDays
-    // A habit flagged as moving the body (habit.affects) explains those numbers.
-    .filter((day) => day.status === "used" && day.level > 0 && day.habit.affects?.length)
+    .filter((day) => day.status === "used" && day.level > 0 && affectsBody(day.habit))
     .map((day) => ({
       kind: "habit",
       detail: `${formatHabitAmount(day.habit, day.level)}${day.latestEnd ? ` until ${formatClockTime(day.latestEnd)}` : ""} last night`,
-      affects: [...day.habit.affects],
+      affects: ["sleep", "resting_hr", "hrv", "sleep_temp", "recovery"],
       source: "lifestyle.habits"
     }));
   const logged = yesterday.filter((item) => item.outcome !== "unknown");

@@ -16,7 +16,6 @@ const reading: Habit = {
   cutoff: null,
   cutoffWeeknights: false,
   days: [1, 2, 3, 4, 5], // weekdays
-  affects: [],
   active: true
 };
 
