@@ -3,17 +3,20 @@ import { BodyMap, type MuscleView } from "../body-map";
 import { WeekPages, LabelButton, MergeControls, RestoreButton, WorkoutEditor, type CoverageRow, type WeekPage } from "../training-ui";
 import { getSessionUser } from "@/lib/auth";
 import { lastWeekRows, weekItems } from "@/lib/training-week";
-import { addDays, localDateTime, todayLocalDate } from "@/lib/dates";
+import { addDays, currentWeekToDate, localDateTime, todayLocalDate } from "@/lib/dates";
+import { ZONES, getZoneBounds, zoneMinutes, type ZoneMinutes } from "@/lib/health/zones";
+import { ZoneLadder } from "../zone-ladder";
 import { listHealthWorkouts, type HealthWorkout } from "@/lib/health/queries";
 import { workoutStrain } from "@/lib/health/scores";
 import { getPool } from "@/lib/supabase";
 import { listSoreness } from "@/lib/body-log";
 import { getBodyState } from "@/lib/body-state/load";
 import { getDailyCall, workLine } from "@/lib/body-state/call";
-import { illnessStateOf } from "@/lib/body-state/build";
+import { ailmentAvoidOf, illnessStateOf } from "@/lib/body-state/build";
 import { isPossibleDuplicate, type WorkoutRecord } from "@/lib/health/dedupe-rules";
 import {
   ACTIVITY_LABELS,
+  activityCategoriesOf,
   INTENSITIES,
   INTENSITY_RULES,
   bucketOf,
@@ -166,7 +169,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     );
   }
 
-  const [sessions, fitbit, healthWorkouts, unlabeled, soreness, body, todayCall] = await Promise.all([
+  const [sessions, fitbit, healthWorkouts, unlabeled, soreness, body, todayCall, zoneBounds] = await Promise.all([
     listWorkoutSessions(db, user.name, start, today),
     listFitbitWorkouts(db, user.name, start, today),
     listHealthWorkouts(user.name, start, today),
@@ -174,19 +177,42 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     listSoreness(db, user.name, addDays(today, -14), today),
     // Illness comes from the body state, so Next up agrees with Today.
     getBodyState(db, user.name, today),
-    getDailyCall(db, user.name, today)
+    getDailyCall(db, user.name, today),
+    getZoneBounds(user.name, today)
   ]);
+  // Heart-rate zones: this calendar week's watch workouts so far, and the
+  // average week over the 4 full weeks before, ignored recordings left out.
+  const zoneWeek = currentWeekToDate(today);
+  const ignoredWatch = new Set(fitbit.filter((workout) => workout.ignored).map((workout) => workout.id));
+  const watchIn = (from: string, to: string) =>
+    healthWorkouts.filter((workout) => workout.day >= from && workout.day <= to && !ignoredWatch.has(workout.id));
+  const zoneThisWeek = zoneMinutes(watchIn(zoneWeek.startDate, today));
+  const pastWeeks = [1, 2, 3, 4].map((ago) => zoneMinutes(watchIn(addDays(zoneWeek.startDate, -7 * ago), addDays(zoneWeek.startDate, -7 * ago + 6))));
+  const zoneAverage = Object.fromEntries(
+    ZONES.map((zone) => [zone.key, Math.round(pastWeeks.reduce((sum, week) => sum + week[zone.key], 0) / pastWeeks.length)])
+  ) as ZoneMinutes;
   const healthById = new Map<string, HealthWorkout>(healthWorkouts.map((workout) => [workout.id, workout]));
   const fitbitById = new Map<string, FitbitWorkout>(fitbit.map((workout) => [workout.id, workout]));
 
   // Next up is for today, or tomorrow once today has a lift logged or the
   // day's training window is over.
-  const loggedToday = sessions.some((session) => session.date === today && session.muscleGroups.some((name) => STRENGTH_GROUPS.includes(groupOf(name))));
+  const loggedToday = sessions.some(
+    (session) => session.date === today && activityCategoriesOf(session.workoutType, session.muscleGroups)[0] === "strength"
+  );
   const nextDate = loggedToday || Number(localDateTime().slice(11, 13)) >= PLAN_DAY_OVER_HOUR ? addDays(today, 1) : today;
   // Readiness (recovery, drinks, strain run, food) is today's; tomorrow is
   // planned again in the morning with last night's data.
   const readiness = nextDate === today ? (body.physical.training.readiness ?? null) : null;
-  const next = suggestNext(sessions, nextDate, soreness, undefined, illnessStateOf(body.physical.illness), readiness);
+  // Open injuries and pain carry into tomorrow too: they last until they're over.
+  const next = suggestNext(
+    sessions,
+    nextDate,
+    soreness,
+    undefined,
+    illnessStateOf(body.physical.illness),
+    readiness,
+    ailmentAvoidOf(body.physical.ailments?.open ?? [])
+  );
   // Today's plan is Claude's call (made each morning inside the same limits);
   // tomorrow, or before the call is made, it's the rules.
   const call = nextDate === today ? todayCall : null;
@@ -283,7 +309,8 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     });
   }
   recent.sort((a, b) => b.sort.localeCompare(a.sort));
-  const lastWeek = lastWeekRows(weekItems(sessions, fitbit), today);
+  // Newest first here (the owner, Nov 10, 2026); Today's strain trends keep oldest first.
+  const lastWeek = lastWeekRows(weekItems(sessions, fitbit), today).reverse();
   // Workout types present in the window, for the filter and the type counts.
   const typeCounts = new Map<WorkoutType, number>();
   for (const item of recent.filter((entry) => entry.date >= recentStart)) typeCounts.set(item.workoutType, (typeCounts.get(item.workoutType) ?? 0) + 1);
@@ -388,6 +415,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
           <span className="training-missing-label">Next up · {next.date === today ? "today" : "tomorrow"}</span>
           {!call && next.illness ? <p className="training-illness">{next.illness.note}</p> : null}
           {!call && next.readiness ? <p className="training-illness">{next.readiness.note}</p> : null}
+          {next.ailments ? <p className="training-illness">{next.ailments.note}</p> : null}
           <div className="training-chips-row">
             <span>Fresh</span>
             <div className="training-chips">
@@ -452,19 +480,22 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
             </span>
           ) : null}
         </div>
+        <p className="split-label">This week, since Monday</p>
         <div className="split-tiles" aria-label="Split this week">
           {thisSplit
             .filter((entry) => entry.target != null)
             .map((entry) => (
               <div key={entry.kind} className="split-tile">
-                <strong className={entry.count < entry.target! ? "short" : undefined}>
-                  {entry.count}/{entry.target}
+                <strong className={entry.target != null && entry.count < entry.target ? "short" : undefined}>
+                  {entry.target != null ? `${entry.count}/${entry.target}` : entry.count}
                 </strong>
                 <span>{ACTIVITY_LABELS[entry.kind]}</span>
               </div>
             ))}
         </div>
       </section>
+
+      <ZoneLadder week={zoneThisWeek} average={zoneAverage} bounds={zoneBounds} daysDone={zoneWeek.elapsedDays - 1} />
 
       <section className="card" aria-label="Last 7 days">
         <div className="card-heading">

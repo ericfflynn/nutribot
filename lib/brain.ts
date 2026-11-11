@@ -10,7 +10,7 @@ import { CHECKIN_PROMPT, CHECKIN_TOOLS, checkinTools, type CheckinDraft } from "
 import { HEALTH_PROMPT, HEALTH_TOOLS, healthTools } from "./brain-health";
 import { BODY_PROMPT, BODY_TOOLS, bodyTools } from "./brain-body";
 import { FEEDBACK_PROMPT, FEEDBACK_TOOLS, feedbackTools, type FeedbackDraft } from "./feedback";
-import { ILLNESS_PROMPT, ILLNESS_TOOLS, illnessTools } from "./illness";
+import { AILMENT_PROMPT, AILMENT_TOOLS, ailmentTools, type AilmentDraft } from "./ailments";
 import { MEMORY_PROMPT, MEMORY_TOOLS, describeMemories, listMemories, memoryTools, type MemoryNote } from "./memories";
 import type { IllnessDraft } from "./illness-days";
 import { runClaude } from "./claude-brain";
@@ -114,7 +114,8 @@ export type IgnoreDraft = {
 };
 
 // MemoryNote isn't a draft (it's saved already), but rides with them on a reply.
-export type Draft = MealDraft | WorkoutDraft | IgnoreDraft | CheckinDraft | FeedbackDraft | IllnessDraft | MemoryNote;
+// IllnessDraft is from before ailments (Nov 10, 2026): old replies still show it.
+export type Draft = MealDraft | WorkoutDraft | IgnoreDraft | CheckinDraft | FeedbackDraft | AilmentDraft | IllnessDraft | MemoryNote;
 
 export type Turn = { role: "user" | "assistant"; text: string };
 
@@ -142,7 +143,7 @@ export type BrainContext = {
 };
 
 const SERVER = "nutribot";
-const TOOLS = ["draft_meal", "draft_workout", "draft_ignore_workout", "list_workouts", "list_meals", "get_goals", ...CHECKIN_TOOLS, ...HEALTH_TOOLS, ...BODY_TOOLS, ...FEEDBACK_TOOLS, ...ILLNESS_TOOLS, ...MEMORY_TOOLS];
+const TOOLS = ["draft_meal", "draft_workout", "draft_ignore_workout", "list_workouts", "list_meals", "get_goals", ...CHECKIN_TOOLS, ...HEALTH_TOOLS, ...BODY_TOOLS, ...FEEDBACK_TOOLS, ...AILMENT_TOOLS, ...MEMORY_TOOLS];
 
 const localDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("Local date, YYYY-MM-DD.");
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
@@ -168,7 +169,7 @@ function describeWorkout(w: FitbitWorkout) {
 function describeSession(s: WorkoutSession) {
   const rpe = s.rpe != null ? `, RPE ${s.rpe}` : "";
   const groups = s.muscleGroups.length ? ` [${describeMuscles(s.muscleGroups, s.muscleIntensity).join("; ")}]` : "";
-  return `logged as "${s.name}" (${s.workoutType})${groups}${rpe}`;
+  return `logged as "${s.name}" (${s.workoutType})${groups}${rpe} (session id ${s.id})`;
 }
 
 const clockFormat = new Intl.DateTimeFormat("en-US", {
@@ -257,7 +258,7 @@ ${CHECKIN_PROMPT}
 
 ${FEEDBACK_PROMPT}
 
-${ILLNESS_PROMPT}
+${AILMENT_PROMPT}
 
 ${HEALTH_PROMPT}
 
@@ -288,7 +289,7 @@ function promptFor(message: string, history: Turn[], openDrafts: Draft[], savedD
   }
   if (openDrafts.length) {
     const summary = openDrafts.map((draft) =>
-      draft.type === "journal" || draft.type === "habits" || draft.type === "habit" || draft.type === "feedback" || draft.type === "ignore" || draft.type === "illness" || draft.type === "memory"
+      draft.type === "journal" || draft.type === "habits" || draft.type === "habit" || draft.type === "feedback" || draft.type === "ignore" || draft.type === "illness" || draft.type === "ailment" || draft.type === "memory"
         ? draft
         : draft.type === "meal"
         ? {
@@ -713,7 +714,7 @@ export async function runBrain(message: string, context: BrainContext): Promise<
           ...bodyTools({ db, userName, today }),
           ...feedbackTools({ db, userName, resolveDraftId, putDraft: (draft) => drafts.set(draft.id, draft) }),
           ...memoryTools({ db, userName, dryRun: context.dryRun, putNote: (note) => drafts.set(note.id, note) }),
-          ...illnessTools({
+          ...ailmentTools({
             db,
             userName,
             today,

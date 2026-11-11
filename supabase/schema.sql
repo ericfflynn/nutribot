@@ -622,6 +622,49 @@ create table if not exists public.illness_days (
 
 alter table public.illness_days enable row level security;
 
+-- Since Nov 10, 2026 illness lives in ailments; illness_days only keeps
+-- "fine" answers (severity 0) on days the watch flagged, the false alarms.
+
+-- Ailments (lib/ailments.ts, docs/ailments.md): illness, injury and pain as
+-- records that last and end, several open at once. Days come from journal
+-- cards; an ailment stays open until a 0 day or its end date.
+create table if not exists public.ailments (
+  id uuid primary key default gen_random_uuid(),
+  user_name text not null,
+  kind text not null check (kind in ('illness', 'injury', 'pain')),
+  name text not null,
+  body_parts text[] not null default '{}',   -- "right shoulder", "wrist", "rear delts"
+  muscles text[] not null default '{}',      -- tracked muscles it limits
+  started_on date not null,
+  ended_on date,                             -- null while open
+  cause text,                                -- the owner's words or guess
+  cause_refs jsonb not null default '[]'::jsonb, -- [{"type": "workout", "id": "...", "label": "..."}]
+  note text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists ailments_user_started on public.ailments (user_name, started_on desc);
+
+create table if not exists public.ailment_days (
+  id uuid primary key default gen_random_uuid(),
+  ailment_id uuid not null references public.ailments (id) on delete cascade,
+  user_name text not null,
+  entry_date date not null,
+  severity smallint not null check (severity between 0 and 3),
+  symptoms text[] not null default '{}',
+  note text,
+  journal_entry_id uuid references public.journal_entries (id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (ailment_id, entry_date)
+);
+
+create index if not exists ailment_days_user_date on public.ailment_days (user_name, entry_date desc);
+
+alter table public.ailments enable row level security;
+alter table public.ailment_days enable row level security;
+
 -- Body states (lib/body-state, docs/body-state.md): one daily picture of body
 -- and mind, stored as JSONB, versioned per day. The newest version is the
 -- day's truth; older ones are what the app believed then. A late entry adds a

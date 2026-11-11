@@ -4,11 +4,14 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { discardDraftAction, newChatAction, saveDraftAction, undoMemoryAction } from "./actions";
 import { ChatText } from "./chat-text";
+import { TagChip } from "./journal-ui";
 import type { Draft, IgnoreDraft, MealDraft, WorkoutDraft } from "@/lib/brain";
 import type { HabitDraft, HabitsDraft, JournalDraft } from "@/lib/brain-checkin";
 import type { FeedbackDraft } from "@/lib/feedback";
 import type { MemoryNote } from "@/lib/memories";
 import { SEVERITY_LABELS, type IllnessDraft } from "@/lib/illness-days";
+import type { AilmentDraft, AilmentReport } from "@/lib/ailments";
+import { limitsLine, limitsOf, musclesLine, severityLabel } from "@/lib/ailments-core";
 import { describeGoal, formatHabitAmount, scaleGuideLines } from "@/lib/habits";
 import { recordedRatings } from "@/lib/journal";
 import type { ChatMessage } from "@/lib/chat";
@@ -308,10 +311,12 @@ function JournalCard({ draft, today, ...handlers }: { draft: JournalDraft } & Dr
         </div>
       ) : null}
       <p className="draft-body">{draft.body}</p>
+      {draft.ailments?.length ? <AilmentLines reports={draft.ailments} /> : null}
+      {draft.fine_today ? <p className="draft-edit-note">Feeling fine: the watch's warning is cleared</p> : null}
       {draft.tags.length ? (
         <div className="draft-chips">
           {draft.tags.map((tag) => (
-            <span key={tag}>{tag}</span>
+            <TagChip key={tag} tag={tag} />
           ))}
         </div>
       ) : null}
@@ -385,6 +390,53 @@ function FeedbackCard({ draft, ...handlers }: { draft: FeedbackDraft } & DraftHa
     >
       <p className="draft-title">{draft.title}</p>
       <p className="draft-body">{draft.details}</p>
+    </CheckinCard>
+  );
+}
+
+// "Right shoulder · new · hurts · Upper body out", "Head cold · day 3 · mild"
+function AilmentLines({ reports }: { reports: AilmentReport[] }) {
+  return (
+    <ul className="draft-ailments">
+      {reports.map((report) => {
+        const limits = report.new ? limitsLine(limitsOf({ kind: report.kind, muscles: report.new.muscles }, report.severity)) : null;
+        const when = report.ailment_id ? `day ${report.day}` : report.day > 1 ? `new, since day ${report.day}` : "new";
+        return (
+          <li key={report.ailment_id ?? report.name}>
+            <strong>{report.name}</strong> · {when} · {severityLabel(report.kind, report.severity).toLowerCase()}
+            {report.symptoms.length ? ` · ${report.symptoms.join(", ")}` : ""}
+            {limits ? <small>{limits}</small> : null}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function AilmentCard({ draft, ...handlers }: { draft: AilmentDraft } & DraftHandlers) {
+  const item = draft.ailment;
+  const range = item.ended_on ? `${item.started_on} to ${item.ended_on}` : `since ${item.started_on}`;
+  return (
+    <CheckinCard draft={draft} kind={draft.ailment_id ? (draft.days.length ? `${item.kind} update` : `edit ${item.kind}`) : `new ${item.kind}`} {...handlers}>
+      <p className="draft-title">{item.name}</p>
+      <p className="draft-edit-note">
+        {[range, item.body_parts.join(", "), item.cause ? `cause: ${item.cause}` : null].filter(Boolean).join(" · ")}
+      </p>
+      {item.kind !== "illness" && item.muscles.length ? <p className="draft-edit-note">Affects {musclesLine(item.muscles)}</p> : null}
+      {draft.days.length ? (
+        <ul className="draft-items">
+          {draft.days.map((day) => (
+            <li key={day.date}>
+              <span>
+                {day.date}
+                {day.symptoms.length || day.note ? <small>{[day.symptoms.join(", "), day.note].filter(Boolean).join(" · ")}</small> : null}
+              </span>
+              <span>{severityLabel(item.kind, day.severity)}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {item.note ? <p className="draft-body">{item.note}</p> : null}
     </CheckinCard>
   );
 }
@@ -621,6 +673,8 @@ export function ChatThread({
                   return <IgnoreCard key={draft.id} draft={draft} {...handlers} />;
                 case "illness":
                   return <IllnessCard key={draft.id} draft={draft} {...handlers} />;
+                case "ailment":
+                  return <AilmentCard key={draft.id} draft={draft} {...handlers} />;
                 case "memory":
                   return (
                     <MemoryLine

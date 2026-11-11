@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildBodyState, journalSickDays, readinessOf, worstOf } from "@/lib/body-state/build";
+import { buildBodyState, readinessOf, worstOf } from "@/lib/body-state/build";
+import { checkCall, guardrailsOf, rulesCall } from "@/lib/body-state/call";
+import type { Ailment } from "@/lib/ailments-core";
 import { sleepConsistency, sleepDebt, sleepNeed } from "@/lib/health/scores";
 import type { BodySources } from "@/lib/body-state/types";
 import type { HealthDay } from "@/lib/health/queries";
@@ -55,6 +57,7 @@ function sources(overrides: Partial<BodySources> = {}): BodySources {
     fitbit: [],
     soreness: [],
     illness: [],
+    ailments: [],
     journal: [],
     habits: [],
     habitLogs: [],
@@ -120,21 +123,104 @@ test("drinks last night explain a raised resting HR; work stress doesn't", () =>
   assert.match(withDrinks.physical.illness.headline, /likely 3 drinks/);
   assert.equal(withDrinks.explanations[0].kind, "habit");
 
-  const stressed = buildBodyState(sources({ health: health(raised), journal: [entry(shift(TODAY, -1), ["work", "deadline"], { stress: 4 })] }), TODAY);
+  const stressed = buildBodyState(sources({ health: health(raised), journal: [entry(shift(TODAY, -1), ["work:deadline", "stressor:work"], { stress: 4 })] }), TODAY);
   assert.equal(stressed.physical.illness.phase, "early_signs");
   assert.equal(stressed.lifestyle.career.status, "watch");
 });
 
-test("a journal entry tagged sick is a sick day that carries, and rests training", () => {
-  const journal = [entry(shift(TODAY, -2), ["sick", "headache"])];
-  assert.deepEqual(journalSickDays(journal, []).map((day) => [day.severity, day.symptoms]), [[2, ["headache"]]]);
-  const state = buildBodyState(sources({ journal, sessions: [session(shift(TODAY, -6), ["Legs"], 8)] }), TODAY);
+const ailment = (overrides: Partial<Ailment> & Pick<Ailment, "days">): Ailment => ({
+  id: "a1",
+  kind: "illness",
+  name: "Head cold",
+  bodyParts: [],
+  muscles: [],
+  startedOn: overrides.days[0].date,
+  endedOn: null,
+  cause: null,
+  causeRefs: [],
+  note: null,
+  ...overrides
+});
+const day = (date: string, severity: number, symptoms: string[] = []) => ({ id: date, date, severity, symptoms, note: null, journalEntryId: null });
+
+test("an open illness is sick until it's over, however long since the last report, then eases back", () => {
+  const cold = ailment({ days: [day(shift(TODAY, -6), 2, ["congestion"])] });
+  const state = buildBodyState(sources({ ailments: [cold], sessions: [session(shift(TODAY, -6), ["Legs"], 8)] }), TODAY);
   assert.equal(state.physical.illness.phase, "sick");
-  assert.equal(state.physical.illness.told?.source, "journal");
-  assert.equal(state.physical.illness.told?.day, 3);
+  assert.equal(state.physical.illness.told?.source, "ailment");
+  assert.equal(state.physical.illness.told?.day, 7);
+  assert.equal(state.physical.ailments?.status, "low");
   assert.equal(state.physical.training.suggested.name, null);
-  // A logged day for the same date wins over the journal.
-  assert.deepEqual(journalSickDays(journal, [{ id: "x", date: shift(TODAY, -2), severity: 1, symptoms: [], note: null }]), []);
+  assert.equal(rulesCall(state, `${TODAY}T07:00`).ask, "How's the head cold today?");
+
+  const over = { ...cold, days: [...cold.days, day(shift(TODAY, -1), 0)], endedOn: shift(TODAY, -1) };
+  const easing = buildBodyState(sources({ ailments: [over] }), TODAY);
+  assert.equal(easing.physical.illness.phase, "recovering");
+  assert.equal(easing.physical.ailments?.open[0].phase, "easing");
+  assert.equal(buildBodyState(sources({ ailments: [over] }), shift(TODAY, 1)).physical.illness.phase, "well");
+});
+
+test("a sore shoulder: the rules skip it, Claude weighs it, and a bad one rests the whole upper body", () => {
+  const shoulder = (severity: number) =>
+    ailment({
+      kind: "pain",
+      name: "Right shoulder",
+      bodyParts: ["right shoulder"],
+      muscles: ["Chest", "Front Delts", "Side Delts", "Rear Delts", "Triceps", "Lats", "Upper Back", "Traps"],
+      days: [day(shift(TODAY, -1), severity)]
+    });
+  const sessions = [session(shift(TODAY, -8), ["Chest", "Back", "Shoulders", "Arms", "Legs"], 7)];
+  const hurts = buildBodyState(sources({ ailments: [shoulder(2)], sessions }), TODAY);
+  assert.equal(hurts.physical.illness.phase, "well");
+  assert.equal(hurts.physical.ailments?.status, "watch");
+  assert.match(hurts.physical.ailments!.headline, /Right shoulder · day 2, hurts/);
+  assert.equal(hurts.physical.training.suggested.name, "Leg day");
+  const out = new Map(hurts.physical.training.muscles.map((item) => [item.muscle, item.out]));
+  assert.equal(out.get("Rear Delts"), "right shoulder");
+  assert.equal(out.get("Biceps"), null);
+  // Not a hard limit below bad: Claude may work it, but has to say why.
+  const guard = guardrailsOf(hurts, { sessions });
+  const cap = new Map(guard.muscles.map((item) => [item.muscle, item.max]));
+  assert.equal(cap.get("Chest"), "hard");
+  assert.deepEqual(guard.ailments?.map((item) => item.name), ["Right shoulder"]);
+  const push = { kind: "strength" as const, work: [{ muscle: "Chest" as const, intensity: "medium" as const }], accessory: [] };
+  assert.match(checkCall(push, guard) ?? "", /how today's plan treats the right shoulder/);
+  assert.equal(checkCall({ ...push, ailments: [{ name: "Right shoulder", plan: "Felt fine on pushups yesterday, medium chest only" }] }, guard), null);
+  assert.deepEqual(rulesCall(hurts, `${TODAY}T07:00`).ailments, [{ name: "Right shoulder", plan: "Skipping shoulders, chest, triceps, lats, upper back, traps work." }]);
+  assert.equal(rulesCall(hurts, `${TODAY}T07:00`).ask, "How's the right shoulder today?");
+
+  const bad = buildBodyState(sources({ ailments: [shoulder(3)], sessions }), TODAY);
+  const badGuard = guardrailsOf(bad, { sessions });
+  assert.equal(bad.physical.ailments?.status, "low");
+  assert.equal(badGuard.muscles.find((item) => item.muscle === "Biceps")?.max, null);
+  assert.equal(badGuard.muscles.find((item) => item.muscle === "Forearms")?.max, null);
+  assert.equal(badGuard.muscles.find((item) => item.muscle === "Quads")?.max, "medium");
+  assert.equal(badGuard.maxIntensity, "medium");
+  assert.match(bad.physical.ailments!.headline, /Upper body out, nothing hard/);
+});
+
+test("an illness and an injury can be open together", () => {
+  const cold = ailment({ id: "c", days: [day(shift(TODAY, -1), 1)] });
+  const wrist = ailment({ id: "w", kind: "injury", name: "Wrist", bodyParts: ["wrist"], muscles: ["Forearms"], days: [day(shift(TODAY, -3), 2)] });
+  const state = buildBodyState(sources({ ailments: [cold, wrist] }), TODAY);
+  assert.equal(state.physical.ailments?.open.length, 2);
+  assert.equal(state.physical.illness.phase, "sick");
+  assert.equal(rulesCall(state, `${TODAY}T07:00`).ask, "How's the wrist and the head cold today?");
+});
+
+test("work and people read the tags' keys and how they felt", () => {
+  const journal = [
+    entry(shift(TODAY, -1), ["work-", "with:partner-"], { mood: 3 }),
+    entry(shift(TODAY, -3), ["work:deadline-"], { mood: 4 }),
+    entry(shift(TODAY, -5), ["work-", "did:watched sports+"], { mood: 4 })
+  ];
+  const state = buildBodyState(sources({ journal }), TODAY);
+  assert.equal(state.lifestyle.career.status, "watch");
+  assert.equal(state.lifestyle.career.headline, "Work felt bad 3 of the last 7 days");
+  assert.equal(state.lifestyle.relationships.status, "watch");
+  assert.match(state.lifestyle.relationships.headline, /Time with partner felt bad/);
+  const stressed = buildBodyState(sources({ journal: [entry(TODAY, ["stressor:money"], { mood: 2, stress: 4 })] }), TODAY);
+  assert.match(stressed.mental.mood.headline, /stress 4 from money/);
 });
 
 test("training watches whole day types, not single muscles", () => {

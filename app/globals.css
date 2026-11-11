@@ -2581,6 +2581,48 @@ button.fab {
   font-weight: 600;
 }
 
+.tag-chip {
+  display: inline-flex;
+  align-items: baseline;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tag-chip small {
+  font-weight: 500;
+}
+
+.tag-chip.bad {
+  background: color-mix(in srgb, var(--bad) 12%, transparent);
+  color: var(--bad);
+}
+
+.tag-remove {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.draft-ailments {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+}
+
+.draft-ailments small {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .draft-watch {
   display: flex;
   align-items: baseline;
@@ -3468,7 +3510,144 @@ button.fab {
 }
 
 .habit-grid {
-  grid-template-columns: 92px minmax(0, 1fr) 32px;
+  grid-template-columns: 104px minmax(0, 1fr) 32px;
+}
+
+/* Habits tab (Nov 10, 2026): week pages with streaks, Log today, More */
+.habit-name {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.habit-streak {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.habit-streak span {
+  color: var(--muted);
+}
+
+.habit-streak.best,
+.habit-streak.best span {
+  color: var(--good);
+}
+
+.habit-streak.broken strong {
+  color: var(--bad);
+}
+
+.habit-pager {
+  display: flex;
+  gap: 4px;
+}
+
+.habit-pager button {
+  min-width: 36px;
+  min-height: 32px;
+  font-size: 20px;
+}
+
+.habit-pager button:disabled {
+  color: var(--line);
+}
+
+.habit-week-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.habit-week-summary strong {
+  color: var(--ink);
+  font-size: 26px;
+  font-variant-numeric: tabular-nums;
+}
+
+.habit-week-summary .down {
+  color: var(--bad);
+  font-size: 13px;
+}
+
+.habit-week-summary .up {
+  color: var(--good);
+  font-size: 13px;
+}
+
+.log-today-row {
+  display: grid;
+  gap: 6px;
+}
+
+.log-today-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.log-today-name small {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.log-today-options {
+  display: flex;
+  gap: 6px;
+}
+
+.log-today-options button {
+  flex: 1;
+  min-height: 40px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.log-today-options button.on {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.log-today-options button:disabled {
+  opacity: 0.6;
+}
+
+.habits-more {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.habits-more button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--accent);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.habits-more button.on {
+  background: var(--accent);
+  color: #ffffff;
 }
 
 .journal-list,
@@ -4241,9 +4420,125 @@ details[open] .journal-preview {
 
 /* Training: this week's split under Next up, a tile per kind with a target.
    The count turns red while it's short. */
+/* Training's heart-rate zones: warm ramp, darker going up */
+.zone-ladder {
+  --zone-light: #f2cf9b;
+  --zone-moderate: #e9a04f;
+  --zone-vigorous: #d9662a;
+  --zone-peak: #a8321c;
+  display: flex;
+  flex-direction: column;
+}
+
+.zone-row {
+  display: grid;
+  grid-template-columns: 34px 12px minmax(0, 1fr);
+  column-gap: 10px;
+}
+
+.zone-row.light { --zone: var(--zone-light); --zone-below: var(--zone-light); }
+.zone-row.moderate { --zone: var(--zone-moderate); --zone-below: var(--zone-light); }
+.zone-row.vigorous { --zone: var(--zone-vigorous); --zone-below: var(--zone-moderate); }
+.zone-row.peak { --zone: var(--zone-peak); --zone-below: var(--zone-vigorous); }
+
+.zone-bpm {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  transform: translateY(-7px);
+}
+
+.zone-strip {
+  background: linear-gradient(to top, var(--zone-below), var(--zone));
+}
+
+.zone-row.first .zone-strip { border-radius: 6px 6px 0 0; }
+.zone-row.last .zone-strip { border-radius: 0 0 6px 6px; }
+
+.zone-body {
+  display: grid;
+  gap: 6px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.zone-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.zone-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.zone-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--zone);
+}
+
+.zone-minutes {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.zone-minutes span,
+.zone-note {
+  color: var(--muted);
+}
+
+.zone-bar {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--line);
+}
+
+.zone-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 4px;
+  background: var(--zone);
+}
+
+.zone-usual {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  background: var(--ink);
+}
+
+.zone-note {
+  font-size: 13px;
+}
+
+.zone-note .behind {
+  color: var(--bad);
+  font-weight: 600;
+}
+
+.zone-row.floor .zone-note {
+  font-size: 12px;
+  transform: translateY(-7px);
+}
+
+.split-label {
+  margin: 0 0 -4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .split-tiles {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -4768,6 +5063,26 @@ details[open] .journal-preview {
 
 .sick-line .status-dot {
   flex: none;
+}
+
+.body-lines {
+  display: grid;
+  gap: 0;
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+}
+
+.body-lines .sick-line {
+  padding-top: 8px;
+  border-top: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.body-lines .sick-line small {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 /* Sleep's details: last night by stage */

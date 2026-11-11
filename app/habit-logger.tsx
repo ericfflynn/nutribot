@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { deleteHabitLogAction, logHabitAction, updateHabitLogAction } from "./actions";
+import { deleteHabitLogAction, logHabitAction, setHabitDayAction, updateHabitLogAction } from "./actions";
 import {
   INTENSITY_LABELS,
   describeGoal,
@@ -318,16 +318,143 @@ const OUTCOME_LABELS: Record<HabitOutcome, string> = {
   used: "can't tell"
 };
 
-// The Habits tab's 14-day grid, colored by how each day went against the
-// habit's goal. Tapping a square opens that day's logger below the grid;
-// tapping a name opens today. The chat logs the same rows.
-export function HabitGrid({ habits, days, logs }: { habits: Habit[]; days: string[]; logs: HabitLog[] }) {
+// "5 days · best 16", green on the best yet, red at 0.
+function HabitStreak({ streak }: { streak?: { current: number; best: number } }) {
+  if (!streak) return null;
+  const atBest = streak.current > 0 && streak.current >= streak.best;
+  return (
+    <small className={`habit-streak${atBest ? " best" : streak.current ? "" : " broken"}`}>
+      <strong>{streak.current}</strong> {streak.current === 1 ? "day" : "days"}
+      <span>{atBest ? " · best yet" : ` · best ${streak.best}`}</span>
+    </small>
+  );
+}
+
+// One-tap amounts for Log today: none, then a few amounts on the habit's
+// own scale (around its goal).
+function quickOptions(habit: Habit): { amount: number; label: string }[] {
+  if (habit.measure === "intensity") return [0, 1, 2, 3].map((amount) => ({ amount, label: amount ? INTENSITY_LABELS[amount] : "None" }));
+  if (habit.measure === "count") return [0, 1, 2, 3].map((amount) => ({ amount, label: amount ? String(amount) : "None" }));
+  const goal = habit.goal && habit.goal > 0 ? habit.goal : null;
+  const steps = habit.direction === "build" ? [goal ?? 15, (goal ?? 15) * 2, (goal ?? 15) * 4] : [(goal ?? 60) / 2, goal ?? 60, (goal ?? 60) * 2];
+  const label = (minutes: number) => (minutes >= 60 && minutes % 60 === 0 ? `${minutes / 60} h` : `${Math.round(minutes)} m`);
+  return [{ amount: 0, label: "None" }, ...[...new Set(steps.map(Math.round))].map((amount) => ({ amount, label: label(amount) }))];
+}
+
+// Habits tab, top: today's amount for each habit in one tap (the owner,
+// Nov 10, 2026: logging in the grid was clunky). Tapping the picked one
+// clears the day. Times and details: today's square in the grid, or chat.
+export function LogToday({ habits, logs, today }: { habits: Habit[]; logs: HabitLog[]; today: string }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const days = summarizeHabitDay(habits, today, logs.filter((log) => log.date === today));
+  const logged = days.filter((day) => day.status !== "unknown").length;
+
+  async function pick(habit: Habit, amount: number | null) {
+    setBusy(habit.id);
+    setError(null);
+    const result = await setHabitDayAction(habit.id, today, amount);
+    setBusy(null);
+    if (!result.ok) setError(result.error ?? "Couldn't save that.");
+    router.refresh();
+  }
+
+  return (
+    <section className="card log-today" aria-label="Log today">
+      <div className="card-heading">
+        <h2 className="card-title">Log today</h2>
+        <span className="card-aside">
+          {logged} of {habits.length} logged
+        </span>
+      </div>
+      {habits.map((habit, index) => {
+        const day = days[index];
+        const current = day.status === "unknown" ? null : day.status === "none" ? 0 : day.level;
+        const options = quickOptions(habit);
+        const other = current != null && !options.some((option) => option.amount === current);
+        return (
+          <div key={habit.id} className="log-today-row">
+            <span className="log-today-name">
+              {habit.name}
+              {describeGoal(habit) ? <small>{describeGoal(habit)}</small> : null}
+              {other ? <small>· logged {formatHabitAmount(habit, current!)}</small> : null}
+            </span>
+            <div className="log-today-options">
+              {options.map((option) => {
+                const on = current === option.amount;
+                return (
+                  <button
+                    key={option.amount}
+                    type="button"
+                    className={on ? "on" : undefined}
+                    aria-pressed={on}
+                    disabled={busy === habit.id}
+                    onClick={() => pick(habit, on ? null : option.amount)}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+      {error ? <p className="chat-error">{error}</p> : null}
+      <p className="footnote">Tap again to clear. For times or details, tap today in the grid below, or tell the chat.</p>
+    </section>
+  );
+}
+
+const PAGE_DAYS = 7;
+const rangeFormat = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+
+// The Habits tab's week grid (mockup B, Nov 10, 2026): 7 days at a time,
+// newest week first with earlier weeks a tap back, colored by how each day
+// went against the habit's goal, each habit with its streak. Tapping a
+// square opens that day's logger below the grid. The chat logs the same rows.
+export function HabitGrid({
+  habits,
+  days: allDays,
+  logs,
+  streaks
+}: {
+  habits: Habit[];
+  days: string[]; // oldest first, ending today
+  logs: HabitLog[];
+  streaks: Record<string, { current: number; best: number }>;
+}) {
   const router = useRouter();
   const [selected, setSelected] = useState<{ habitId: string; date: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const today = days[days.length - 1];
+  const [page, setPage] = useState(0);
+  const today = allDays[allDays.length - 1];
+  const pages = Math.max(1, Math.ceil(allDays.length / PAGE_DAYS));
+  const endAt = allDays.length - page * PAGE_DAYS;
+  const days = allDays.slice(Math.max(0, endAt - PAGE_DAYS), endAt);
+  const before = allDays.slice(Math.max(0, endAt - 2 * PAGE_DAYS), Math.max(0, endAt - PAGE_DAYS));
 
-  const byDay = new Map(days.map((date) => [date, summarizeHabitDay(habits, date, logs.filter((log) => log.date === date))]));
+  const byDay = new Map(allDays.map((date) => [date, summarizeHabitDay(habits, date, logs.filter((log) => log.date === date))]));
+  const tally = (dates: string[]) => {
+    let met = 0;
+    let logged = 0;
+    for (const date of dates) {
+      for (const day of byDay.get(date) ?? []) {
+        const outcome = habitOutcome(day);
+        if (outcome === "unknown" || outcome === "off") continue;
+        logged += 1;
+        if (outcome === "met") met += 1;
+      }
+    }
+    return { met, logged };
+  };
+  const week = tally(days);
+  const prior = tally(before);
+  const pct = (part: { met: number; logged: number }) => (part.logged ? Math.round((part.met / part.logged) * 100) : null);
+  const change =
+    pct(week) == null || pct(prior) == null || pct(week) === pct(prior)
+      ? null
+      : `${pct(week)! < pct(prior)! ? "down" : "up"} from ${pct(prior)}% the week before`;
   const rows = habits.map((habit, index) => {
     const cells = days.map((date) => {
       const day = byDay.get(date)![index];
@@ -341,13 +468,27 @@ export function HabitGrid({ habits, days, logs }: { habits: Habit[]; days: strin
   const selectedDay = selected && selectedHabit ? byDay.get(selected.date)?.[habits.indexOf(selectedHabit)] : undefined;
   const toggle = (habitId: string, date: string) =>
     setSelected((current) => (current?.habitId === habitId && current.date === date ? null : { habitId, date }));
+  const title = page === 0 ? "Last 7 days" : `${rangeFormat.format(new Date(`${days[0]}T00:00:00Z`))} – ${rangeFormat.format(new Date(`${days[days.length - 1]}T00:00:00Z`))}`;
 
   return (
-    <section className="card habit-grid-card" aria-label="Habits, last 14 days">
+    <section className="card habit-grid-card" aria-label="Habits by day">
       <div className="card-heading">
-        <h2 className="card-title">Habits</h2>
-        <span className="card-aside">goal met / days logged</span>
+        <h2 className="card-title">{title}</h2>
+        <span className="habit-pager">
+          <button type="button" className="text-button" disabled={page >= pages - 1} onClick={() => setPage(page + 1)} aria-label="Earlier week">
+            ‹
+          </button>
+          <button type="button" className="text-button" disabled={page === 0} onClick={() => setPage(page - 1)} aria-label="Later week">
+            ›
+          </button>
+        </span>
       </div>
+      {week.logged ? (
+        <p className="habit-week-summary">
+          <strong>{week.met}</strong> of {week.logged} habit-days met
+          {change ? <span className={change.startsWith("down") ? "down" : "up"}>{change}</span> : null}
+        </p>
+      ) : null}
       <div className="coverage habit-grid">
         <span />
         <div className="coverage-cells">
@@ -362,6 +503,7 @@ export function HabitGrid({ habits, days, logs }: { habits: Habit[]; days: strin
           <div className="coverage-row" key={row.habit.id}>
             <button type="button" className="coverage-name habit-name" onClick={() => toggle(row.habit.id, today)}>
               {row.habit.name}
+              <HabitStreak streak={streaks[row.habit.id]} />
             </button>
             <div className="coverage-cells">
               {row.cells.map((cell) => {

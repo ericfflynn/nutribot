@@ -151,6 +151,8 @@ Status: **good** when no vital is past its threshold; **watch** when any is; **l
 
 ### `physical.illness`
 
+Since November 10, 2026 illnesses are ailments ([ailments.md](ailments.md)): `told` reads the open illness (`source: "ailment"`), an illness stays open until the owner says it's over, and sick days for the baselines are every day an illness covered. The table below describes the October 30 rules (a report carried 2 days).
+
 | Signal | Meaning |
 | --- | --- |
 | `signal` | The watch's read: `none`, `possible`, `likely`, with `points` and `reasons` (`illnessSignal`). |
@@ -168,6 +170,10 @@ Status: **good** when no vital is past its threshold; **watch** when any is; **l
 | `well` | Anything else. | **good** |
 
 "I feel fine" on a flagged day is stored as a report (a false alarm), which moves the phase back to `well` and is what the detector is tuned against.
+
+### `physical.ailments`: illness, injury and pain
+
+Built November 10, 2026 ([ailments.md](ailments.md#in-the-body-state)): every ailment open or easing on the day, worst first, each with what it limits (`out`, `light`, `noHard`, `easyCardio`), plus those over in the last 7 days. Status: **low** with an illness at Sick or worse or anything at 3, **watch** with anything open, **ok** while only easing, **good** with nothing open. It rolls up into the physical domain.
 
 ### `physical.load`: how hard recent days were
 
@@ -190,6 +196,7 @@ These come straight from the Training model ([training-plan.md](training-plan.md
 - `groups`: days since each day type's muscles were last worked at medium or hard, the middle muscle (`push`, `pull`, `legs`, `arms`, `shoulders`, `core`).
 - `due[]`: muscles fresh and 4+ days since a real hit, most overdue first.
 - `readiness` (since November 6, 2026; older stored states lack it): how ready the body is to train today, `level` `normal`, `easy` or `rest`, with `reasons`. Points against: recovery red 2, yellow 1; drinks last night 2; `hardStreak` 2+ is 2, 1 is 1; yesterday's calories over 120% or under 70% of target, or protein under 70%, is 1. 2-3 points is **easy** (nothing hard; leg day goes last unless it's the only day due), 4+ is **rest** (rest or active recovery, no pick). `suggested.note` says why. November 3, 2026 (red after 4 drinks, three strenuous days, a big food day) scores 7; it had picked leg day.
+- `zones` (since November 10, 2026): watch-workout minutes per heart-rate zone this calendar week (workouts only, the owner's choice), each with its weekly goal (`ZONE_GOALS`), the average of the 4 full weeks before and the pace (`done`, `on_pace`, `behind` with minutes behind). The call plans cardio toward them.
 - `split`: strength, cardio and mobility sessions this calendar week (Monday through the day; the last 7 days before November 1, 2026) against 4, 2 and 2.
 
 Status: **watch** when push, pull or legs (the main day types; arms and shoulders are optional picks) has gone 7+ days, by its middle muscle; otherwise **good**. The headline names what's most due ("Legs due, 6 days"). Training is what's due, not how the body is, so it doesn't set the physical domain's status (October 30, 2026: it held the domain on watch 17 days of October).
@@ -240,7 +247,7 @@ Status: **unknown** with nothing logged yesterday; **watch** with a miss streak 
 | `workDays7` | Days in the last 7 with a Work tag. |
 | `latestTag` | The most recent Work tag and its date ("deadline", Tuesday). |
 
-Status: **unknown** with no Work tag in 7 days; **low** with a `burnout` tag in 3 days; **watch** with work stress 4+ in the last 3 days; otherwise **ok**.
+Status: **unknown** with no Work tag in 7 days; **low** with a `burnout` tag in 3 days; **watch** with work stress 4+ in the last 3 days; otherwise **ok**. Since November 10, 2026 it reads the `work` and `stressor` tags with their feelings ([journal-tags.md](journal-tags.md#what-reads-them)); the burnout tag became stress 5 on a work day or stress from work 3 days running, and work feeling bad 3 of 7 days is watch.
 
 ### `lifestyle.relationships`: the people around him
 
@@ -249,7 +256,7 @@ Status: **unknown** with no Work tag in 7 days; **low** with a `burnout` tag in 
 | `recent[]` | Relationships-category tags (`family`, `partner`, `friends`, `conflict`) in the last 7 days, with dates and the mood of that entry. |
 | `social7` | Days in the last 7 with a Social-category tag (`social`, `party`, `date night`...). |
 
-Status: **unknown** with no tag in 7 days; **watch** with a `conflict` tag in 3 days; **good** when the last 7 days have a relationships or social tag with mood 4+; otherwise **ok**.
+Status: **unknown** with no tag in 7 days; **watch** with a `conflict` tag in 3 days; **good** when the last 7 days have a relationships or social tag with mood 4+; otherwise **ok**. Since November 10, 2026 it reads `with` tags ([journal-tags.md](journal-tags.md#what-reads-them)): time with someone that felt bad, or stress from the relationship or family, is watch.
 
 Both areas read journal tags ([journal-habits-plan.md](journal-habits-plan.md)), so they're only as good as the tagging. The planned key:value tag rework would make them sharper.
 
@@ -268,7 +275,7 @@ type Explanation = {
 
 | Kind | When |
 | --- | --- |
-| `habit` | A habit flagged as affecting the body (`affects` on the habit, set from chat or the Habits tab) was used yesterday or last night. Drinking first. |
+| `habit` | A habit that moves the body was used yesterday or last night. For now drinking, recognized by name; next, every habit whose effect the data measures (Causes and effects), never a flag set by hand (the owner, November 10, 2026). |
 | `late_night` | Bedtime 90+ minutes past the 7-night median (`physical.sleep.bedtimeDrift7n`). |
 | `caffeine` | Yesterday's caffeine after the cutoff (goals, 2 PM by default) or over the daily limit (200 mg by default): affects last night's sleep and today's recovery. |
 | `load` | `physical.load` on watch (sharp ramp or hard streak). |
@@ -415,6 +422,7 @@ type Guardrails = {
 | Muscle sore (any level) | That muscle is out. |
 | Training rules (`DEFAULT_RULES`) | Muscles out after forearms or biceps (back), after triceps (chest); medium after a heavy upper-body day; at most 2 hard days in a row. |
 | One hard day per muscle a week | That muscle at most medium. |
+| Injury or pain (since November 10, 2026, [ailments.md](ailments.md#what-it-does-to-training)) | Bad (3): its whole region out and nothing hard. Below that, no limit: listed in `guardrails.ailments` for Claude to weigh; working an affected muscle past light needs a reason naming it. |
 
 Rules only take things away. The strictest wins.
 
@@ -452,9 +460,9 @@ Things the owner tells the app are reports, and they win over data. They're stor
 
 | Report | Stored in | Comes from |
 | --- | --- | --- |
-| Sick, better, "I feel fine" | `illness_days` (severity 0-3; 0 on a flagged day is a false alarm) | Journal entry, quick button, chat |
+| Sick, injured, in pain, better | `ailments`, `ailment_days` (since November 10, 2026; [ailments.md](ailments.md)) | The journal card's ailment lines, chat |
+| "I feel fine" on a flagged day | `illness_days` (severity 0, a false alarm) | The journal card's `fine_today` |
 | Muscle soreness | `body_log` (kind `sore`, level) | Body map, chat |
-| Pain | `body_log` (kind `pain`) | Chat |
 | Mood, stress, energy | `journal_entries` ratings | Journal |
 
 A journal draft gains an optional `illness` part (severity, symptoms) so saying "still sick, throat's better" in a check-in saves one card that writes both. Saving any report rebuilds the day's state (trigger `report`).
@@ -592,7 +600,7 @@ Everything is connected: work stress feeds mood, sleep and HRV, and over days th
 ## Open questions
 
 1. **Where habits live.** Kept as `lifestyle.habits` for now, since one habit often affects both body and mind; the owner wants to think about it more. The alternative is each habit under the area it affects (drinks under physical, reading under mental). Whichever wins, explanations already let a habit affect any area.
-2. **Which habits explain what.** The `affects` flag on each habit: set from chat ("drinking hurts my sleep and resting HR") or the Habits tab. Drinking first.
+2. **Which habits explain what.** Measured from the data, not set by hand (the owner, November 10, 2026: a hand-set `affects` flag was built and removed the same day). Until the measurement exists, drinking is recognized by name.
 3. **Morning timing.** When does last night's sleep usually reach Google Health? The first sync is 9 AM Eastern now. Measure arrival times from `health_sync_runs` before picking an earlier cron.
 4. **Constraints.** "No gym today", "only 30 minutes", travel. Proposed for later: a `constraints` report from the check-in that the guardrails read.
 5. **Sleep need.** Fixed at 8 hours; personalizing it from recent strain and debt can come later ([scores.md](scores.md)).

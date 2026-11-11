@@ -11,6 +11,8 @@ import { parseGoals } from "@/lib/goals";
 import { parseMacroObject } from "@/lib/macros";
 import { syncRecentHealth } from "@/lib/health/recent-sync";
 import type { Draft } from "@/lib/brain";
+import type { JournalDraft } from "@/lib/brain-checkin";
+import type { PoolClient } from "pg";
 import { newConversation, withDraft } from "@/lib/chat";
 import {
   HABIT_DIRECTIONS,
@@ -22,12 +24,13 @@ import {
   saveHabit,
   saveHabitLogs,
   deleteHabitLogs,
+  listHabitLogs,
   updateHabitLog
 } from "@/lib/habits";
 import { deleteJournalEntry, listJournalTags, overwriteJournalEntry, saveJournalEntry, updateJournalEntry } from "@/lib/journal";
 import { normalizeTags } from "@/lib/journal-tags";
 import { saveFeedback } from "@/lib/feedback";
-import { saveIllnessDays } from "@/lib/illness";
+import { saveAilmentDraft, saveAilmentReports, saveFeelingFine } from "@/lib/ailments";
 import {
   deletePushSubscription,
   deleteReminder,
@@ -291,6 +294,8 @@ function draftDate(draft: Draft): string | null {
       return draft.edits && draft.edits.date < draft.date ? draft.edits.date : draft.date;
     case "illness":
       return draft.start_date;
+    case "ailment":
+      return [draft.ailment.started_on, ...draft.days.map((day) => day.date)].sort()[0];
     case "workout":
     case "habits":
     case "ignore":
@@ -300,6 +305,15 @@ function draftDate(draft: Draft): string | null {
     default:
       return todayLocalDate();
   }
+}
+
+// A journal card's ailment lines and its "fine today" answer.
+async function saveJournalExtras(client: PoolClient, userName: string, draft: JournalDraft, entryId: string) {
+  if (draft.ailments?.length) {
+    await saveAilmentReports(client, userName, draft.date, entryId, draft.ailments);
+    revalidatePath("/training");
+  }
+  if (draft.fine_today) await saveFeelingFine(client, userName, draft.date);
 }
 
 export type DraftActionResult = { ok: true; draft: Draft } | { ok: false; error: string };
@@ -350,9 +364,11 @@ export async function saveDraftAction(
           throw new Error("That journal entry no longer exists.");
         }
         savedId = stored.edits.id;
+        await saveJournalExtras(client, user.name, stored, savedId);
         saved = { ...stored, saved_id: savedId };
       } else if (stored.type === "journal") {
         savedId = await saveJournalEntry(client, user.name, stored);
+        await saveJournalExtras(client, user.name, stored, savedId);
         saved = { ...stored, saved_id: savedId };
       } else if (stored.type === "habits") {
         // A correction removes the logs it replaces first.
@@ -362,7 +378,9 @@ export async function saveDraftAction(
         savedId = ids.join(",") || "none";
         saved = { ...stored, saved_id: savedId };
       } else if (stored.type === "illness") {
-        savedId = await saveIllnessDays(client, user.name, stored);
+        throw new Error("Sick days are ailments now: tell the chat again and save the new card.");
+      } else if (stored.type === "ailment") {
+        savedId = await saveAilmentDraft(client, user.name, stored);
         saved = { ...stored, saved_id: savedId };
         revalidatePath("/training");
       } else if (stored.type === "feedback") {
@@ -676,6 +694,41 @@ export async function logHabitAction(input: z.input<typeof habitLogSchema>): Pro
   revalidatePath("/");
   revalidatePath("/habits");
   refreshBodyLater(user.name, log.date);
+  return { ok: true };
+}
+
+// Habits tab, Log today: one tap sets a habit's amount for the day,
+// replacing what that day had; null clears the day. Details and times stay
+// with the day's logger (tap its square) and the chat.
+export async function setHabitDayAction(habitId: string, date: string, amount: number | null): Promise<{ ok: boolean; error?: string }> {
+  const user = await getSessionUser();
+  const db = getPool();
+  if (!user || !db) return { ok: false, error: "Log in again." };
+  if (!z.string().uuid().safeParse(habitId).success || !isValidLocalDate(date) || date > todayLocalDate()) {
+    return { ok: false, error: "That entry isn't valid." };
+  }
+  if (amount != null && (!Number.isFinite(amount) || amount < 0 || amount > 24 * 60)) return { ok: false, error: "That amount isn't valid." };
+  const habit = (await listHabits(db, user.name)).find((item) => item.id === habitId);
+  if (!habit) return { ok: false, error: "That habit no longer exists." };
+  if (habit.measure === "intensity" && amount != null && (!Number.isInteger(amount) || amount > 3)) {
+    return { ok: false, error: "Pick none, light, moderate or heavy." };
+  }
+  const client = await db.connect();
+  try {
+    await client.query("begin");
+    const existing = await listHabitLogs(client, user.name, date, date);
+    await deleteHabitLogs(client, user.name, existing.filter((log) => log.habitId === habitId).map((log) => log.id));
+    if (amount != null) await saveHabitLogs(client, user.name, date, [{ habitId, amount, details: null, startedAt: null, endedAt: null }]);
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+  revalidatePath("/");
+  revalidatePath("/habits");
+  refreshBodyLater(user.name, date);
   return { ok: true };
 }
 

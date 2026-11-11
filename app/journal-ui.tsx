@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { updateJournalEntryAction } from "./actions";
 import { MOOD_LABELS, STRESS_LABELS, recordedRatings, type JournalEntry, type Rating } from "@/lib/journal";
-import { TAG_CATEGORIES, categoryLabel, categoryOf, normalizeTag, type TagCategory } from "@/lib/journal-tags";
+import { TAG_KEYS, keyLabel, normalizeTag, normalizeTags, parseTag, tagLabel, tagsOf, type Feeling, type TagKey } from "@/lib/journal-tags";
 
 const dayFormat = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
 
@@ -51,8 +51,21 @@ function ScalePicker({
   );
 }
 
-// Fix a saved entry's mood, optional stress and tags. Tags are picked from
-// the categories, or typed; either way they're normalized on save.
+// A tag as a chip: "Work: deadline", tinted and labeled when it felt good or bad.
+export function TagChip({ tag, children }: { tag: string; children?: ReactNode }) {
+  const parsed = parseTag(tag);
+  const feeling = parsed?.feeling;
+  return (
+    <span className={feeling ? `tag-chip ${feeling}` : "tag-chip"}>
+      {tagLabel(tag)}
+      {feeling ? <small> · felt {feeling}</small> : null}
+      {children}
+    </span>
+  );
+}
+
+// Fix a saved entry's mood, optional stress and tags. A tag is a key, then a
+// value picked or typed, and optionally how it felt; normalized on save.
 function JournalEntryEditor({
   entry,
   knownTags,
@@ -66,23 +79,22 @@ function JournalEntryEditor({
   const [ratings, setRatings] = useState<Record<Rating, number | null>>(entry.ratings);
   const [tags, setTags] = useState<string[]>(entry.tags);
   const [custom, setCustom] = useState("");
-  const [category, setCategory] = useState<TagCategory>("work");
+  const [key, setKey] = useState<TagKey>("with");
+  const [feeling, setFeeling] = useState<Feeling | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const toggle = (tag: string) =>
-    setTags((current) => (current.includes(tag) ? current.filter((value) => value !== tag) : [...current, tag]));
-  const addCustom = () => {
-    const tag = normalizeTag(custom, knownTags);
-    if (tag && !tags.includes(tag)) setTags([...tags, tag]);
+  const add = (value: string | null) => {
+    const tag = normalizeTag({ key, value, feeling }, knownTags);
+    if (tag) setTags(normalizeTags([...tags, tag], knownTags));
     setCustom("");
   };
   const options = [
     ...new Set([
-      ...(TAG_CATEGORIES.find((item) => item.id === category)?.tags ?? []),
-      ...knownTags.filter((tag) => categoryOf(tag) === category)
+      ...(TAG_KEYS.find((item) => item.key === key)?.values ?? []),
+      ...knownTags.map(parseTag).filter((tag) => tag?.key === key && tag.value).map((tag) => tag!.value!)
     ])
-  ];
+  ].filter((value) => !tags.some((tag) => parseTag(tag)?.key === key && parseTag(tag)?.value === value));
 
   async function save() {
     setBusy(true);
@@ -111,49 +123,65 @@ function JournalEntryEditor({
         {tags.length ? (
           <div className="muscle-row">
             {tags.map((tag) => (
-              <button key={tag} type="button" className="muscle-toggle small on" onClick={() => toggle(tag)} aria-label={`Remove ${tag}`}>
-                {tag} ✕
+              <button key={tag} type="button" className="tag-remove" onClick={() => setTags(tags.filter((item) => item !== tag))} aria-label={`Remove ${tagLabel(tag)}`}>
+                <TagChip tag={tag}> ✕</TagChip>
               </button>
             ))}
           </div>
         ) : null}
         <div className="type-filter tag-categories" role="tablist">
-          {TAG_CATEGORIES.map((item) => (
+          {TAG_KEYS.map((item) => (
             <button
-              key={item.id}
+              key={item.key}
               type="button"
               role="tab"
-              aria-selected={item.id === category}
-              className={item.id === category ? "on" : undefined}
-              onClick={() => setCategory(item.id)}
+              aria-selected={item.key === key}
+              className={item.key === key ? "on" : undefined}
+              onClick={() => setKey(item.key)}
             >
               {item.label}
             </button>
           ))}
         </div>
+        <div className="muscle-row" aria-label="How it felt">
+          {([null, "good", "bad"] as const).map((option) => (
+            <button
+              key={option ?? "none"}
+              type="button"
+              className={feeling === option ? "muscle-toggle small on" : "muscle-toggle small"}
+              aria-pressed={feeling === option}
+              onClick={() => setFeeling(option)}
+            >
+              {option ? `Felt ${option}` : "No feeling"}
+            </button>
+          ))}
+        </div>
         <div className="muscle-row">
-          {options
-            .filter((tag) => !tags.includes(tag))
-            .map((tag) => (
-              <button key={tag} type="button" className="muscle-toggle small" onClick={() => toggle(tag)}>
-                {tag}
-              </button>
-            ))}
+          {feeling ? (
+            <button type="button" className="muscle-toggle small" onClick={() => add(null)}>
+              {keyLabel(key)} as a whole
+            </button>
+          ) : null}
+          {options.map((value) => (
+            <button key={value} type="button" className="muscle-toggle small" onClick={() => add(value)}>
+              {value}
+            </button>
+          ))}
         </div>
         <div className="tag-custom">
           <input
             value={custom}
-            maxLength={40}
-            placeholder="Custom tag"
+            maxLength={30}
+            placeholder={`Other ${keyLabel(key).toLowerCase()}`}
             onChange={(event) => setCustom(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
                 event.preventDefault();
-                addCustom();
+                if (custom.trim()) add(custom);
               }
             }}
           />
-          <button type="button" className="pill-button" onClick={addCustom} disabled={!custom.trim()}>
+          <button type="button" className="pill-button" onClick={() => add(custom)} disabled={!custom.trim()}>
             Add
           </button>
         </div>
@@ -170,6 +198,20 @@ function JournalEntryEditor({
       </div>
     </div>
   );
+}
+
+// Whether an entry matches a filter: "work" (any work tag), "work:deadline"
+// (that value), "work-" or "work+" (work that felt bad or good).
+function matches(entry: JournalEntry, filter: string) {
+  const want = parseTag(filter);
+  if (!want) return false;
+  return tagsOf(entry, want.key).some((tag) => (!want.value || tag.value === want.value) && (!want.feeling || tag.feeling === want.feeling));
+}
+
+function filterLabel(filter: string) {
+  const want = parseTag(filter)!;
+  if (want.value) return tagLabel({ ...want, feeling: null });
+  return want.feeling ? `${keyLabel(want.key)} felt ${want.feeling}` : `any ${keyLabel(want.key).toLowerCase()}`;
 }
 
 function average(values: number[]) {
@@ -191,16 +233,17 @@ export function JournalHistory({
   const [tag, setTag] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  const counts = new Map<string, number>();
-  for (const entry of entries) for (const value of entry.tags) counts.set(value, (counts.get(value) ?? 0) + 1);
-  const knownTags = [...counts.keys()];
-  const byCategory = TAG_CATEGORIES.map((category) => ({
-    id: category.id,
-    tags: knownTags.filter((value) => categoryOf(value) === category.id).sort((a, b) => counts.get(b)! - counts.get(a)!)
-  })).filter((group) => group.tags.length);
+  // Filters by key: the key as a whole, each value, and how it felt.
+  const knownTags = [...new Set(entries.flatMap((entry) => entry.tags))];
+  const count = (filter: string) => entries.filter((entry) => matches(entry, filter)).length;
+  const byKey = TAG_KEYS.map((item) => {
+    const values = [...new Set(entries.flatMap((entry) => tagsOf(entry, item.key)).map((tag) => tag.value).filter((value): value is string => Boolean(value)))];
+    const filters = [item.key, `${item.key}+`, `${item.key}-`, ...values.map((value) => `${item.key}:${value}`)].filter((filter) => count(filter) > 0);
+    return { key: item.key, filters: filters.sort((a, b) => Number(b === item.key) - Number(a === item.key) || count(b) - count(a)) };
+  }).filter((group) => group.filters.length);
 
-  const shown = tag ? entries.filter((entry) => entry.tags.includes(tag)) : entries.filter((entry) => entry.date >= recentFrom);
-  const rest = tag ? entries.filter((entry) => !entry.tags.includes(tag)) : [];
+  const shown = tag ? entries.filter((entry) => matches(entry, tag)) : entries.filter((entry) => entry.date >= recentFrom);
+  const rest = tag ? entries.filter((entry) => !matches(entry, tag)) : [];
   const stat = (list: JournalEntry[], rating: Rating) =>
     average(list.map((entry) => entry.ratings[rating]).filter((value): value is number => value != null));
   const pattern = tag
@@ -216,13 +259,13 @@ export function JournalHistory({
         <h2 className="card-title">Journal</h2>
         <span className="card-aside">{tag ? `${rangeDays} days` : "14 days"}</span>
       </div>
-      {byCategory.length ? (
+      {byKey.length ? (
         <div className="journal-tag-filter" aria-label="Filter by tag">
-          {byCategory.map((group) => (
-            <div key={group.id}>
-              <span>{categoryLabel(group.id)}</span>
+          {byKey.map((group) => (
+            <div key={group.key}>
+              <span>{keyLabel(group.key)}</span>
               <div className="muscle-row">
-                {group.tags.map((value) => (
+                {group.filters.map((value) => (
                   <button
                     key={value}
                     type="button"
@@ -230,7 +273,7 @@ export function JournalHistory({
                     aria-pressed={tag === value}
                     onClick={() => setTag(tag === value ? null : value)}
                   >
-                    {value} {counts.get(value)}
+                    {value === group.key ? "All" : value.endsWith("+") ? "Felt good" : value.endsWith("-") ? "Felt bad" : parseTag(value)!.value} {count(value)}
                   </button>
                 ))}
               </div>
@@ -243,7 +286,7 @@ export function JournalHistory({
           {pattern
             .map(
               ([name, withTag, without]) =>
-                `${name} ${withTag.toFixed(1)} with “${tag}”${without != null ? ` vs ${without.toFixed(1)} otherwise` : ""}`
+                `${name} ${withTag.toFixed(1)} with ${filterLabel(tag)}${without != null ? ` vs ${without.toFixed(1)} otherwise` : ""}`
             )
             .join(" · ")}
         </p>
@@ -273,7 +316,7 @@ export function JournalHistory({
                     <div className="journal-entry-foot">
                       <div className="draft-chips">
                         {entry.tags.map((value) => (
-                          <span key={value}>{value}</span>
+                          <TagChip key={value} tag={value} />
                         ))}
                       </div>
                       <button type="button" className="text-button" onClick={() => setEditingId(entry.id)}>
@@ -287,7 +330,7 @@ export function JournalHistory({
           })}
         </ul>
       ) : (
-        <p className="footnote">{tag ? `No entries tagged “${tag}”.` : "No entries yet. Tell the chat how your day went."}</p>
+        <p className="footnote">{tag ? `No entries with ${filterLabel(tag)}.` : "No entries yet. Tell the chat how your day went."}</p>
       )}
     </section>
   );

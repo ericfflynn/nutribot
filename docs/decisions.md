@@ -2,6 +2,38 @@
 
 Product and design decisions, newest first. One entry per decision: what was decided, why, and what it replaced or ruled out. Add an entry whenever the owner settles something that future work should follow; link the doc that holds the detail. Data shapes live in their specs ([body-state.md](body-state.md) keeps the body state's schema versions); this log says why they are what they are.
 
+## 2026-11-10
+
+### Habits tab: log today, the week, streaks
+- **Decided:** the Habits tab leads with Log today (one tap per habit) and a 7-day grid with weekly paging, habit-days met against the week before, and each habit's streak and best ([journal-habits-plan.md](journal-habits-plan.md#habits-tab)); settings, reminders and the journal sit behind buttons.
+- **Why:** the owner couldn't see how he was doing, and logging in the 14-day grid was clunky. Picked B (the week as a grid) from three mockups, asking for better streak tracking.
+- **Instead of:** the 14-day grid as the logger, with the check-in, journal, settings and reminders stacked on one page; habit rows with a 28-day strip (A); weekly trend columns with a Claude note (C).
+
+### Training shows heart-rate zones as a warm ladder; goals moderate 150, vigorous 75, peak 10
+- **Decided:** a Heart-rate zones card on Training: zones stacked by heart rate with their bpm bounds, a warm color ramp that heats up going up, this week's minutes against each goal, the 4-week average and the pace ([training-plan.md](training-plan.md)). Weekly goals drop to WHO's low ends: moderate 300 to 150 minutes, vigorous 150 to 75; peak 25 to 10.
+- **Why:** the zone goals (November 1) only showed inside Today's Strain panel, so a week that missed all three went unnoticed. Picked from four mockups (bars, tiles, the ladder, weekly columns), then warm over cool-to-hot. 300, 150 and 25 were far from averages of 124, 38 and 2.
+- **Instead of:** the goals only on Today; a grey ladder; moderate 300, vigorous 150 and peak 25.
+
+### Lean on Claude's judgment, not lists and patterns
+- **Decided:** where something needs judgment (which muscles an injury affects, whether two words mean the same thing, how much to spare a sore shoulder), Claude decides and says why; code keeps only structure (the tag keys, the severity scale, the tracked muscles), facts and the owner's own rules (a bad injury rests its region). Open vocabularies (tag values, symptoms, body parts) take any words and only fold exact variants together. Claude's call names how it treats each open injury, and code checks that it did, not what it said.
+- **Why:** a fixed body-part table filed a jaw under the neck; a closed symptom list pushed "ringing ears" into a note nothing counts; a synonym table and name patterns (drinking by "alcohol", "beer") break on the next new word. The owner: "I just wanna lean on Claude's intelligence where possible. I don't wanna hard code or do regex."
+- **Instead of:** `BODY_PARTS`, a closed symptom list, tag synonyms, matching words in the call's reasons.
+
+### What a habit does to the body is measured, not set
+- **Decided:** which numbers a habit moves (sleep, HRV, recovery, resting HR) comes from comparing the owner's mornings after it with mornings without it, as part of causes and effects ([body-state.md](body-state.md#causes-and-effects)). No hand-set flag. Until then drinking stays recognized by name.
+- **Why:** a hand-set `affects` flag (from feedback c16e0881) was built and got it wrong against the data the same day: alcohol barely moves resting HR, and nicotine moves HRV and recovery almost as much as alcohol. The owner: the impact should be derived from actual numbers.
+- **Instead of:** an `affects` flag per habit set from chat or the Habits tab (built and removed November 10, 2026; the column was dropped).
+
+### Journal tags: a key, a value, and how it felt
+- **Decided:** tags are four fixed keys, each feeding a body-state area: `with` (who), `did` (what other data doesn't cover), `work`, `stressor` (what was behind stress). Each tag can say how that part felt (good or bad), and a key alone carries a feeling ("work felt bad"). No tags for what other data has. The owner's 33 entries were retagged from their text ([journal-tags.md](journal-tags.md)).
+- **Why:** free tags drifted into 30 different words that said little. Research on mood trackers and daily-experience studies (the Day Reconstruction Method, the Daily Inventory of Stressful Events) points to who, what, and how each part felt. Retagging showed neutral tags lose "work feels dreadful" on a good day; the owner wouldn't take an exception for work on the first try, so feelings became part of every tag.
+- **Instead of:** free tags in categories; neutral key:value tags (October 17 plan); a work-only exception; a work-motivation rating (one more question at check-ins).
+
+### Ailments: illness, injury and pain last until they're over
+- **Decided:** illness, injury and pain are ailments, records that last and end, several open at once, shown together under Today's scores ([ailments.md](ailments.md)). They're reported on the journal card, never logged separately. Nothing expires: an ailment stays open until the owner says it's gone, and each morning's call asks about every open one not reported that day. Claude weighs injuries when it makes the day's call: each body part affects the muscles that load it, and below bad there's no fixed limit, only a check that working them past light comes with a reason naming the ailment. The one hard rule: a bad (3) one rests its whole region (a bad shoulder is the whole upper body) and nothing hard. The rule-based fallback stays cautious and skips affected muscles. The cause is a guess at first, linked to the workouts it may have come from, so causes and effects can be measured later.
+- **Why:** shoulder pain on November 10 reached nothing: the plan still allowed shoulders. Illness was one severity per day and couldn't hold a cold and an injury at once. Pain fades without being mentioned, but guessing when it's over is worse than asking.
+- **Instead of:** `illness_days` and `draft_illness`; fixed limits per severity (mild light, hurts out), which the owner rejected the same day: limits should be weighed when Claude decides; injuries expiring after a few days without a report; journal tags as the record. 
+
 ## 2026-11-06
 
 ### Claude makes the day's call each morning

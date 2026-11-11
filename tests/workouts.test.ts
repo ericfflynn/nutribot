@@ -207,6 +207,9 @@ test("muscles decide the kind of training when the type doesn't", () => {
   assert.deepEqual(kinds("yoga", ["Mobility"]), ["mobility"]);
   assert.deepEqual(kinds("pilates", ["Core"]), ["mobility"]);
   assert.deepEqual(kinds("class", []), ["cardio"]); // no muscles: the type decides
+  assert.deepEqual(kinds("other", ["Cardio", "Upper Abs", "Lower Abs"]), ["core", "cardio"]); // abs and cardio: core, not strength
+  assert.deepEqual(kinds("strength", ["Upper Abs", "Obliques"]), ["core"]);
+  assert.deepEqual(kinds("strength", ["Chest", "Upper Abs"]), ["strength"]); // a lift with abs is still strength
 });
 
 test("old names count as today's: Mid Chest is Chest", () => {
@@ -302,6 +305,7 @@ test("the split counts a workout for every kind it includes, against 4/2/2", () 
     split.map((entry) => [entry.kind, entry.count, entry.target]),
     [
       ["strength", 2, 4],
+      ["core", 0, 3],
       ["cardio", 1, 2],
       ["mobility", 1, 2],
       ["sport", 1, null]

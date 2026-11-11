@@ -1,111 +1,114 @@
-// Journal tags: a small vocabulary in categories, plus custom tags. Every tag
-// is normalized the same way when the chat drafts it, when the owner edits
-// it, and when history is read, so "Work", "work " and "#work" are one tag
-// and patterns over time stay countable. Pure, no database.
+// Journal tags (docs/journal-tags.md): what came up in an entry, as a key
+// and a word, and optionally how it felt. "with:partner", "work:deadline-"
+// (felt bad), "did:game+" (felt good), "work-" (work felt bad, nothing more
+// specific). Each key belongs to a body-state area, so the journal and the
+// body state share one vocabulary. The keys are fixed; values are open
+// (lib/vocab.ts). Pure, no database.
+import { cleanWord, foldOnto } from "./vocab";
 
-export const TAG_CATEGORIES = [
-  { id: "work", label: "Work", tags: ["work", "deadline", "meeting", "coding", "productive", "burnout"] },
-  { id: "relationships", label: "Relationships", tags: ["family", "partner", "friends", "conflict"] },
-  { id: "health", label: "Health", tags: ["sick", "headache", "pain", "injury", "doctor", "diet"] },
-  { id: "exercise", label: "Exercise", tags: ["workout", "sore", "rest day", "cardio", "personal best"] },
-  { id: "sleep", label: "Sleep", tags: ["poor sleep", "good sleep", "tired", "nap", "late night"] },
-  { id: "social", label: "Social", tags: ["social", "party", "date night", "alone time", "hosting"] },
-  { id: "growth", label: "Personal Growth", tags: ["reading", "learning", "meditation", "gratitude", "therapy"] },
-  { id: "other", label: "Other", tags: ["stress", "relaxing", "travel", "money", "errands", "weather"] }
+export const TAG_KEYS = [
+  {
+    key: "with",
+    label: "With",
+    area: "lifestyle.relationships",
+    about: "who they were with: their partner is always partner and relatives family (check memories for who's who), anyone else by first name",
+    values: ["partner", "family", "friends", "coworkers", "alone"]
+  },
+  {
+    key: "did",
+    label: "Did",
+    area: "lifestyle",
+    about: "something notable that other data doesn't cover (not workouts, meals, habits or sleep)",
+    values: ["ate out", "date", "party", "event", "hosting", "travel", "game", "watched sports", "outdoors", "tv", "side project", "doctor", "errands"]
+  },
+  {
+    key: "work",
+    label: "Work",
+    area: "lifestyle.career",
+    about: "what work was like",
+    values: ["deadline", "meeting", "presentation", "launch", "office", "busy", "after hours", "day off"]
+  },
+  {
+    key: "stressor",
+    label: "Stress from",
+    area: "mental.mood",
+    about: "what was behind stress, only when they say there was some",
+    values: ["work", "relationship", "family", "money", "health", "home", "someone close", "personal"]
+  }
 ] as const;
 
-export type TagCategory = (typeof TAG_CATEGORIES)[number]["id"];
+export type TagKey = (typeof TAG_KEYS)[number]["key"];
+export const TAG_KEY_NAMES = TAG_KEYS.map((item) => item.key) as [TagKey, ...TagKey[]];
+export const FEELINGS = ["good", "bad"] as const;
+export type Feeling = (typeof FEELINGS)[number];
 
-export const PREDEFINED_TAGS: string[] = TAG_CATEGORIES.flatMap((category) => [...category.tags]);
+export type Tag = { key: TagKey; value: string | null; feeling: Feeling | null };
 
-// Different words for the same thing.
-const SYNONYMS: Record<string, string> = {
-  "bad sleep": "poor sleep",
-  "slept badly": "poor sleep",
-  "slept poorly": "poor sleep",
-  "no sleep": "poor sleep",
-  insomnia: "poor sleep",
-  "slept well": "good sleep",
-  "great sleep": "good sleep",
-  exhausted: "tired",
-  fatigue: "tired",
-  gym: "workout",
-  lifting: "workout",
-  training: "workout",
-  exercise: "workout",
-  programming: "coding",
-  job: "work",
-  office: "work",
-  stressed: "stress",
-  stressful: "stress",
-  anxiety: "stress",
-  relaxed: "relaxing",
-  relax: "relaxing",
-  chill: "relaxing",
-  friend: "friends",
-  girlfriend: "partner",
-  boyfriend: "partner",
-  wife: "partner",
-  husband: "partner",
-  ill: "sick",
-  illness: "sick",
-  cold: "sick",
-  pr: "personal best",
-  "family time": "family",
-  socializing: "social",
-  "date": "date night",
-  meditate: "meditation",
-  read: "reading"
-};
+const keyOf = (name: string) => TAG_KEYS.find((item) => item.key === name);
 
-// Words that place a custom tag in a category ("sore legs" is Exercise).
-const CATEGORY_HINTS: [TagCategory, RegExp][] = [
-  ["exercise", /\b(sore|run|lift|gym|workout|walk|hike|ride|yoga|pilates|swim|golf|tennis)\b/],
-  ["health", /\b(sick|ache|pain|sore throat|headache|fever|tooth|dentist|doctor|lymph|allerg|nause|injur|med)/],
-  ["sleep", /\b(sleep|slept|tired|nap|insomnia|bed)\b/],
-  ["work", /\b(work|meeting|deadline|boss|project|client|code|coding|email)\b/],
-  ["relationships", /\b(family|mom|dad|brother|sister|partner|wife|husband|kids?|parents?)\b/],
-  ["social", /\b(friends?|party|dinner|drinks|social|hang)\b/],
-  ["growth", /\b(read|learn|meditat|journal|therapy|gratitude|goal)\w*/]
-];
-
-// Lowercase, single-spaced, no "#", "_" or "-", synonyms folded, and a plural
-// folded onto a known tag ("headaches" is "headache"). `known` adds the
-// owner's own tags to fold onto.
-export function normalizeTag(tag: string, known: readonly string[] = []) {
-  let value = tag
-    .toLowerCase()
-    .replace(/^#+/, "")
-    .replace(/[_-]+/g, " ")
-    .replace(/[^\p{L}\p{N} ']+/gu, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!value) return "";
-  value = SYNONYMS[value] ?? value;
-  const vocabulary = new Set([...PREDEFINED_TAGS, ...known]);
-  if (vocabulary.has(value)) return value;
-  const singular = value.endsWith("es") && vocabulary.has(value.slice(0, -2)) ? value.slice(0, -2) : value.endsWith("s") ? value.slice(0, -1) : value;
-  if (vocabulary.has(singular)) return singular;
-  if (vocabulary.has(`${value}s`)) return `${value}s`;
-  return SYNONYMS[singular] ?? value;
+// A tag in its stored form, or null when it isn't one: "key", "key:value",
+// either followed by + (felt good) or - (felt bad). A key alone needs a feeling.
+export function parseTag(text: string): Tag | null {
+  const match = /^([a-z]+)(?::([^+-]*))?([+-])?$/.exec(text.trim().toLowerCase());
+  if (!match || !keyOf(match[1])) return null;
+  const value = match[2] ? cleanWord(match[2]) || null : null;
+  const feeling = match[3] === "+" ? "good" : match[3] === "-" ? "bad" : null;
+  return { key: match[1] as TagKey, value, feeling };
 }
 
-// Normalized, deduplicated, at most `max` tags, in their original order.
-export function normalizeTags(tags: readonly string[], known: readonly string[] = [], max = 8) {
-  const result: string[] = [];
+export function formatTag(tag: Tag) {
+  return `${tag.key}${tag.value ? `:${tag.value}` : ""}${tag.feeling === "good" ? "+" : tag.feeling === "bad" ? "-" : ""}`;
+}
+
+// A tag tidied up: its value cleaned and folded onto a value already in use
+// for that key (the suggested ones and the owner's own, `known`) when it's
+// the same words. Null when it's empty: a key needs a value or a feeling.
+export function normalizeTag(tag: Tag | string, known: readonly string[] = []): string | null {
+  const parsed = typeof tag === "string" ? parseTag(tag) : tag;
+  if (!parsed || !keyOf(parsed.key)) return null;
+  const vocabulary = [
+    ...known.map(parseTag).filter((item): item is Tag => item?.key === parsed.key && Boolean(item.value)).map((item) => item.value!),
+    ...keyOf(parsed.key)!.values
+  ];
+  const value = parsed.value ? foldOnto(parsed.value, vocabulary) || null : null;
+  if (value && value.length > 30) return null;
+  if (!value && !parsed.feeling) return null;
+  return formatTag({ key: parsed.key, value, feeling: parsed.feeling });
+}
+
+// Normalized and deduplicated (one per key and value; the later feeling
+// wins), at most `max`, in order. Strings that aren't tags (older free tags)
+// are dropped.
+export function normalizeTags(tags: readonly (Tag | string)[], known: readonly string[] = [], max = 6): string[] {
+  const byKey = new Map<string, string>();
   for (const tag of tags) {
     const value = normalizeTag(tag, known);
-    if (value && value.length <= 40 && !result.includes(value)) result.push(value);
+    if (!value) continue;
+    const parsed = parseTag(value)!;
+    byKey.set(`${parsed.key}:${parsed.value ?? ""}`, value);
   }
-  return result.slice(0, max);
+  return [...byKey.values()].slice(0, max);
 }
 
-export function categoryOf(tag: string): TagCategory {
-  const predefined = TAG_CATEGORIES.find((category) => (category.tags as readonly string[]).includes(tag));
-  if (predefined) return predefined.id;
-  return CATEGORY_HINTS.find(([, pattern]) => pattern.test(tag))?.[0] ?? "other";
+export function keyLabel(key: TagKey) {
+  return keyOf(key)!.label;
 }
 
-export function categoryLabel(id: TagCategory) {
-  return TAG_CATEGORIES.find((category) => category.id === id)!.label;
+// "With partner", "Work: deadline", "Stress from work", "Work" (with its
+// feeling shown apart).
+export function tagLabel(tag: Tag | string) {
+  const parsed = typeof tag === "string" ? parseTag(tag) : tag;
+  if (!parsed) return typeof tag === "string" ? tag : "";
+  const label = keyLabel(parsed.key);
+  if (!parsed.value) return label;
+  return parsed.key === "work" || parsed.key === "did" ? `${label}: ${parsed.value}` : `${label} ${parsed.value}`;
+}
+
+export function tagsOf(entry: { tags: readonly string[] }, key?: TagKey): Tag[] {
+  return entry.tags.map(parseTag).filter((tag): tag is Tag => Boolean(tag) && (!key || tag!.key === key));
+}
+
+// For the chat: each key, what it's for and its suggested values.
+export function describeTagKeys() {
+  return TAG_KEYS.map((item) => `${item.key} (${item.about}): ${item.values.join(", ")}`).join("; ");
 }

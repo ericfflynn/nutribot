@@ -223,22 +223,22 @@ const SICK_MEALS = [
 ] as const;
 
 const JOURNAL = [
-  { body: "Good focus at work this morning, shipped the thing I'd been stuck on. Evening walk with a friend.", mood: 4, stress: 2, tags: ["work", "productive", "friends"] },
-  { body: "Long day of meetings. Felt drained by the end but dinner with family helped.", mood: 3, stress: 4, tags: ["work", "meeting", "family"] },
-  { body: "Slept badly and dragged through the day. Skipped the gym.", mood: 2, stress: null, tags: ["poor sleep", "tired", "rest day"] },
-  { body: "Great workout, legs are toast. Read for a while before bed.", mood: 5, stress: 1, tags: ["workout", "sore legs", "reading"] },
-  { body: "Quiet Sunday. Meal prep, a walk, some reading.", mood: 4, stress: 1, tags: ["relaxing", "reading"] },
-  { body: "Deadline pressure all afternoon. Mood was fine though.", mood: 4, stress: 4, tags: ["work", "deadline"] },
-  { body: "Headache most of the day, took it easy.", mood: 2, stress: 2, tags: ["headache", "rest day"] }
+  { body: "Good focus at work this morning, shipped the thing I'd been stuck on. Evening walk with a friend.", mood: 4, stress: 2, tags: ["work+", "with:friends"] },
+  { body: "Long day of meetings. Felt drained by the end but dinner with family helped.", mood: 3, stress: 4, tags: ["work:meeting-", "with:family+", "stressor:work"] },
+  { body: "Slept badly and dragged through the day. Skipped the gym.", mood: 2, stress: null, tags: [] },
+  { body: "Great workout, legs are toast. Read for a while before bed.", mood: 5, stress: 1, tags: [] },
+  { body: "Quiet Sunday. Meal prep, a walk, some reading.", mood: 4, stress: 1, tags: ["with:alone+"] },
+  { body: "Deadline pressure all afternoon. Mood was fine though.", mood: 4, stress: 4, tags: ["work:deadline", "stressor:work"] },
+  { body: "Headache most of the day, took it easy.", mood: 2, stress: 2, tags: [] }
 ];
 
 // The cold, by days ago.
 const COLD_JOURNAL: Record<number, { body: string; mood: number; stress: number | null; tags: string[] }> = {
-  [COLD.signs]: { body: "Felt a bit flat tonight, scratchy throat. Early bed.", mood: 3, stress: 2, tags: ["tired"] },
-  [COLD.sick[0]]: { body: "Woke up with a fever and aches. Stayed in bed most of the day.", mood: 2, stress: null, tags: ["sick", "rest day"] },
-  [COLD.sick[1]]: { body: "Still sick, cough now. Soup and a lot of sleep.", mood: 2, stress: null, tags: ["sick", "rest day"] },
-  [COLD.mild]: { body: "Much better, just congested. Short walk outside.", mood: 3, stress: 1, tags: ["sick"] },
-  [COLD.better]: { body: "Back to normal. Easing back in tomorrow.", mood: 4, stress: 2, tags: ["work"] }
+  [COLD.signs]: { body: "Felt a bit flat tonight, scratchy throat. Early bed.", mood: 3, stress: 2, tags: [] },
+  [COLD.sick[0]]: { body: "Woke up with a fever and aches. Stayed in bed most of the day.", mood: 2, stress: null, tags: [] },
+  [COLD.sick[1]]: { body: "Still sick, cough now. Soup and a lot of sleep.", mood: 2, stress: null, tags: [] },
+  [COLD.mild]: { body: "Much better, just congested. Short walk outside.", mood: 3, stress: 1, tags: [] },
+  [COLD.better]: { body: "Back to normal. Easing back in tomorrow.", mood: 4, stress: 2, tags: ["work+"] }
 };
 const COLD_DAYS: Record<number, [number, string[], string]> = {
   [COLD.sick[0]]: [2, ["fever", "body aches", "sore throat"], "In bed most of the day"],
@@ -271,6 +271,7 @@ async function main() {
         "body_states",
         "body_log",
         "illness_days",
+        "ailments",
         "workout_ignores",
         "habit_logs",
         "habits",
@@ -316,6 +317,7 @@ async function main() {
       const health: HealthRow[] = [];
       let legDay: string | null = null;
       let nextPlan = 0;
+      let coldId: string | null = null;
       const drinks = dates.map((date) => drinksOn(new Date(`${date}T12:00:00Z`).getUTCDay()));
       for (const [index, date] of dates.entries()) {
         const ago = DAYS - 1 - index;
@@ -323,11 +325,20 @@ async function main() {
         const weekday = new Date(`${date}T12:00:00Z`).getUTCDay();
         const sickDay = COLD_DAYS[ago];
         const inBed = sickDay != null && sickDay[0] >= 1;
+        // The cold is an ailment (docs/ailments.md), its days logged one by one.
         if (sickDay) {
+          if (!coldId) {
+            const made = await client.query<{ id: string }>(
+              `insert into public.ailments (user_name, kind, name, started_on) values ($1, 'illness', 'Head cold', $2::date) returning id::text`,
+              [USER, date]
+            );
+            coldId = made.rows[0].id;
+          }
           await client.query(
-            `insert into public.illness_days (user_name, entry_date, severity, symptoms, note) values ($1, $2::date, $3, $4, $5)`,
-            [USER, date, ...sickDay]
+            `insert into public.ailment_days (ailment_id, user_name, entry_date, severity, symptoms, note) values ($1::uuid, $2, $3::date, $4, $5, $6)`,
+            [coldId, USER, date, ...sickDay]
           );
+          if (sickDay[0] === 0) await client.query(`update public.ailments set ended_on = $2::date where id = $1::uuid`, [coldId, date]);
         }
 
         // Workouts: lifting most weekdays, pilates or yoga twice a week, a

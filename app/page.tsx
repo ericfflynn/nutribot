@@ -6,7 +6,7 @@ import { WaterRow } from "./water-row";
 import { lastWeekRows, weekItems } from "@/lib/training-week";
 import { listFitbitWorkouts, listWorkoutSessions } from "@/lib/workouts";
 import { getZoneBounds, zoneMinutes } from "@/lib/health/zones";
-import { Facts, RecoveryDetails, SickLine, SleepDetails, StrainDetails } from "./body-ui";
+import { BodyLines, Facts, RecoveryDetails, SleepDetails, StrainDetails } from "./body-ui";
 import { GoalComboChart } from "./charts";
 import { NutritionCard } from "./nutrition-toggle";
 import { DayStrip, type StripDay } from "./day-strip";
@@ -24,6 +24,8 @@ import { morningBrief, type Reply } from "@/lib/body-state/brief";
 import { getDailyCall } from "@/lib/body-state/call";
 import { gramsFromPercentGoals, restingKcalPerMinute, withWorkoutCalories, workoutCalories } from "@/lib/goals";
 import { listJournalEntries, recordedRatings, type JournalEntry } from "@/lib/journal";
+import { listAilments, severityLabel } from "@/lib/ailments";
+import { tagLabel } from "@/lib/journal-tags";
 import {
   getLatestHealthSyncRun,
   listHealthDays,
@@ -267,7 +269,10 @@ function CheckinDetails({ id, date, text }: { id: string; date: string; text: st
   );
 }
 
-function journalEvent(entry: JournalEntry, date: string): TimelineEvent {
+const dayNumber = (start: string, date: string) => Math.round((Date.parse(date) - Date.parse(start)) / 86_400_000) + 1;
+
+// A journal row: its ratings, then its ailment lines ("Right shoulder: day 2, hurts").
+function journalEvent(entry: JournalEntry, date: string, ailmentLines: string[] = []): TimelineEvent {
   const loggedAt = localWallClock(entry.createdAt);
   const sameDay = loggedAt != null && loggedAt.slice(0, 10) === date;
   // Mood first, then stress, each with its label: "Mood 4 · Good".
@@ -280,7 +285,7 @@ function journalEvent(entry: JournalEntry, date: string): TimelineEvent {
     sort: sameDay ? minuteOfDay(loggedAt) : 24 * 60,
     color: CHECKIN_COLOR,
     title: `${entry.kind === "other" ? "Journal" : `${entry.kind[0].toUpperCase()}${entry.kind.slice(1)} journal`}`,
-    detail: ratings.join(" · ") || entry.tags.join(", "),
+    detail: [...ratings, ...ailmentLines].join(" · ") || entry.tags.map(tagLabel).join(", "),
     details: <CheckinDetails id={entry.id} date={date} text={entry.body} />
   };
 }
@@ -413,7 +418,7 @@ export default async function Home({ searchParams }: PageProps) {
 
   const db = getPool()!;
   const firstShown = priorDates[0] < stripDates[0] ? priorDates[0] : stripDates[0];
-  const [entries, goals, healthDays, rangeWorkouts, waterOunces, lastRun, journal, body, checkinReplies, cookieStore, sickDates, weekSessions, weekFitbit, zoneBounds, dailyCall] = await Promise.all([
+  const [entries, goals, healthDays, rangeWorkouts, waterOunces, lastRun, journal, body, checkinReplies, cookieStore, sickDates, weekSessions, weekFitbit, zoneBounds, dailyCall, ailments] = await Promise.all([
     listEntriesForDateRange(user.name, priorDates[0], date),
     getUserGoals(user.name),
     listHealthDays(user.name, healthStart, stripEnd),
@@ -434,7 +439,9 @@ export default async function Home({ searchParams }: PageProps) {
     listFitbitWorkouts(db, user.name, addDays(date, -6), date),
     getZoneBounds(user.name, date),
     // Claude's call for the day, once the morning has made it.
-    getDailyCall(db, user.name, date)
+    getDailyCall(db, user.name, date),
+    // Each journal entry's ailment lines in the timeline.
+    listAilments(db, user.name, date, date)
   ]);
 
   const healthByDay = new Map(healthDays.map((day) => [day.day, day]));
@@ -661,7 +668,12 @@ export default async function Home({ searchParams }: PageProps) {
     });
   }
   for (const entry of journal) {
-    timed.push(journalEvent(entry, date));
+    const lines = ailments.flatMap((ailment) =>
+      ailment.days
+        .filter((day) => day.journalEntryId === entry.id)
+        .map((day) => `${ailment.name}: ${day.severity ? `day ${dayNumber(ailment.startedOn, day.date)}, ${severityLabel(ailment.kind, day.severity).toLowerCase()}` : "over"}`)
+    );
+    timed.push(journalEvent(entry, date, lines));
   }
   for (const workout of workouts.filter((item) => !item.ignored)) {
     const workoutLoad = workoutStrain(workout);
@@ -744,7 +756,11 @@ export default async function Home({ searchParams }: PageProps) {
 
       <ScoreSummary
         scores={scores}
-        below={body.physical.illness.phase === "well" ? null : <SickLine state={body} />}
+        below={
+          body.physical.illness.phase === "early_signs" || body.physical.ailments?.open.length || body.physical.ailments?.ended7.some((item) => item.endedOn === date) ? (
+            <BodyLines state={body} />
+          ) : null
+        }
         details={{
           Sleep: <SleepDetails state={body} />,
           Recovery: <RecoveryDetails state={body} />,

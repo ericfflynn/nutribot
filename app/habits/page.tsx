@@ -1,20 +1,22 @@
 import { ChatPromptButton } from "../chat-sheet";
-import { CheckinSummary } from "../checkin-card";
 import { HabitEditor } from "../habit-editor";
-import { HabitGrid } from "../habit-logger";
+import { HabitGrid, LogToday } from "../habit-logger";
+import { HabitsMore } from "../habits-more";
 import { JournalHistory } from "../journal-ui";
 import { RemindersCard } from "../reminders-toggle";
 import { AppShell, Login } from "../shared-ui";
 import { getSessionUser } from "@/lib/auth";
 import { addDays, rollingDateWindow, todayLocalDate } from "@/lib/dates";
-import { describeDays, describeGoal, listHabitLogs, listHabits, scaleGuideLines, type Habit } from "@/lib/habits";
+import { describeDays, describeGoal, habitStreaks, listHabitLogs, listHabits, scaleGuideLines, type Habit } from "@/lib/habits";
 import { listJournalEntries } from "@/lib/journal";
 import { listReminders, remindersSentOn, vapidPublicKey } from "@/lib/reminders";
 import { getPool } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
-const WINDOW_DAYS = 14;
+// The grid pages back 12 weeks; streaks read up to a year.
+const WINDOW_DAYS = 84;
+const STREAK_DAYS = 365;
 // Journal entries loaded for tag filters and patterns.
 const JOURNAL_DAYS = 90;
 
@@ -51,26 +53,31 @@ export default async function HabitsPage() {
   const days = rollingDateWindow(today, WINDOW_DAYS);
   const [allHabits, logs, journal, reminders, sent] = await Promise.all([
     listHabits(db, user.name, true),
-    listHabitLogs(db, user.name, days[0], today),
+    listHabitLogs(db, user.name, addDays(today, -(STREAK_DAYS - 1)), today),
     listJournalEntries(db, user.name, addDays(today, -(JOURNAL_DAYS - 1)), today),
     listReminders(db, user.name),
     remindersSentOn(db, user.name, today)
   ]);
   const habits = allHabits.filter((habit) => habit.active);
   const archived = allHabits.filter((habit) => !habit.active);
-  const todayEntries = journal.filter((entry) => entry.date === today);
+  const streaks = Object.fromEntries(habits.map((habit) => [habit.id, habitStreaks(habit, logs, addDays(today, -(STREAK_DAYS - 1)), today)]));
+  const gridLogs = logs.filter((log) => log.date >= days[0]);
   const habitReminder = new Map(
     reminders.filter((reminder) => reminder.kind === "habit").map((reminder) => [reminder.habitId, reminder.hour])
   );
 
   return (
     <AppShell user={user} date={today} active="habits" title="Habits">
-      <CheckinSummary entries={todayEntries} isToday />
+      {habits.length ? <LogToday habits={habits} logs={gridLogs} today={today} /> : null}
 
-      {habits.length ? <HabitGrid habits={habits} days={days} logs={logs} /> : null}
+      {habits.length ? <HabitGrid habits={habits} days={days} logs={gridLogs} streaks={streaks} /> : null}
 
-      <JournalHistory entries={journal} recentFrom={days[0]} rangeDays={JOURNAL_DAYS} />
-
+      <HabitsMore
+        sections={[
+          {
+            id: "habits",
+            label: "Edit habits",
+            content: (
       <section className="card" aria-label="Tracked habits">
         <div className="card-heading">
           <h2 className="card-title">Tracked habits</h2>
@@ -117,13 +124,27 @@ export default async function HabitsPage() {
         ) : null}
         <p className="footnote">Edits keep each habit's history. You can also tell the chat what to change.</p>
       </section>
-
+            )
+          },
+          {
+            id: "reminders",
+            label: "Reminders",
+            content: (
       <RemindersCard
         publicKey={vapidPublicKey()}
         reminders={reminders}
         habits={habits.map((habit) => ({ id: habit.id, name: habit.name }))}
         sentToday={Object.fromEntries(sent)}
         today={today}
+      />
+            )
+          },
+          {
+            id: "journal",
+            label: "Journal",
+            content: <JournalHistory entries={journal} recentFrom={addDays(today, -13)} rangeDays={JOURNAL_DAYS} />
+          }
+        ]}
       />
     </AppShell>
   );

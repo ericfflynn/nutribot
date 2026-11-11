@@ -13,6 +13,7 @@ import { appendAssistantMessage, currentConversation } from "../chat";
 import { INTENSITIES, TRACKED_MUSCLES, muscleCapsOn, type Intensity, type TrackedMuscle } from "../workouts";
 import { callOf, morningBrief } from "./brief";
 import { buildBodyState } from "./build";
+import { limitsLine, musclesLine, severityLabel } from "../ailments-core";
 import { loadBodySources } from "./load";
 import { saveBodyState } from "./store";
 import type { BodySources, BodyState } from "./types";
@@ -27,6 +28,10 @@ export type Guardrails = {
   // Each muscle's most today; null is out.
   muscles: { muscle: TrackedMuscle; max: Intensity | null; because: string | null }[];
   because: string[]; // what set the limits, in words
+  // Open injuries and pain below bad, for Claude to weigh (added Nov 10,
+  // 2026): the muscles each affects, and the words a reason must use to
+  // work them past light.
+  ailments?: { name: string; severity: string; day: number; bodyParts: string[]; affects: TrackedMuscle[] }[];
 };
 
 export type DailyCall = {
@@ -37,6 +42,8 @@ export type DailyCall = {
   headline: string; // "Easy pull day", "Rest today"
   note: string; // the coach note, 2-4 sentences
   reasons: string[]; // short evidence rows
+  // How the plan treats each open injury or pain (added Nov 10, 2026).
+  ailments?: { name: string; plan: string }[];
   ask: string | null; // the one question for the owner
   source: "claude" | "rules";
   madeAt: string; // local "YYYY-MM-DDTHH:MM"
@@ -76,15 +83,37 @@ export function guardrailsOf(state: BodyState, sources: Pick<BodySources, "sessi
     max = lower(max, "medium");
     because.push(`Readiness says easy: ${readiness.reasons.join(", ")}.`);
   }
+  // Open injuries and pain (docs/ailments.md). Only a bad (3) one sets hard
+  // limits: its region out, nothing hard. The rest Claude weighs: they're
+  // listed in `ailments`, and working their muscles past light needs a reason
+  // that names them (checkCall).
+  const open = (state.physical.ailments?.open ?? []).filter((item) => item.phase === "active" && item.kind !== "illness");
+  const resting = new Map<TrackedMuscle, string>();
+  for (const item of open) {
+    for (const muscle of item.limits.out) if (!resting.has(muscle)) resting.set(muscle, `${item.name.toLowerCase()}, resting`);
+    const line = limitsLine(item.limits);
+    if (line) because.push(`${item.name} is bad (day ${item.day}): ${line.toLowerCase()}.`);
+    if (item.limits.noHard) max = lower(max, "medium");
+  }
+  const ailments = open.map((item) => ({
+    name: item.name,
+    severity: severityLabel(item.kind, item.severity),
+    day: item.day,
+    bodyParts: item.bodyParts,
+    affects: item.affects
+  }));
+  // Next up's rules skip the muscles an ailment affects; here that's Claude's call.
+  const weighed = new Set(open.map((item) => item.name.toLowerCase()));
   if (rest) kinds = kinds.filter((kind) => kind !== "strength" && kind !== "cardio");
   const caps = muscleCapsOn(sources.sessions, state.meta.date);
   const outBy = new Map(training.muscles.map((item) => [item.muscle, item.out]));
   const muscles = TRACKED_MUSCLES.map((muscle) => {
+    if (resting.has(muscle)) return { muscle, max: null, because: resting.get(muscle)! };
     const out = outBy.get(muscle) ?? null;
-    if (out) return { muscle, max: null, because: out };
+    if (out && !weighed.has(out)) return { muscle, max: null, because: out };
     return { muscle, max: lower(max, caps.get(muscle) ?? "hard"), because: null };
   });
-  return { rest, maxIntensity: max, allowedKinds: kinds, muscles, because };
+  return { rest, maxIntensity: max, allowedKinds: kinds, muscles, ailments, because };
 }
 
 // The call the rules make: Training's suggestion with illness and readiness.
@@ -100,14 +129,29 @@ export function rulesCall(state: BodyState, madeAt: string): DailyCall {
     headline,
     note: [brief.text, pick.note].filter(Boolean).join(" "),
     reasons: state.physical.training.readiness?.reasons ?? [],
-    ask: null,
+    // The rules skip whatever an open injury affects.
+    ailments: (state.physical.ailments?.open ?? [])
+      .filter((item) => item.phase === "active" && item.kind !== "illness")
+      .map((item) => ({ name: item.name, plan: item.affects.length ? `Skipping ${musclesLine(item.affects)} work.` : "Nothing in training loads it." })),
+    ask: ailmentAsk(state),
     source: "rules",
     madeAt
   };
 }
 
+// The morning's follow-up on open ailments not reported today: "How's the
+// right shoulder today?" Every morning until it's over (the owner, Nov 10, 2026).
+export function ailmentAsk(state: BodyState): string | null {
+  const names = (state.physical.ailments?.open ?? [])
+    .filter((item) => item.phase === "active" && item.reportedOn !== state.meta.date)
+    .map((item) => item.name.toLowerCase());
+  if (!names.length) return null;
+  const list = names.length > 1 ? `${names.slice(0, -1).join(", ")} and the ${names.at(-1)}` : names[0];
+  return `How's the ${list} today?`;
+}
+
 // What breaks a guardrail, or null when the call fits.
-export function checkCall(call: Pick<DailyCall, "kind" | "work" | "accessory">, guardrails: Guardrails): string | null {
+export function checkCall(call: Pick<DailyCall, "kind" | "work" | "accessory"> & Partial<Pick<DailyCall, "ailments">>, guardrails: Guardrails): string | null {
   if (!guardrails.allowedKinds.includes(call.kind)) return `Kind ${call.kind} isn't allowed today; allowed: ${guardrails.allowedKinds.join(", ")}.`;
   if (call.kind !== "strength" && call.work.length) return "Only a strength call lists muscles to work.";
   if (call.kind === "strength" && !call.work.length) return "A strength call needs muscles to work.";
@@ -119,6 +163,13 @@ export function checkCall(call: Pick<DailyCall, "kind" | "work" | "accessory">, 
   }
   for (const muscle of call.accessory) {
     if (capOf.get(muscle)?.max == null) return `${muscle} is out today, so it can't be an accessory.`;
+  }
+  // Each open injury or pain is weighed, and the call says how it treats it
+  // (the judgment the evals check).
+  for (const ailment of guardrails.ailments ?? []) {
+    if (!call.ailments?.some((item) => item.name === ailment.name && item.plan.trim())) {
+      return `Say in ailments how today's plan treats the ${ailment.name.toLowerCase()} (${ailment.severity.toLowerCase()}, day ${ailment.day}).`;
+    }
   }
   return null;
 }
@@ -132,7 +183,10 @@ export const callShape = {
   headline: z.string().min(3).max(60).describe('A few words: "Easy pull day", "Rest today".'),
   note: z.string().min(20).max(700).describe("The coach note: 2-4 sentences."),
   reasons: z.array(z.string().max(120)).max(4).describe('Short evidence rows: "Recovery 23, red", "4 drinks last night".'),
-  ask: z.string().max(160).nullable().describe("One question for the owner, or null.")
+  ask: z.string().max(160).nullable().describe("One question for the owner, or null."),
+  ailments: z
+    .array(z.object({ name: z.string().describe("Exactly as in guardrails.ailments."), plan: z.string().min(3).max(160) }))
+    .describe("One per open injury or pain in guardrails.ailments: how today's plan treats it (\"skipping pressing and rows, light band work only\", \"legs don't load it, training as normal\"). Empty when none is open.")
 };
 
 export const CALL_STYLE = `Be their coach: warm and supportive, and direct. Say what to do and why in plain words, citing their numbers ("recovery's 23 after the wine and three hard days"). Kind, never preachy or alarmed; on a rough stretch, encourage. No hedging, no exclamation marks, no lists in the note. Times in 12-hour form ("10 pm"). Temperatures in Fahrenheit (a °C difference times 1.8).`;
@@ -144,10 +198,12 @@ How to decide:
 - Their body first: illness, readiness and recovery, sleep, what's sore. Then what's due (training.due, days since each day type) and the week's split against its targets. Then their life and goals from the journal and memories.
 - A rest or easy day is a good call when the body needs it; say what kind of movement still helps (a walk, mobility).
 - Strength muscles take an intensity each, never above their guardrail.
+- Heart-rate zone goals (training.zones: this week's workout minutes per zone against the weekly goal, the usual week, the pace): plan cardio toward them. When moderate, vigorous or peak is behind pace and the body allows it, a cardio day or a cardio finisher fits: a steady run or ride for moderate, intervals (4 × 4 minutes hard) for vigorous and peak. Say which zone it's for in the note. Lifting earns little of it. Don't chase minutes on a rest or easy day.
+- Open ailments (physical.ailments.open) are yours to weigh. Illness is already in the guardrails, and so is a bad (3) injury, which rests the whole region of its muscles. For a mild or hurting injury or pain, guardrails.ailments lists the muscles whose training loads it; decide how much to spare them from its severity, its day and trend (reportedOn, the days in the journal), what they wrote about it, and what's due. Usually that means skipping them or keeping them light for a few days (light rehab work is fine) and training something else; think about cardio that loads it too (running on a sore knee). Say how the plan treats each one in ailments, and name them in the note.
 
 ${CALL_STYLE}
 
-The note is 2-4 sentences: what you see, what to do today, and one thing that helps (sleep, food, water, recovery). ask is one question you want answered this morning, about how they feel or anything that changes today; null if nothing.
+The note is 2-4 sentences: what you see, what to do today, and one thing that helps (sleep, food, water, recovery). ask is one question you want answered this morning, about how they feel or anything that changes today; null if nothing. When an ailment is open and not reported today, ask about it by name ("How's the shoulder this morning?"), in the same one question.
 
 Call submit_call once with the call. If it comes back with an error, fix that and call it again.`;
 }
@@ -163,6 +219,7 @@ export function toCall(args: Submitted, source: DailyCall["source"], madeAt: str
     headline: args.headline.trim(),
     note: args.note.trim(),
     reasons: args.reasons,
+    ailments: args.ailments ?? [],
     ask: args.ask?.trim() || null,
     source,
     madeAt

@@ -4,7 +4,8 @@
 import type { HealthDay, HealthSyncRun, HealthWorkout } from "../health/queries";
 import type { IllnessLevel } from "../health/illness";
 import type { Habit, HabitLog, HabitOutcome } from "../habits";
-import type { IllnessDay, Symptom } from "../illness-days";
+import type { Ailment, OpenAilment } from "../ailments-core";
+import type { IllnessDay } from "../illness-days";
 import type { JournalEntry } from "../journal";
 import type { Goals } from "../goals";
 import type { SleepNeed } from "../health/scores";
@@ -88,15 +89,25 @@ export type IllnessArea = Head & {
   signal: { level: IllnessLevel; points: number; reasons: string[] };
   told: {
     severity: number;
-    symptoms: Symptom[];
+    symptoms: string[];
     since: string;
     day: number;
     reportedOn: string;
-    source: "logged" | "journal"; // logged sick days, or a journal entry tagged "sick"
+    // ailment since Nov 10, 2026 (the open illness); before: logged sick
+    // days, or a journal entry tagged "sick".
+    source: "ailment" | "logged" | "journal";
+    name?: string; // the illness ("Head cold"), since Nov 10, 2026
   } | null;
   phase: IllnessPhase;
   phaseSince: string | null;
   explainedBy: string[]; // explanation details that account for a raised signal
+};
+
+// Illness, injury and pain open on the day (docs/ailments.md), worst first,
+// with what each limits. Added Nov 10, 2026.
+export type AilmentsArea = Head & {
+  open: OpenAilment[];
+  ended7: { id: string; name: string; endedOn: string }[]; // over in the last 7 days
 };
 
 export type LoadArea = Head & {
@@ -132,6 +143,10 @@ export type TrainingArea = Head & {
   // Added Nov 6, 2026 (older stored states lack it): how ready the body is to
   // train, and what's against it (readinessOf).
   readiness?: Readiness;
+  // Added Nov 10, 2026: watch-workout minutes per heart-rate zone this
+  // calendar week against the weekly goals, the average of the 4 full weeks
+  // before, and the pace, so the call can plan cardio toward the goals.
+  zones?: { zone: string; minutes: number; goal: number | null; average: number; status: "done" | "on_pace" | "behind" | null; behind: number }[];
 };
 
 export type FuelDay = {
@@ -171,11 +186,13 @@ export type HabitsArea = Head & {
 export type CareerArea = Head & {
   workStress: Dated<number>[]; // stress on Work-tagged entries, last 3 days
   workDays7: number;
-  latestTag: Dated<string> | null;
+  latestTag: Dated<string> | null; // the latest work tag's value ("deadline")
+  feel7?: { good: number; bad: number }; // days work felt good or bad, last 7 (added Nov 10, 2026)
 };
 
 export type RelationshipsArea = Head & {
-  recent: { tag: string; date: string; mood: number | null }[];
+  // Who they were with (the `with` tag's value), last 7 days; feeling since Nov 10, 2026.
+  recent: { tag: string; date: string; mood: number | null; feeling?: "good" | "bad" | null }[];
   social7: number;
 };
 
@@ -202,6 +219,7 @@ export type BodyState = {
     recovery: RecoveryArea;
     vitals: VitalsArea;
     illness: IllnessArea;
+    ailments?: AilmentsArea; // added Nov 10, 2026; older stored states lack it
     load: LoadArea;
     training: TrainingArea;
     fuel: FuelArea;
@@ -215,11 +233,12 @@ export type BodyState = {
 // are what the areas need: baselines take 31 days, load 28, the rest a week.
 export type BodySources = {
   health: HealthDay[]; // date − 62 to date
-  healthWorkouts: HealthWorkout[]; // date − 30 to date
+  healthWorkouts: HealthWorkout[]; // date − 35 to date (zone weeks need 4 full weeks back)
   sessions: WorkoutSession[]; // date − 30 to date
-  fitbit: FitbitWorkout[]; // date − 7 to date
+  fitbit: FitbitWorkout[]; // date − 35 to date
   soreness: SorenessReport[]; // date − 14 to date
-  illness: IllnessDay[]; // date − 60 to date
+  illness: IllnessDay[]; // date − 60 to date: "fine" answers (severity 0) on flagged days
+  ailments: Ailment[]; // overlapping date − 60 to date
   journal: JournalEntry[]; // date − 7 to date
   habits: Habit[];
   habitLogs: HabitLog[]; // date − 10 to date
