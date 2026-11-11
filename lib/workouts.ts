@@ -307,10 +307,12 @@ export function weekStatus(sessions: readonly TrainedSession[], today: string, s
 }
 
 // The higher-level mix: what kind of training each workout was.
-export const ACTIVITY_CATEGORIES = ["strength", "cardio", "mobility", "sport"] as const;
+// Core work on its own is core, not strength (the owner, Nov 10, 2026).
+export const ACTIVITY_CATEGORIES = ["strength", "core", "cardio", "mobility", "sport"] as const;
 export type ActivityCategory = (typeof ACTIVITY_CATEGORIES)[number] | "other";
 export const ACTIVITY_LABELS: Record<ActivityCategory, string> = {
   strength: "Strength",
+  core: "Core",
   cardio: "Cardio",
   mobility: "Mobility",
   sport: "Sport",
@@ -329,18 +331,28 @@ export function activityCategoryOf(type: WorkoutType): ActivityCategory {
 // say more than the type: only Mobility is a mobility session (stretching has
 // no type of its own), only Cardio is cardio, and Mobility or Cardio inside
 // another workout counts for that kind too. An "other" workout with strength
-// muscles is strength.
+// muscles is strength. Abs alone (with or without cardio) is a core session,
+// not strength; a lift that includes abs is still strength.
 export function activityCategoriesOf(type: WorkoutType, muscles: readonly MuscleName[] = []): ActivityCategory[] {
-  const kinds = new Set(muscles.map((name) => (name === "Mobility" ? "mobility" : name === "Cardio" ? "cardio" : "strength")));
+  const kindOf = (name: MuscleName) =>
+    name === "Mobility" ? "mobility" : name === "Cardio" ? "cardio" : groupOf(name) === "Core" ? "core" : "strength";
+  const kinds = new Set<ActivityCategory>(muscles.map(kindOf));
   const byType = activityCategoryOf(type);
-  const main: ActivityCategory =
-    kinds.size && !kinds.has("strength") && !kinds.has(byType as never)
-      ? kinds.has("mobility")
-        ? "mobility"
-        : "cardio"
-      : byType === "other" && kinds.has("strength")
+  const main: ActivityCategory = !kinds.size
+    ? byType
+    : kinds.has("strength")
+      ? byType === "other"
         ? "strength"
-        : byType;
+        : byType
+      : kinds.has(byType)
+        ? byType
+        : kinds.has("core") && (byType === "strength" || byType === "other")
+          ? "core"
+          : kinds.has("mobility")
+            ? "mobility"
+            : kinds.has("cardio")
+              ? "cardio"
+              : byType;
   const extra = (["mobility", "cardio"] as const).filter((kind) => kinds.has(kind) && kind !== main);
   return [main, ...extra];
 }
@@ -349,7 +361,7 @@ export function activityCategoriesOf(type: WorkoutType, muscles: readonly Muscle
 // has no target. A workout counts for every kind it includes, so stretching
 // logged on a strength session is also a mobility session.
 export const SPLIT_TARGETS: Partial<Record<ActivityCategory, number>> = { strength: 4, cardio: 2, mobility: 2 };
-export const SPLIT_KINDS = ["strength", "cardio", "mobility", "sport"] as const;
+export const SPLIT_KINDS = ["strength", "core", "cardio", "mobility", "sport"] as const;
 
 export type SplitEntry = { kind: (typeof SPLIT_KINDS)[number]; count: number; target: number | null };
 

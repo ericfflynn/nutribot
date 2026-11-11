@@ -14,6 +14,7 @@ import { ailmentAvoidOf, illnessStateOf } from "@/lib/body-state/build";
 import { isPossibleDuplicate, type WorkoutRecord } from "@/lib/health/dedupe-rules";
 import {
   ACTIVITY_LABELS,
+  activityCategoriesOf,
   INTENSITIES,
   INTENSITY_RULES,
   bucketOf,
@@ -181,7 +182,9 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
 
   // Next up is for today, or tomorrow once today has a lift logged or the
   // day's training window is over.
-  const loggedToday = sessions.some((session) => session.date === today && session.muscleGroups.some((name) => STRENGTH_GROUPS.includes(groupOf(name))));
+  const loggedToday = sessions.some(
+    (session) => session.date === today && activityCategoriesOf(session.workoutType, session.muscleGroups)[0] === "strength"
+  );
   const nextDate = loggedToday || Number(localDateTime().slice(11, 13)) >= PLAN_DAY_OVER_HOUR ? addDays(today, 1) : today;
   // Readiness (recovery, drinks, strain run, food) is today's; tomorrow is
   // planned again in the morning with last night's data.
