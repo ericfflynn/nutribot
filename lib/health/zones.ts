@@ -18,10 +18,11 @@ export type ZoneKey = (typeof ZONES)[number]["key"];
 // Workout minutes per zone to reach each calendar week (Monday to Sunday), every workout counted
 // (peak during a lift counts). Hard on purpose (Nov 1, 2026: the owner wants to
 // push cardio for a lower resting HR): moderate and vigorous are the tops of
-// WHO's 150-300 moderate and 75-150 vigorous minutes a week. Peak was 25 (the
-// top of what HIIT studies use) until Nov 10, 2026, when the owner found it
-// too high (he averaged 2 a week): 10 is about one interval session. Light has no goal.
-export const ZONE_GOALS: Record<ZoneKey, number | null> = { light: null, moderate: 300, vigorous: 150, peak: 10 };
+// WHO's 150-300 moderate and 75-150 vigorous minutes a week. Until Nov 10,
+// 2026 vigorous was 150 and peak 25 (the top of what HIIT studies use); the
+// owner found both too high (he averaged 38 and 2 a week), so vigorous is
+// WHO's low end, 75, and peak 10, about one interval session. Light has no goal.
+export const ZONE_GOALS: Record<ZoneKey, number | null> = { light: null, moderate: 300, vigorous: 75, peak: 10 };
 export type ZoneBounds = Record<ZoneKey, { min: number; max: number }>;
 export type ZoneMinutes = Record<ZoneKey, number>;
 

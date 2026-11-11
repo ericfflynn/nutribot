@@ -4,10 +4,10 @@ Product and design decisions, newest first. One entry per decision: what was dec
 
 ## 2026-11-10
 
-### Training shows heart-rate zones as a warm ladder; peak goal 10
-- **Decided:** a Heart-rate zones card on Training: zones stacked by heart rate with their bpm bounds, a warm color ramp that heats up going up, this week's minutes against each goal, the 4-week average and the pace ([training-plan.md](training-plan.md)). Peak's weekly goal drops from 25 to 10 minutes.
-- **Why:** the zone goals (November 1) only showed inside Today's Strain panel, so a week that missed all three went unnoticed. Picked from four mockups (bars, tiles, the ladder, weekly columns), then warm over cool-to-hot. Peak 25 was far from a 2-minute average.
-- **Instead of:** the goals only on Today; a grey ladder; peak 25.
+### Training shows heart-rate zones as a warm ladder; vigorous goal 75, peak 10
+- **Decided:** a Heart-rate zones card on Training: zones stacked by heart rate with their bpm bounds, a warm color ramp that heats up going up, this week's minutes against each goal, the 4-week average and the pace ([training-plan.md](training-plan.md)). Weekly goals drop for vigorous, from 150 to 75 minutes (WHO's low end), and for peak, from 25 to 10.
+- **Why:** the zone goals (November 1) only showed inside Today's Strain panel, so a week that missed all three went unnoticed. Picked from four mockups (bars, tiles, the ladder, weekly columns), then warm over cool-to-hot. Vigorous 150 and peak 25 were far from averages of 38 and 2.
+- **Instead of:** the goals only on Today; a grey ladder; vigorous 150 and peak 25.
 
 ### Lean on Claude's judgment, not lists and patterns
 - **Decided:** where something needs judgment (which muscles an injury affects, whether two words mean the same thing, how much to spare a sore shoulder), Claude decides and says why; code keeps only structure (the tag keys, the severity scale, the tracked muscles), facts and the owner's own rules (a bad injury rests its region). Open vocabularies (tag values, symptoms, body parts) take any words and only fold exact variants together. Claude's call names how it treats each open injury, and code checks that it did, not what it said.
