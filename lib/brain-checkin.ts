@@ -7,6 +7,7 @@ import { z } from "zod";
 import { addDays } from "./dates";
 import {
   HABIT_DIRECTIONS,
+  HABIT_EFFECTS,
   HABIT_MEASURES,
   describeDays,
   bandsProblem,
@@ -117,6 +118,7 @@ export const CHECKIN_PROMPT = `## Journal
 - In an evening check-in, call list_habit_logs for today and ask once, in one short sentence, about active habits tracked today with no log yet, so missing days get their zeros ("Any weed, nicotine or drinks today? Read or play Xbox?").
 - To start tracking something new, or change a habit's name, description, scale, goal, color bands, cutoff or days, call draft_habit with the habit's current values for everything that isn't changing (list_habits has them). The owner can also edit habits on the Habits tab. A habit's measure can't change once it has logs; suggest a new habit instead. Intensity habits need a scale_guide that says what 1, 2 and 3 mean.
 - Each habit can have a goal: for limit habits the most that's OK in a day (0 means none), for build habits the least. A day meeting the goal is green; a miss is yellow, orange or red. Color bands set where orange and red start, in the habit's measure: gaming with goal 0 and bands orange 60, red 90 is yellow for 1-60 minutes, orange to 90, red past 90; reading with goal 20 and bands orange 10, red 1 is yellow under 20, orange under 10, red at none. Without bands the app steps from the goal. When they describe colors or levels ("over an hour is bad, over 2 hours is really bad"), set goal and bands with draft_habit. A cutoff makes any use after that time a miss, optionally on weeknights (Sun-Thu) only. list_habit_logs says whether each day met the goal; use it for "how am I doing".
+- affects says what a habit moves in the body (sleep, resting HR, HRV, sleep temperature, recovery); a use then explains those numbers ("recovery 38 after 4 drinks"). Set it from what they say ("weed wrecks my sleep") or when the numbers keep moving after a habit and they agree; keep it when changing something else.
 - An evening check-in usually ends with two drafts: the journal entry and the day's habits. Mention them in a sentence or two, not a list; the cards show the details.`;
 
 const localDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("Local date, YYYY-MM-DD.");
@@ -139,6 +141,7 @@ function describeHabit(habit: Habit) {
   const goal = describeGoal(habit);
   if (goal) parts.push(`goal: ${goal}`);
   if (habit.days) parts.push(`tracked ${describeDays(habit.days)} only (days ${habit.days.join(",")})`);
+  if (habit.affects.length) parts.push(`affects: ${habit.affects.join(", ")}`);
   if (habit.description) parts.push(`description: ${habit.description}`);
   if (habit.scaleGuide) parts.push(`scale: ${habit.scaleGuide}`);
   if (!habit.active) parts.push("archived");
@@ -348,6 +351,9 @@ export function checkinTools(context: {
         .describe("Color bands in the habit's measure: limit habits turn orange past orange and red past red; build habits orange under orange and red under red. Null for the default steps. Keep the current bands when changing something else."),
       cutoff: hhmm.nullable().describe("Local time after which any use is a miss."),
       cutoff_weeknights: z.boolean().describe("The cutoff applies Sunday-Thursday nights only."),
+      affects: z
+        .array(z.enum(HABIT_EFFECTS))
+        .describe("What a use moves in the body that night or the next morning (drinking: all of them). Keep the current ones when changing something else; empty for nothing."),
       active: z.boolean(),
       replaces: z.string().optional().describe("Id of an open draft this revises.")
     },
@@ -380,6 +386,7 @@ export function checkinTools(context: {
           cutoffWeeknights: Boolean(args.cutoff) && args.cutoff_weeknights,
           description: args.description?.trim() || null,
           days: normalizeDays(args.days),
+          affects: HABIT_EFFECTS.filter((effect) => args.affects.includes(effect)),
           active: args.active
         },
         saved_id: null

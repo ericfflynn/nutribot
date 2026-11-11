@@ -274,7 +274,7 @@ type Explanation = {
 
 | Kind | When |
 | --- | --- |
-| `habit` | A habit flagged as affecting the body (`affects` on the habit, set from chat or the Habits tab) was used yesterday or last night. Drinking first. |
+| `habit` | A habit flagged as affecting the body (`affects` on the habit, set from chat or the Habits tab; built November 10, 2026, Alcohol flagged with everything) was used yesterday or last night. The explanation affects what the habit's flag says. |
 | `late_night` | Bedtime 90+ minutes past the 7-night median (`physical.sleep.bedtimeDrift7n`). |
 | `caffeine` | Yesterday's caffeine after the cutoff (goals, 2 PM by default) or over the daily limit (200 mg by default): affects last night's sleep and today's recovery. |
 | `load` | `physical.load` on watch (sharp ramp or hard streak). |
@@ -599,7 +599,7 @@ Everything is connected: work stress feeds mood, sleep and HRV, and over days th
 ## Open questions
 
 1. **Where habits live.** Kept as `lifestyle.habits` for now, since one habit often affects both body and mind; the owner wants to think about it more. The alternative is each habit under the area it affects (drinks under physical, reading under mental). Whichever wins, explanations already let a habit affect any area.
-2. **Which habits explain what.** The `affects` flag on each habit: set from chat ("drinking hurts my sleep and resting HR") or the Habits tab. Drinking first.
+2. **Which habits explain what.** Built November 10, 2026: the `affects` flag on each habit (`HABIT_EFFECTS`), set from chat ("drinking hurts my sleep and resting HR") or the Habits tab. Alcohol is flagged; nicotine, weed and the rest wait for the owner or the causes-and-effects measurements.
 3. **Morning timing.** When does last night's sleep usually reach Google Health? The first sync is 9 AM Eastern now. Measure arrival times from `health_sync_runs` before picking an earlier cron.
 4. **Constraints.** "No gym today", "only 30 minutes", travel. Proposed for later: a `constraints` report from the check-in that the guardrails read.
 5. **Sleep need.** Fixed at 8 hours; personalizing it from recent strain and debt can come later ([scores.md](scores.md)).

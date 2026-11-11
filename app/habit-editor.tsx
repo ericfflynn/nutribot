@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { updateHabitAction } from "./actions";
-import { WEEKDAY_LABELS, type Habit } from "@/lib/habits";
+import { HABIT_EFFECTS, HABIT_EFFECT_LABELS, WEEKDAY_LABELS, type Habit, type HabitEffect } from "@/lib/habits";
 import { formatHour } from "@/lib/reminder-rules";
 
 // Habits tab: change a tracked habit in place. Its logs stay attached to it,
@@ -49,6 +49,7 @@ function HabitForm({ habit, reminderHour, onClose }: { habit: Habit; reminderHou
   const [cutoff, setCutoff] = useState(habit.cutoff ?? "");
   const [weeknights, setWeeknights] = useState(habit.cutoffWeeknights);
   const [days, setDays] = useState<number[]>(habit.days ?? [0, 1, 2, 3, 4, 5, 6]);
+  const [affects, setAffects] = useState<HabitEffect[]>(habit.affects ?? []);
   const [reminder, setReminder] = useState(reminderHour == null ? "" : String(reminderHour));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,6 +75,7 @@ function HabitForm({ habit, reminderHour, onClose }: { habit: Habit; reminderHou
         cutoff: cutoff || null,
         cutoffWeeknights: weeknights,
         days: days.length === 7 ? null : days,
+        affects,
         active
       },
       reminder === "" ? null : Number(reminder)
@@ -187,6 +189,25 @@ function HabitForm({ habit, reminderHour, onClose }: { habit: Habit; reminderHou
                 onClick={() => setDays((current) => (on ? current.filter((value) => value !== day) : [...current, day].sort()))}
               >
                 {label}
+              </button>
+            );
+          })}
+        </div>
+      </fieldset>
+      <fieldset className="workout-editor-groups">
+        <legend>Affects (explains these numbers after a use)</legend>
+        <div className="muscle-row">
+          {HABIT_EFFECTS.map((effect) => {
+            const on = affects.includes(effect);
+            return (
+              <button
+                key={effect}
+                type="button"
+                className={on ? "muscle-toggle small on" : "muscle-toggle small"}
+                aria-pressed={on}
+                onClick={() => setAffects((current) => (on ? current.filter((item) => item !== effect) : [...current, effect]))}
+              >
+                {HABIT_EFFECT_LABELS[effect]}
               </button>
             );
           })}

@@ -304,12 +304,17 @@ async function main() {
       for (const [name, description, measure, unit, direction, scale, goal, cutoff, weeknights, days] of habits) {
         const { rows } = await client.query<{ id: string }>(
           `
-          insert into public.habits (user_name, name, description, measure, unit, direction, scale_guide, goal, cutoff, cutoff_weeknights, days, band_orange, band_red)
-          values ($1, $2, $3, $4, $5, $6, $7, $8, $9::time, $10, $11::smallint[], $12, $13)
+          insert into public.habits (user_name, name, description, measure, unit, direction, scale_guide, goal, cutoff, cutoff_weeknights, days, band_orange, band_red, affects)
+          values ($1, $2, $3, $4, $5, $6, $7, $8, $9::time, $10, $11::smallint[], $12, $13, $14::text[])
           returning id::text
           `,
-          // Alcohol carries its own bands: orange over 2 drinks, red over 3.
-          [USER, name, description, measure, unit, direction, scale, goal, cutoff, weeknights, days, name === "Alcohol" ? 2 : null, name === "Alcohol" ? 3 : null]
+          // Alcohol carries its own bands (orange over 2 drinks, red over 3) and
+          // moves the body (lib/habits.ts HABIT_EFFECTS).
+          [
+            USER, name, description, measure, unit, direction, scale, goal, cutoff, weeknights, days,
+            name === "Alcohol" ? 2 : null, name === "Alcohol" ? 3 : null,
+            name === "Alcohol" ? ["sleep", "resting_hr", "hrv", "sleep_temp", "recovery"] : []
+          ]
         );
         habitIds[name] = rows[0].id;
       }
