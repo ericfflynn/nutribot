@@ -57,6 +57,7 @@ import {
   type VitalsArea
 } from "./types";
 import { fahrenheitDelta } from "../health/units";
+import { ZONES, ZONE_GOALS, zoneMinutes, zonePace } from "../health/zones";
 
 const WORST: Status[] = ["low", "watch", "ok", "good"];
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -524,6 +525,31 @@ export function readinessOf(recovery: RecoveryArea, load: LoadArea, drinks: Expl
 
 const NOT_HIT = 99;
 
+// Heart-rate zones (lib/health/zones.ts): this calendar week's watch-workout
+// minutes, workouts only (the owner, Nov 10, 2026), ignored recordings left
+// out, against the weekly goals and the 4 full weeks before.
+function zonesOf(c: Context) {
+  const ignored = new Set(c.sources.fitbit.filter((workout) => workout.ignored).map((workout) => workout.id));
+  const start = weekStartOf(c.date);
+  const minutesIn = (from: string, to: string) =>
+    zoneMinutes(c.sources.healthWorkouts.filter((workout) => workout.day >= from && workout.day <= to && !ignored.has(workout.id)));
+  const week = minutesIn(start, c.date);
+  const past = [1, 2, 3, 4].map((ago) => minutesIn(addDays(start, -7 * ago), addDays(start, -7 * ago + 6)));
+  const daysDone = Math.round((Date.parse(c.date) - Date.parse(start)) / 86_400_000);
+  return ZONES.map((zone) => {
+    const goal = ZONE_GOALS[zone.key];
+    const pace = goal == null ? null : zonePace(week[zone.key], goal, daysDone);
+    return {
+      zone: zone.key,
+      minutes: week[zone.key],
+      goal,
+      average: Math.round(past.reduce((sum, item) => sum + item[zone.key], 0) / past.length),
+      status: pace?.status ?? null,
+      behind: pace?.behind ?? 0
+    };
+  });
+}
+
 function trainingArea(c: Context, illness: IllnessArea, readiness: Readiness): TrainingArea {
   const { sessions, soreness, fitbit } = c.sources;
   const next = suggestNext(sessions, c.date, soreness, undefined, illnessStateOf(illness), readiness, ailmentAvoidOf(c.open));
@@ -569,7 +595,7 @@ function trainingArea(c: Context, illness: IllnessArea, readiness: Readiness): T
     work: next.pick?.work.map(({ muscle, intensity }) => ({ muscle, intensity })) ?? [],
     note: [next.illness?.note, next.ailments?.note, next.readiness?.note].filter(Boolean).join(" ") || null
   };
-  const base = { muscles, groups, due, split, suggested, readiness };
+  const base = { muscles, groups, due, split, suggested, readiness, zones: zonesOf(c) };
   if (!sessions.length) return { ...base, status: "unknown", headline: "No workouts logged in 30 days" };
   // Watch when a whole day type has gone a week: one muscle slipping is
   // normal, legs untouched for 8 days is the weekly goal slipping.

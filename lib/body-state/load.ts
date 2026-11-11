@@ -17,9 +17,9 @@ export async function loadBodySources(db: Pool, userName: string, date: string):
   const [health, healthWorkouts, sessions, fitbit, soreness, illness, ailments, journal, habits, habitLogs, meals, waterYesterday, waterToday, goals, lastSync] =
     await Promise.all([
       listHealthDays(userName, addDays(date, -62), date),
-      listHealthWorkouts(userName, addDays(date, -30), date),
+      listHealthWorkouts(userName, addDays(date, -35), date),
       listWorkoutSessions(db, userName, addDays(date, -30), date),
-      listFitbitWorkouts(db, userName, addDays(date, -7), date),
+      listFitbitWorkouts(db, userName, addDays(date, -35), date),
       listSoreness(db, userName, addDays(date, -14), date),
       listIllnessDays(db, userName, addDays(date, -60), date),
       listAilments(db, userName, addDays(date, -60), date),

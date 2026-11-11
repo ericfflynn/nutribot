@@ -143,6 +143,10 @@ export type TrainingArea = Head & {
   // Added Nov 6, 2026 (older stored states lack it): how ready the body is to
   // train, and what's against it (readinessOf).
   readiness?: Readiness;
+  // Added Nov 10, 2026: watch-workout minutes per heart-rate zone this
+  // calendar week against the weekly goals, the average of the 4 full weeks
+  // before, and the pace, so the call can plan cardio toward the goals.
+  zones?: { zone: string; minutes: number; goal: number | null; average: number; status: "done" | "on_pace" | "behind" | null; behind: number }[];
 };
 
 export type FuelDay = {
@@ -229,9 +233,9 @@ export type BodyState = {
 // are what the areas need: baselines take 31 days, load 28, the rest a week.
 export type BodySources = {
   health: HealthDay[]; // date − 62 to date
-  healthWorkouts: HealthWorkout[]; // date − 30 to date
+  healthWorkouts: HealthWorkout[]; // date − 35 to date (zone weeks need 4 full weeks back)
   sessions: WorkoutSession[]; // date − 30 to date
-  fitbit: FitbitWorkout[]; // date − 7 to date
+  fitbit: FitbitWorkout[]; // date − 35 to date
   soreness: SorenessReport[]; // date − 14 to date
   illness: IllnessDay[]; // date − 60 to date: "fine" answers (severity 0) on flagged days
   ailments: Ailment[]; // overlapping date − 60 to date
