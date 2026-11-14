@@ -1,17 +1,16 @@
 import { AppShell, Login } from "../shared-ui";
 import { BodyMap, type MuscleView } from "../body-map";
 import { WeekPages, LabelButton, MergeControls, RestoreButton, WorkoutEditor, type CoverageRow, type WeekPage } from "../training-ui";
+import { NextUp, type NextUpPage, type NextUpTier } from "../next-up";
 import { getSessionUser } from "@/lib/auth";
-import { lastWeekRows, weekItems } from "@/lib/training-week";
 import { addDays, currentWeekToDate, localDateTime, todayLocalDate } from "@/lib/dates";
 import { ZONES, getZoneBounds, zoneMinutes, type ZoneMinutes } from "@/lib/health/zones";
-import { ZoneLadder } from "../zone-ladder";
+import { WorkoutZones, ZoneLadder } from "../zone-ladder";
 import { listHealthWorkouts, type HealthWorkout } from "@/lib/health/queries";
-import { workoutStrain } from "@/lib/health/scores";
 import { getPool } from "@/lib/supabase";
 import { listSoreness } from "@/lib/body-log";
 import { getBodyState } from "@/lib/body-state/load";
-import { getDailyCall, workLine } from "@/lib/body-state/call";
+import { getDailyCall, listDailyCalls, type DailyCall, type PlannedDay } from "@/lib/body-state/call";
 import { ailmentAvoidOf, illnessStateOf } from "@/lib/body-state/build";
 import { isPossibleDuplicate, type WorkoutRecord } from "@/lib/health/dedupe-rules";
 import {
@@ -38,16 +37,11 @@ import {
   describeMuscles,
   groupDayIntensity,
   musclesOf,
-  groupOf,
   listFitbitWorkouts,
-  listUnlabeledWorkouts,
   listWorkoutSessions,
   type FitbitWorkout,
   type Intensity,
   type MuscleGroup,
-  type Suggestion,
-  SORENESS_LEVELS,
-  sorenessStep,
   type TrackedMuscle,
   type WorkoutSession,
   type WorkoutType,
@@ -57,6 +51,8 @@ import {
 
 export const dynamic = "force-dynamic";
 
+// Next up pages back this many days of calls.
+const PAST_CALL_DAYS = 7;
 // Recent workouts lists this many days.
 const WINDOW_DAYS = 14;
 // The week grid pages back this many calendar weeks, as far as there's data.
@@ -64,8 +60,6 @@ const HISTORY_WEEKS = 8;
 // The hour (local) after which an untrained day is over for planning: the
 // owner's workouts have all started by 5 pm.
 const PLAN_DAY_OVER_HOUR = 19;
-// Unlabeled strength workouts worth asking about.
-const UNLABELED_DAYS = 7;
 
 const dayFormat = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
 const shortDay = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
@@ -79,19 +73,21 @@ function formatMinutes(total: number) {
 const weekdayLetter = new Intl.DateTimeFormat("en-US", { weekday: "narrow", timeZone: "UTC" });
 const clockFormat = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" });
 
-// Next up, the way the owner decides: what's out (sore), what's fresh, and a
-// pick with alternatives. Text helpers for it and the last 7 days.
-const listText = (items: string[]) => (items.length > 1 ? `${items.slice(0, -1).join(", ")} and ${items.at(-1)}` : (items[0] ?? ""));
-const daysText = (days: number) => (days > 56 ? "a while" : `${days} day${days === 1 ? "" : "s"}`);
 
-// "Hard: Chest, Triceps · Medium: Front Delts"
-function workText(work: NonNullable<Suggestion["pick"]>["work"]) {
-  return [...INTENSITIES]
+// Next up's pills: the work by intensity, hardest first, then what's tacked on
+// at the end.
+function tiersOf(work: { muscle: string; intensity: Intensity }[], finish: string[], bloodFlow: string[] = []): NextUpTier[] {
+  const tiers: NextUpTier[] = [...INTENSITIES]
     .reverse()
-    .map((intensity) => ({ intensity, muscles: work.filter((item) => item.intensity === intensity).map((item) => item.muscle) }))
-    .filter((group) => group.muscles.length)
-    .map((group) => `${INTENSITY_RULES[group.intensity].label}: ${group.muscles.join(", ")}`)
-    .join(" · ");
+    .map((intensity) => ({
+      label: INTENSITY_RULES[intensity].label,
+      tone: intensity,
+      muscles: work.filter((item) => item.intensity === intensity).map((item) => item.muscle)
+    }))
+    .filter((tier) => tier.muscles.length);
+  if (bloodFlow.length) tiers.push({ label: "Flush", tone: "light", muscles: bloodFlow });
+  if (finish.length) tiers.push({ label: "Finish", tone: "finish", muscles: finish });
+  return tiers;
 }
 
 function formatDay(date: string) {
@@ -115,10 +111,9 @@ type RecentItem = {
   key: string;
   date: string;
   sort: string;
-  when: string;
   title: string;
   detail: string;
-  strain: number | null;
+  zones: ZoneMinutes | null;
   chips: string[];
   minutes: number | null;
   workoutType: WorkoutType;
@@ -169,16 +164,17 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     );
   }
 
-  const [sessions, fitbit, healthWorkouts, unlabeled, soreness, body, todayCall, zoneBounds] = await Promise.all([
+  const [sessions, fitbit, healthWorkouts, soreness, body, todayCall, zoneBounds, pastCalls] = await Promise.all([
     listWorkoutSessions(db, user.name, start, today),
     listFitbitWorkouts(db, user.name, start, today),
     listHealthWorkouts(user.name, start, today),
-    listUnlabeledWorkouts(db, user.name, addDays(today, -(UNLABELED_DAYS - 1)), today),
     listSoreness(db, user.name, addDays(today, -14), today),
     // Illness comes from the body state, so Next up agrees with Today.
     getBodyState(db, user.name, today),
     getDailyCall(db, user.name, today),
-    getZoneBounds(user.name, today)
+    getZoneBounds(user.name, today),
+    // Next up pages back through the last week's calls.
+    listDailyCalls(db, user.name, addDays(today, -PAST_CALL_DAYS), today)
   ]);
   // Heart-rate zones: this calendar week's watch workouts so far, and the
   // average week over the 4 full weeks before, ignored recordings left out.
@@ -247,7 +243,6 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     const session = workout.sessionId ? (sessions.find((item) => item.id === workout.sessionId) ?? null) : null;
     if (!session && workout.type === "WALKING") continue;
     const health = healthById.get(workout.id);
-    const strain = health ? workoutStrain(health) : null;
     // Other watch workouts that overlap this one without being folded into it.
     const overlaps = fitbit
       .filter((other) => other.id !== workout.id && !other.ignored)
@@ -257,9 +252,9 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
       key: workout.id,
       date: workout.day,
       sort: workout.startedAt,
-      when: `${formatDay(workout.day)} · ${formatClock(workout.startedAt)}`,
       title: session?.name ?? workout.name,
       detail: [
+        formatClock(workout.startedAt),
         session ? WORKOUT_TYPE_LABELS[session.workoutType] : null,
         workout.activeMinutes != null ? `${workout.activeMinutes} min` : null,
         workout.avgHr != null ? `${workout.avgHr} bpm avg` : null,
@@ -267,7 +262,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
       ]
         .filter(Boolean)
         .join(" · "),
-      strain,
+      zones: health ? zoneMinutes([health]) : null,
       chips: session ? describeMuscles(session.muscleGroups, session.muscleIntensity) : [],
       minutes: workout.activeMinutes,
       workoutType: session?.workoutType ?? workoutTypeOf(workout.type),
@@ -287,7 +282,6 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
       key: session.id,
       date: session.date,
       sort: `${session.date}T23:59`,
-      when: formatDay(session.date),
       title: session.name,
       detail: [
         WORKOUT_TYPE_LABELS[session.workoutType],
@@ -296,7 +290,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
       ]
         .filter(Boolean)
         .join(" · "),
-      strain: null,
+      zones: null,
       chips: describeMuscles(session.muscleGroups, session.muscleIntensity),
       minutes: session.durationMin,
       workoutType: session.workoutType,
@@ -309,33 +303,27 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     });
   }
   recent.sort((a, b) => b.sort.localeCompare(a.sort));
-  // Newest first here (the owner, Nov 10, 2026); Today's strain trends keep oldest first.
-  const lastWeek = lastWeekRows(weekItems(sessions, fitbit), today).reverse();
   // Workout types present in the window, for the filter and the type counts.
   const typeCounts = new Map<WorkoutType, number>();
   for (const item of recent.filter((entry) => entry.date >= recentStart)) typeCounts.set(item.workoutType, (typeCounts.get(item.workoutType) ?? 0) + 1);
   const shown = (typeFilter ? recent.filter((item) => item.workoutType === typeFilter) : recent).filter(
     (item) => item.date >= recentStart
   );
-  // Recent workouts by week (Monday to Sunday), newest first, with totals.
-  const thisWeek = weekStartOf(today);
-  const shownWeeks = [...new Set(shown.map((item) => weekStartOf(item.date)))].map((weekStart) => {
-    const items = shown.filter((item) => weekStartOf(item.date) === weekStart);
-    const minutes = items.reduce((sum, item) => sum + (item.minutes ?? 0), 0);
-    return {
-      weekStart,
-      label:
-        weekStart === thisWeek
-          ? "This week"
-          : weekStart === addDays(thisWeek, -7)
-            ? "Last week"
-            : `Week of ${shortDay.format(new Date(`${weekStart}T00:00:00Z`))}`,
-      summary: [`${items.length} workout${items.length === 1 ? "" : "s"}`, minutes ? formatMinutes(minutes) : null]
-        .filter(Boolean)
-        .join(" · "),
-      items
-    };
-  });
+  // Workouts by day, newest first (Nov 13, 2026: one list in place of Last 7
+  // days, Unlabeled and Recent workouts). Days with nothing show as rest,
+  // unless a type filter is on.
+  const workoutDays = Array.from({ length: WINDOW_DAYS }, (_, index) => addDays(today, -index))
+    .map((date) => ({
+      date,
+      label: date === today ? "Today" : date === addDays(today, -1) ? "Yesterday" : formatDay(date),
+      items: shown.filter((item) => item.date === date)
+    }))
+    .filter((day) => !typeFilter || day.items.length);
+  const thisWeekItems = recent.filter((item) => item.date >= weekStartOf(today));
+  const thisWeekMinutes = thisWeekItems.reduce((sum, item) => sum + (item.minutes ?? 0), 0);
+  const workoutsSummary = thisWeekItems.length
+    ? [`${thisWeekItems.length} this week`, thisWeekMinutes ? formatMinutes(thisWeekMinutes) : null].filter(Boolean).join(" · ")
+    : null;
 
   // The week grid: one page per calendar week (Monday to Sunday), newest
   // first, back to the first week with a logged session. Strength groups are shaded by how much
@@ -398,6 +386,95 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
   // The newest week's split: a tile per kind with a target, under Next up.
   const thisSplit = splitOf(splitKinds(sessions, fitbit, weekStartOf(today), today));
 
+  // Next up's pages. The current one is Claude's call when there is one,
+  // otherwise the rules' pick, with the notes that shaped it in the dropdown.
+  // Before it, the last week's calls with what was done; after it, the days
+  // today's call planned through Sunday.
+  const ruleNotes = [next.illness?.note, next.readiness?.note, next.ailments?.note].filter((note): note is string => Boolean(note));
+  const ruleWhy = (extra: string[] = []) => {
+    const reasons = [...ruleNotes, ...extra];
+    return reasons.length ? { note: null, reasons, ailments: [] } : null;
+  };
+  const dayLabel = (date: string) => (date === today ? "Today" : date === addDays(today, -1) ? "Yesterday" : formatDay(date));
+  const callContent = (made: DailyCall) => ({
+    headline: made.headline,
+    summary: null,
+    tiers: tiersOf(made.work, made.accessory),
+    flags: made.revised ? [`Changed${made.madeAt.slice(0, 10) === today ? " today" : ""}: ${made.revised}`] : [],
+    why: { note: made.note, reasons: made.reasons, ailments: made.ailments ?? [] }
+  });
+  // Today's call planned these days, each like a call of its own. After 7 pm
+  // tomorrow's page is its planned day until its morning call is made.
+  const plannedDays = (todayCall?.week ?? []).map((item, index) => ({ ...item, date: addDays(today, index + 1) }));
+  // Only a fully planned day (headline and muscles) stands in for the rules'
+  // pick; the first evening's text-only plans ride along as a flag.
+  const plannedNextDay = plannedDays.find((item) => item.date === next.date);
+  const plannedNext = plannedNextDay?.headline ? plannedNextDay : undefined;
+  const plannedContent = (item: PlannedDay) => ({
+    headline: item.headline ?? item.plan ?? "Planned",
+    summary: "Planned by today's call. Each morning's call plans again from what actually happened.",
+    tiers: tiersOf(item.work ?? [], item.accessory ?? []),
+    flags: [],
+    week: [],
+    why: item.note ? { note: item.note, reasons: [], ailments: [] } : null
+  });
+  const weekRows = (week: PlannedDay[]) => week.map((item) => ({ day: item.day, plan: item.headline ?? item.plan ?? "" }));
+  const current: NextUpPage = {
+    key: `current-${next.date}`,
+    kind: "current",
+    label: `Next up · ${next.date === today ? "today" : "tomorrow"}`,
+    done: null,
+    ...(call
+      ? { ...callContent(call), week: weekRows(call.week ?? []) }
+      : plannedNext
+        ? plannedContent(plannedNext)
+        : next.pick
+        ? {
+            headline: next.pick.name,
+            summary: null,
+            tiers: tiersOf(next.pick.work, next.pick.accessory, next.pick.bloodFlow),
+            flags: next.pick.heldBy ? [`Not hard: ${next.pick.heldBy.label.toLowerCase()}`] : [],
+            week: [],
+            why: ruleWhy(next.alternatives.length ? [`Or: ${next.alternatives.join(" · ")}`] : [])
+          }
+        : next.illness?.rest
+          ? { headline: "Rest", summary: "Get better first. Tell the chat when you feel better.", tiers: [], flags: [], week: [], why: ruleWhy() }
+          : next.readiness?.rest
+            ? { headline: "Rest or active recovery", summary: "A walk, yoga or mobility.", tiers: [], flags: [], week: [], why: ruleWhy() }
+            : {
+                headline: "Rest or active recovery",
+                summary: "Nothing's fresh and due yet. Light cardio, yoga or pilates fits.",
+                tiers: [],
+                flags: [],
+                week: [],
+                why: ruleWhy()
+              })
+  };
+  if (!call && !plannedNext && plannedNextDay?.plan) current.flags = [`Planned this morning: ${plannedNextDay.plan}`, ...current.flags];
+  const pastPages: NextUpPage[] = pastCalls
+    .filter((item) => item.date < next.date)
+    .map((item) => ({
+      key: `past-${item.date}`,
+      kind: "past",
+      label: dayLabel(item.date),
+      ...callContent(item.call),
+      week: [],
+      done: recent.filter((entry) => entry.date === item.date).map((entry) => entry.title)
+    }));
+  const plannedPages: NextUpPage[] = plannedDays
+    .filter((item) => item.date > next.date)
+    .map((item) => ({
+      key: `planned-${item.date}`,
+      kind: "planned",
+      label: `${formatDay(item.date)} · planned`,
+      done: null,
+      ...plannedContent(item)
+    }));
+  const nextUpPages = [...pastPages, current, ...plannedPages];
+  const nextUpSplit = thisSplit
+    .filter((entry) => entry.target != null)
+    .map((entry) => ({ kind: entry.kind, label: ACTIVITY_LABELS[entry.kind], count: entry.count, target: entry.target! }));
+
   return (
     <AppShell
       user={user}
@@ -406,160 +483,27 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
       title="Training"
     >
 
-      <section className="card training-week-card" aria-label="Body map">
-        <BodyMap muscles={muscleViews} />
-      </section>
-
-      <section className="card training-week-card" aria-label="Next up">
-        <div className="training-next">
-          <span className="training-missing-label">Next up · {next.date === today ? "today" : "tomorrow"}</span>
-          {!call && next.illness ? <p className="training-illness">{next.illness.note}</p> : null}
-          {!call && next.readiness ? <p className="training-illness">{next.readiness.note}</p> : null}
-          {next.ailments ? <p className="training-illness">{next.ailments.note}</p> : null}
-          <div className="training-chips-row">
-            <span>Fresh</span>
-            <div className="training-chips">
-              {next.fresh.slice(0, 8).map((item) => (
-                <span key={item.muscle} className="training-chip">
-                  {item.muscle} · {daysText(item.since)}
-                </span>
-              ))}
-            </div>
-          </div>
-          {next.out.length ? (
-            <div className="training-chips-row">
-              <span>Out</span>
-              <div className="training-chips">
-                {next.out.map((item) => (
-                  <span key={item.muscle} className="training-chip out">
-                    {item.muscle} · {item.because ?? SORENESS_LEVELS[sorenessStep(item.level)].toLowerCase()}
-                  </span>
-                ))}
-              </div>
-            </div>
-          ) : null}
-          <div className="training-pick">
-            <small>{call ? "Today's call" : "Suggested"}</small>
-            {call ? (
-              <>
-                <strong>{call.headline}</strong>
-                {call.work.length ? <span>{workLine(call.work)}</span> : null}
-                {call.accessory.length ? <span>Accessory at the end: {listText(call.accessory)}</span> : null}
-                <span className="training-call-note">{call.note}</span>
-                {call.revised ? <span>Changed today: {call.revised}</span> : null}
-              </>
-            ) : next.pick ? (
-              <>
-                <strong>{next.pick.name}</strong>
-                <span>{workText(next.pick.work)}</span>
-                {next.pick.heldBy ? <span>Not hard: {next.pick.heldBy.label.toLowerCase()}</span> : null}
-                {next.pick.bloodFlow.length ? <span>Light blood-flow only: {listText(next.pick.bloodFlow)} (sore)</span> : null}
-                {next.pick.accessory.length ? <span>Accessory at the end: {listText(next.pick.accessory)}</span> : null}
-              </>
-            ) : next.readiness?.rest && !next.illness?.rest ? (
-              <>
-                <strong>Rest or active recovery</strong>
-                <span>A walk, yoga or mobility. The body needs today more than the muscles do.</span>
-              </>
-            ) : next.illness?.rest ? (
-              <>
-                <strong>Rest</strong>
-                <span>Get better first. Tell the chat when you feel better.</span>
-              </>
-            ) : (
-              <>
-                <strong>Rest or active recovery</strong>
-                <span>Nothing's fresh and due yet. Light cardio, yoga or pilates fits.</span>
-              </>
-            )}
-          </div>
-          {!call && next.alternatives.length ? <span className="training-missing-note">Or: {next.alternatives.join(" · ")}</span> : null}
-          {next.after.length ? (
-            <span className="training-missing-note">
-              After that: {next.after.join(" → ")}, as they freshen up. Rest days: light cardio, yoga or pilates.
-            </span>
-          ) : null}
-        </div>
-        <p className="split-label">This week, since Monday</p>
-        <div className="split-tiles" aria-label="Split this week">
-          {thisSplit
-            .filter((entry) => entry.target != null)
-            .map((entry) => (
-              <div key={entry.kind} className="split-tile">
-                <strong className={entry.target != null && entry.count < entry.target ? "short" : undefined}>
-                  {entry.target != null ? `${entry.count}/${entry.target}` : entry.count}
-                </strong>
-                <span>{ACTIVITY_LABELS[entry.kind]}</span>
-              </div>
-            ))}
-        </div>
-      </section>
+      <NextUp pages={nextUpPages} start={pastPages.length} split={nextUpSplit} />
 
       <ZoneLadder week={zoneThisWeek} average={zoneAverage} bounds={zoneBounds} daysDone={zoneWeek.elapsedDays - 1} />
 
-      <section className="card" aria-label="Last 7 days">
-        <div className="card-heading">
-          <h2 className="card-title">Last 7 days</h2>
-        </div>
-        <ul className="training-last-week">
-          {lastWeek.map((row) => (
-            <li key={row.date}>
-              <span className="training-last-week-day">{row.day}</span>
-              {row.items.length ? (
-                <span className="training-last-week-items">
-                  {row.items.map((item, index) => (
-                    <span key={index}>
-                      <span>{item.title}</span>
-                      {item.tag ? <small className={item.hard ? "hard" : undefined}>{item.tag}</small> : null}
-                    </span>
-                  ))}
-                </span>
-              ) : (
-                <span className="training-last-week-rest">Rest</span>
-              )}
-            </li>
-          ))}
-        </ul>
+      <section className="card training-week-card" aria-label="Body map">
+        <BodyMap muscles={muscleViews} />
       </section>
-
-      {unlabeled.length ? (
-        <section className="card" aria-label="Unlabeled workouts">
-          <div className="card-heading">
-            <h2 className="card-title">Unlabeled</h2>
-            <span className="card-aside">What did you train?</span>
-          </div>
-          <ul className="training-unlabeled">
-            {unlabeled.map((workout) => (
-              <li key={workout.id}>
-                <span>
-                  <strong>{workout.name}</strong>
-                  <small>
-                    {formatDay(workout.day)} · {formatClock(workout.startedAt)}
-                    {workout.activeMinutes != null ? ` · ${workout.activeMinutes} min` : ""}
-                  </small>
-                </span>
-                <LabelButton
-                  workoutId={workout.id}
-                  date={workout.day}
-                  defaultType={workoutTypeOf(workout.type)}
-                  prompt={`My ${workout.name.toLowerCase()} on ${formatDay(workout.day)} at ${formatClock(workout.startedAt)} was `}
-                />
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
 
       <section className="card" aria-label="Week by week">
         <WeekPages pages={weekPages} />
       </section>
 
-      <section className="group" aria-label="Recent workouts">
-        <h2 className="card-title training-recent-title">Recent workouts</h2>
+      <section className="group" aria-label="Workouts">
+        <div className="training-workouts-head">
+          <h2 className="card-title">Workouts</h2>
+          {workoutsSummary ? <span>{workoutsSummary}</span> : null}
+        </div>
         {typeCounts.size > 1 || typeFilter ? (
           <nav className="type-filter" aria-label="Filter by type">
             <a href="/training" aria-current={typeFilter ? undefined : "true"}>
-              All {recent.length}
+              All
             </a>
             {WORKOUT_TYPES.filter((type) => typeCounts.has(type)).map((type) => (
               <a key={type} href={`/training?type=${type}`} aria-current={typeFilter === type ? "true" : undefined}>
@@ -568,29 +512,22 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
             ))}
           </nav>
         ) : null}
-        {shownWeeks.length ? (
-          shownWeeks.map((week) => (
-            <div key={week.weekStart} className="training-recent-week">
-              <h3 className="training-week-head">
-                {week.label} <span>{week.summary}</span>
-              </h3>
-              {week.items.map((item) => (
+        {workoutDays.length ? (
+          workoutDays.map((day) => (
+            <div key={day.date} className="training-recent-week">
+              <h3 className="training-day-head">{day.label}</h3>
+              {day.items.length ? null : <p className="training-day-rest">{day.date === today ? "Nothing yet" : "Rest"}</p>}
+              {day.items.map((item) => (
                 <article key={item.key} className="card training-workout">
                   <div className="training-workout-head">
                     <div>
-                      <span className="training-workout-when">{item.when}</span>
                       <strong>{item.title}</strong>
                       {item.detail ? <span className="training-workout-detail">{item.detail}</span> : null}
                       {item.status ? <span className="training-workout-detail">{item.status}</span> : null}
                     </div>
-                    {item.strain != null ? (
-                      <div className="training-workout-strain">
-                        <strong>{item.strain.toFixed(1)}</strong>
-                        <span>strain</span>
-                      </div>
-                    ) : null}
                   </div>
-                  {item.chips.length || item.labelPrompt || item.session ? (
+                  {item.zones ? <WorkoutZones minutes={item.zones} /> : null}
+                  {item.chips.length || item.labelPrompt ? (
                     <div className="training-workout-foot">
                       <div className="training-chips">
                         {item.chips.map((chip) => (

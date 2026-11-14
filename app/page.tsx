@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import type { ReactNode } from "react";
 import { deleteCheckinAction } from "./actions";
 import { WaterRow } from "./water-row";
+import { WeightRow } from "./weight-row";
 import { lastWeekRows, weekItems } from "@/lib/training-week";
 import { listFitbitWorkouts, listWorkoutSessions } from "@/lib/workouts";
 import { getZoneBounds, zoneMinutes } from "@/lib/health/zones";
@@ -30,6 +31,7 @@ import {
   getLatestHealthSyncRun,
   listHealthDays,
   listHealthWorkouts,
+  listWeighIns,
   type HealthDay,
   type HealthWorkout,
   type HealthSyncRun
@@ -418,7 +420,7 @@ export default async function Home({ searchParams }: PageProps) {
 
   const db = getPool()!;
   const firstShown = priorDates[0] < stripDates[0] ? priorDates[0] : stripDates[0];
-  const [entries, goals, healthDays, rangeWorkouts, waterOunces, lastRun, journal, body, checkinReplies, cookieStore, sickDates, weekSessions, weekFitbit, zoneBounds, dailyCall, ailments] = await Promise.all([
+  const [entries, goals, healthDays, rangeWorkouts, waterOunces, lastRun, journal, body, checkinReplies, cookieStore, sickDates, weekSessions, weekFitbit, zoneBounds, dailyCall, ailments, weighIns] = await Promise.all([
     listEntriesForDateRange(user.name, priorDates[0], date),
     getUserGoals(user.name),
     listHealthDays(user.name, healthStart, stripEnd),
@@ -441,7 +443,9 @@ export default async function Home({ searchParams }: PageProps) {
     // Claude's call for the day, once the morning has made it.
     getDailyCall(db, user.name, date),
     // Each journal entry's ailment lines in the timeline.
-    listAilments(db, user.name, date, date)
+    listAilments(db, user.name, date, date),
+    // Weight under Nutrition: every weigh-in up to the day.
+    listWeighIns(user.name, "2000-01-01", date)
   ]);
 
   const healthByDay = new Map(healthDays.map((day) => [day.day, day]));
@@ -813,6 +817,7 @@ export default async function Home({ searchParams }: PageProps) {
         </div>
         <p className={`nutrition-callout ${callout.tone}`}>{callout.text}</p>
         <WaterRow ounces={waterOunces} goalOz={goals.waterOz} date={date} />
+        <WeightRow weighIns={weighIns} />
       </NutritionCard>
 
       <Timeline title={isToday ? "Today so far" : "The day"} events={events} />

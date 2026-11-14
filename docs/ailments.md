@@ -78,7 +78,7 @@ Status: **low** with an illness at Sick or worse, or anything at 3; **watch** wi
 
 - **Today:** under the scores, early signs from the watch, then one line per open ailment ("Right shoulder · day 2, hurts · Upper body out"), each opening the chat with its name; one that ended today shows as over.
 - **Timeline:** a journal row lists its ailment lines after the ratings.
-- **Training:** Next up shows the day's call; the rule-based preview's out muscles carry the ailment's name, with a line saying what it skips.
+- **Training:** Next up shows the day's call; the call's plan for each injury and pain, or the rules' line saying what it skips, is in the **Why this plan** dropdown (November 13, 2026).
 
 ## Storage
 

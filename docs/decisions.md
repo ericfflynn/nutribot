@@ -2,6 +2,28 @@
 
 Product and design decisions, newest first. One entry per decision: what was decided, why, and what it replaced or ruled out. Add an entry whenever the owner settles something that future work should follow; link the doc that holds the detail. Data shapes live in their specs ([body-state.md](body-state.md) keeps the body state's schema versions); this log says why they are what they are.
 
+## 2026-11-13
+
+### Weight from the smart scale, on Today under Nutrition
+- **Decided:** weight syncs from Google Health from any source (the owner's FITINDEX scale arrives through Apple Health), at most one reading a day: the scale first, then a Fitbit entry, then anything else, the earliest within a source; days without a weigh-in have none. Body fat isn't synced. Today's Nutrition card ends with the latest weigh-in, its date and the change since the one before; tapping it charts every weigh-in. The chat sees weigh-ins through `get_health` and reads the trend, not one reading.
+- **Why:** the owner wants weight tracked (feedback c5204209) and saw it in the Google Health app; the sync kept Fitbit records only, so 18 scale weigh-ins since March were dropped. Weigh-ins come every week or two, so a daily view would be mostly empty.
+- **Instead of:** Fitbit-only weight; every reading from every source (MyFitnessPal copies the scale's); body fat; a timeline row or its own chart page; chat only.
+
+### The daily call plans to the end of the week
+- **Decided:** Claude's daily call also plans each day left through Sunday so every muscle reaches its 4 points, rounding several short muscles into one session when few days remain, and putting first the muscles that also missed last week ([body-state.md](body-state.md#the-call)). Next up shows the days; the chat keeps them in step when it revises the call.
+- **Why:** the owner wants the week closed out ("one day left and I haven't done calves, chest and biceps: round out all of them"), and a muscle missed two weeks running matters more than one done last week.
+- **Instead of:** a call for today only, with the week left to the next morning; a rules-made multi-day plan. Calendar weeks, not rolling, to match the week grid, the weekly points and the zone goals.
+
+### Every daily call is kept for evals
+- **Decided:** each daily call and each chat revision is appended to `daily_calls`, never overwritten ([body-state.md](body-state.md#the-call)). Next up's "Why this plan" is a dropdown holding Claude's note, its plan for each open injury and its reasons.
+- **Why:** the owner wants evals later to record when a suggestion was good or not; a chat revision overwrote the morning call on `body_states`, so the original was lost.
+- **Instead of:** only the latest call on `body_states`; a "Why this?" text toggle with injury plans mixed into the reasons.
+
+### Training rebuilt: a short Next up, concise zones, one Workouts list with zone bars
+- **Decided:** Training runs Next up, Heart-rate zones, Body map, Week by week, Workouts ([training-plan.md](training-plan.md#what-the-training-tab-reads)). Next up is the headline, the work as pills by intensity, a "Why this plan" dropdown with the coach note, its plan per injury and the reasons, and the split tiles. The zones card is one line per zone (bar to goal, minutes, pace) with the bpm range and usual week on tap. Workouts is one list by day over 14 days, rest days included, each watch workout with its minutes per zone as a stacked bar; unlabeled ones get Label on their card. Week by week stays as it was for now.
+- **Why:** Next up was too wordy, with too much going on (owner). Feedback 652a161d asked for time per heart-rate zone on workouts; the watch already gives it per workout, so it's shown, not newly stored. Picked option A for Next up, D1 (one stacked bar) for the zones on a card, and the ladder made concise from https://claude.ai/artifact/3FZGayqyayLU6Yu3ntEn2e.
+- **Instead of:** Fresh and Out chip rows, "Or:" and "After that:" on Next up; Next up as a lift-plus-cardio plan with the zone goals in it (B); session rows with intensity bars (C); four zone columns per workout (D2); zone bpm on a strip with an average tick; separate Last 7 days, Unlabeled and Recent workouts cards; strain on the workout cards. Week-grid redesigns (point bars, every muscle by day, just the gaps, tiles, group rings with or without days) were mocked and none taken.
+
 ## 2026-11-10
 
 ### Habits tab: log today, the week, streaks

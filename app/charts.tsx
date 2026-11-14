@@ -9,7 +9,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 export type ChartSeries = { key: string; label: string; color: string };
 export type ChartDatum = { day: string; values: Record<string, number | null>; partial?: boolean };
 
-export type ValueFormat = "steps" | "hours" | "integer" | "decimal" | "kcal" | "grams" | "mg";
+export type ValueFormat = "steps" | "hours" | "integer" | "decimal" | "kcal" | "grams" | "mg" | "pounds";
 
 const integerFormat = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
 
@@ -22,6 +22,7 @@ const FORMATTERS: Record<ValueFormat, (value: number) => string> = {
   kcal: (value) => `${integerFormat.format(value)} kcal`,
   grams: (value) => `${integerFormat.format(value)} g`,
   mg: (value) => `${integerFormat.format(value)} mg`,
+  pounds: (value) => `${value.toFixed(1)} lb`,
   hours: (value) => {
     const minutes = Math.round(value * 60);
     return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, "0")}m`;

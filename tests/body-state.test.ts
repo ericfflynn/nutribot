@@ -183,7 +183,8 @@ test("a sore shoulder: the rules skip it, Claude weighs it, and a bad one rests 
   const cap = new Map(guard.muscles.map((item) => [item.muscle, item.max]));
   assert.equal(cap.get("Chest"), "hard");
   assert.deepEqual(guard.ailments?.map((item) => item.name), ["Right shoulder"]);
-  const push = { kind: "strength" as const, work: [{ muscle: "Chest" as const, intensity: "medium" as const }], accessory: [] };
+  const week = (guard.weekLeft ?? []).map((day) => ({ day, plan: "Rest" }));
+  const push = { kind: "strength" as const, work: [{ muscle: "Chest" as const, intensity: "medium" as const }], accessory: [], week };
   assert.match(checkCall(push, guard) ?? "", /how today's plan treats the right shoulder/);
   assert.equal(checkCall({ ...push, ailments: [{ name: "Right shoulder", plan: "Felt fine on pushups yesterday, medium chest only" }] }, guard), null);
   assert.deepEqual(rulesCall(hurts, `${TODAY}T07:00`).ailments, [{ name: "Right shoulder", plan: "Skipping shoulders, chest, triceps, lats, upper back, traps work." }]);

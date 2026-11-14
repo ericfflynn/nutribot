@@ -4,7 +4,7 @@
 import { tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { addDays } from "./dates";
-import { listHealthDays, listHealthWorkouts, type HealthDay, type HealthWorkout } from "./health/queries";
+import { listHealthDays, listHealthWorkouts, listWeighIns, type HealthDay, type HealthWorkout } from "./health/queries";
 import { dayStrain, recoveryScore, sleepScoresFor, workoutStrain, type RecoveryScore, type SleepScore } from "./health/scores";
 import { fahrenheitDelta } from "./health/units";
 import { listSickDates } from "./body-state/load";
@@ -17,6 +17,7 @@ export const HEALTH_PROMPT = `## Health data
 - get_health reads their watch data for any range: sleep (duration, stages, bed and wake times), HRV, resting heart rate, SpO2, breathing rate, VO2 max, skin temperature vs baseline, steps, active calories, heart-zone minutes, the app's Sleep, Recovery and Strain scores, and each day's watch workouts. Data starts in late June 2026.
 - Use it whenever they ask about sleep, recovery, strain, heart rate, trends or how a day went, and to connect what they ate or did to how they recovered. Pull the range you need; for trends, compare against the averages it returns.
 - Heart-rate zones are Fitbit's four: light, moderate, vigorous, peak. Fitbit sets them from heart-rate reserve (moderate from about 40%, vigorous 60%, peak 85%), so the bpm shift a little with resting HR; get_health gives the current bpm. Each workout lists its minutes per zone, and the range's workout totals and the weekly zone goals come at the end; the goals run Monday to Sunday, so for progress pull from this Monday and compare with the share of the week gone; suggest what closes the gap (peak needs hard intervals; peak during lifting counts too). Day "zone min fat burn/cardio/peak" is all-day, the same moderate/vigorous/peak bands. When they talk cardio or zone goals, use these four, not a 5-zone model: moderate is roughly steady aerobic work, vigorous is hard, peak is all-out.
+- Weight: get_health always ends with every weigh-in of the 12 months up to the range's end, in pounds, whatever the range (they go back to March 2026, before the watch data). They weigh in on a smart scale every week or two, so there's only a reading on days they weighed in. Read the trend over weeks, never one reading, when you weigh calories and protein against it.
 - Sleep is dated by the morning they woke up. Today's activity and strain are partial until the day ends.`;
 
 const MAX_DAYS = 366;
@@ -112,11 +113,12 @@ export function healthTools({ userName, today }: { userName: string; today: stri
         }
         // Recovery needs the 30 days before each scored day as its baseline.
         // Sleep need reads the day before's strain and sick days.
-        const [allDays, workouts, sickDates, bounds] = await Promise.all([
+        const [allDays, workouts, sickDates, bounds, weighIns] = await Promise.all([
           listHealthDays(userName, addDays(args.start_date, -31), end),
           listHealthWorkouts(userName, addDays(args.start_date, -1), end),
           listSickDates(getPool()!, userName, addDays(args.start_date, -1), end),
-          getZoneBounds(userName, end)
+          getZoneBounds(userName, end),
+          listWeighIns(userName, addDays(end, -365), end)
         ]);
         const workoutsByDay = new Map<string, HealthWorkout[]>();
         for (const w of [...workouts].reverse()) {
@@ -163,6 +165,13 @@ export function healthTools({ userName, today }: { userName: string; today: stri
           `Workout minutes by zone over the range: light ${zones.light}, moderate ${zones.moderate}, vigorous ${zones.vigorous}, peak ${zones.peak}. Goals per calendar week (Monday to Sunday): moderate ${ZONE_GOALS.moderate}, vigorous ${ZONE_GOALS.vigorous}, peak ${ZONE_GOALS.peak}`
         );
         if (bounds) lines.push(`Fitbit's zones as of ${end}: ${describeZoneBounds(bounds)}`);
+        // Weigh-ins are sparse, so every one of the last 12 months comes
+        // along whatever the range: a trend needs more than the range holds.
+        lines.push(
+          weighIns.length
+            ? `Weigh-ins (lb), the 12 months to ${end}: ${weighIns.map((item) => `${item.day} ${item.pounds}`).join(", ")}`
+            : "Weigh-ins: none in the 12 months before."
+        );
         return { content: [{ type: "text" as const, text: lines.join("\n") }] };
       },
       { annotations: { readOnlyHint: true } }

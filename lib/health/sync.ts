@@ -23,8 +23,14 @@ function canonicalJson(value: unknown): string {
   return JSON.stringify(value);
 }
 
-// API record name, else the day for daily totals, else a hash of the payload.
+// The day for weight (one reading a day, so a later sync replaces it), else
+// the API record name, else the day for daily totals, else a hash of the payload.
 function recordKey(point: Record<string, unknown>, payload: string) {
+  const weighed = (point.weight as { sampleTime?: { civilTime?: { date?: { year: number; month: number; day: number } } } } | undefined)?.sampleTime
+    ?.civilTime?.date;
+  if (weighed) {
+    return `weight:${weighed.year}-${String(weighed.month).padStart(2, "0")}-${String(weighed.day).padStart(2, "0")}`;
+  }
   const name = point.name ?? point.dataPointName;
   if (typeof name === "string" && name) {
     return name;

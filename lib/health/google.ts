@@ -19,7 +19,6 @@ const RECORD_TYPES = {
   "daily-respiratory-rate": "daily_respiratory_rate.date",
   exercise: "exercise.interval.civil_start_time",
   weight: "weight.sample_time.civil_time",
-  "body-fat": "body_fat.sample_time.civil_time",
   sleep: "sleep.interval.civil_end_time"
 } as const;
 
@@ -60,6 +59,44 @@ function isDailyTotalType(kind: HealthDataType): kind is DailyTotalType {
 function isFitbitRecord(point: Record<string, unknown>) {
   const source = point.dataSource as { platform?: unknown } | undefined;
   return source?.platform === "FITBIT";
+}
+
+// Weight is the exception (Nov 13, 2026): the owner weighs in on a FITINDEX
+// scale that reaches Google Health through Apple Health, and MyFitnessPal
+// copies weigh-ins there too. Any source counts, one reading per day: the
+// scale first, then a Fitbit entry, then anything else; the earliest of the
+// day within a source (the morning weigh-in).
+const WEIGHT_SCALE_APP = "com.yolanda.fitindex";
+
+function weightRank(point: Record<string, unknown>) {
+  const source = point.dataSource as { platform?: unknown; application?: { packageName?: unknown } } | undefined;
+  if (source?.application?.packageName === WEIGHT_SCALE_APP) return 0;
+  if (source?.platform === "FITBIT") return 1;
+  return 2;
+}
+
+type CivilTime = { date?: { year: number; month: number; day: number }; time?: { hours?: number; minutes?: number; seconds?: number } };
+
+function weightTime(point: Record<string, unknown>) {
+  const civil = (point.weight as { sampleTime?: { civilTime?: CivilTime } } | undefined)?.sampleTime?.civilTime;
+  const pad = (value: number | undefined) => String(value ?? 0).padStart(2, "0");
+  if (!civil?.date) return null;
+  return {
+    day: `${civil.date.year}-${pad(civil.date.month)}-${pad(civil.date.day)}`,
+    clock: `${pad(civil.time?.hours)}:${pad(civil.time?.minutes)}:${pad(civil.time?.seconds)}`
+  };
+}
+
+export function onePerDay(points: readonly Record<string, unknown>[]) {
+  const best = new Map<string, { point: Record<string, unknown>; rank: number; clock: string }>();
+  for (const point of points) {
+    const time = weightTime(point);
+    if (!time) continue;
+    const rank = weightRank(point);
+    const held = best.get(time.day);
+    if (!held || rank < held.rank || (rank === held.rank && time.clock < held.clock)) best.set(time.day, { point, rank, clock: time.clock });
+  }
+  return [...best.values()].map((item) => item.point);
 }
 
 function civilDate(date: string) {
@@ -187,6 +224,8 @@ export class GoogleHealthClient {
       filter: `${field} >= "${start}" AND ${field} < "${end}"`
     });
     const seen = new Set<string>();
+    // Weight is gathered across pages, then cut to one reading per day.
+    const weights: Record<string, unknown>[] = [];
 
     while (true) {
       const payload = (await this.call(`${API_BASE}/${kind}/dataPoints?${params}`)) as {
@@ -197,10 +236,12 @@ export class GoogleHealthClient {
       if (!Array.isArray(points)) {
         throw new GoogleHealthError("Invalid pagination response");
       }
-      yield (points as Record<string, unknown>[]).filter(isFitbitRecord);
+      if (kind === "weight") weights.push(...(points as Record<string, unknown>[]));
+      else yield (points as Record<string, unknown>[]).filter(isFitbitRecord);
 
       const next = nextToken(payload.nextPageToken, seen);
       if (!next) {
+        if (kind === "weight") yield onePerDay(weights);
         return;
       }
       params.set("pageToken", next);
