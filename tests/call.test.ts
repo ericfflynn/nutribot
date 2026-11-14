@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { checkCall, guardrailsOf, rulesCall, type Guardrails } from "@/lib/body-state/call";
+import { checkCall, guardrailsOf, rulesCall, weekDaysLeft, type Guardrails } from "@/lib/body-state/call";
 import type { BodyState } from "@/lib/body-state/types";
 import type { WorkoutSession } from "@/lib/workouts";
 
@@ -47,14 +47,26 @@ test("guardrails: a muscle hit hard this week is medium at most", () => {
 
 test("checkCall: kind, out muscles and caps are enforced", () => {
   const guardrails = guardrailsOf(state({ readiness: "easy", out: { Chest: "sore" } }), { sessions: [] });
-  const strength = (work: { muscle: string; intensity: string }[]) => ({ kind: "strength", work, accessory: [] }) as never;
+  const week = guardrails.weekLeft!.map((day) => ({ day, plan: "Rest" }));
+  const strength = (work: { muscle: string; intensity: string }[]) => ({ kind: "strength", work, accessory: [], week }) as never;
   assert.equal(checkCall(strength([{ muscle: "Lats", intensity: "medium" }]), guardrails), null);
   assert.match(checkCall(strength([{ muscle: "Lats", intensity: "hard" }]), guardrails)!, /medium at most/);
   assert.match(checkCall(strength([{ muscle: "Chest", intensity: "light" }]), guardrails)!, /out today \(sore\)/);
   assert.match(checkCall(strength([]), guardrails)!, /needs muscles/);
   const rest = guardrailsOf(state({ phase: "sick", severity: 2 }), { sessions: [] });
   assert.match(checkCall({ kind: "strength", work: [{ muscle: "Lats", intensity: "light" }], accessory: [] } as never, rest)!, /isn't allowed/);
-  assert.equal(checkCall({ kind: "walk", work: [], accessory: [] }, rest), null);
+  assert.equal(checkCall({ kind: "walk", work: [], accessory: [], week }, rest), null);
+});
+
+test("checkCall: the rest of the week is planned day by day to Sunday", () => {
+  assert.deepEqual(weekDaysLeft("2026-11-12"), ["Fri", "Sat", "Sun"]); // a Thursday
+  assert.deepEqual(weekDaysLeft("2026-11-15"), []); // Sunday
+  const guardrails = guardrailsOf(state(), { sessions: [] });
+  const walk = { kind: "walk" as const, work: [], accessory: [] };
+  assert.match(checkCall(walk, guardrails)!, /one line each for Fri, Sat, Sun/);
+  assert.match(checkCall({ ...walk, week: [{ day: "Sat", plan: "Legs" }] }, guardrails)!, /Fri, Sat, Sun/);
+  const full = [{ day: "Fri", plan: "Chest and biceps" }, { day: "Sat", plan: "Rest" }, { day: "Sun", plan: "Calves" }];
+  assert.equal(checkCall({ ...walk, week: full }, guardrails), null);
 });
 
 test("the rules' call comes from Training's suggestion", () => {

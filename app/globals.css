@@ -3513,6 +3513,12 @@ button.fab {
   grid-template-columns: 104px minmax(0, 1fr) 32px;
 }
 
+/* Week pages show 7 days, not the training grid's 14. */
+.habit-grid .coverage-cells {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
 /* Habits tab (Nov 10, 2026): week pages with streaks, Log today, More */
 .habit-name {
   display: flex;
@@ -4420,53 +4426,49 @@ details[open] .journal-preview {
 
 /* Training: this week's split under Next up, a tile per kind with a target.
    The count turns red while it's short. */
-/* Training's heart-rate zones: warm ramp, darker going up */
-.zone-ladder {
+/* Training's heart-rate zones: warm ramp, darker going up. One line per
+   zone; tapping shows its bpm range (app/zone-ladder.tsx). */
+:root {
   --zone-light: #f2cf9b;
   --zone-moderate: #e9a04f;
   --zone-vigorous: #d9662a;
   --zone-peak: #a8321c;
+}
+
+.zone-line.light { --zone: var(--zone-light); }
+.zone-line.moderate { --zone: var(--zone-moderate); }
+.zone-line.vigorous { --zone: var(--zone-vigorous); }
+.zone-line.peak { --zone: var(--zone-peak); }
+
+.zone-list {
   display: flex;
   flex-direction: column;
 }
 
-.zone-row {
-  display: grid;
-  grid-template-columns: 34px 12px minmax(0, 1fr);
-  column-gap: 10px;
-}
-
-.zone-row.light { --zone: var(--zone-light); --zone-below: var(--zone-light); }
-.zone-row.moderate { --zone: var(--zone-moderate); --zone-below: var(--zone-light); }
-.zone-row.vigorous { --zone: var(--zone-vigorous); --zone-below: var(--zone-moderate); }
-.zone-row.peak { --zone: var(--zone-peak); --zone-below: var(--zone-vigorous); }
-
-.zone-bpm {
-  color: var(--muted);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-  transform: translateY(-7px);
-}
-
-.zone-strip {
-  background: linear-gradient(to top, var(--zone-below), var(--zone));
-}
-
-.zone-row.first .zone-strip { border-radius: 6px 6px 0 0; }
-.zone-row.last .zone-strip { border-radius: 0 0 6px 6px; }
-
-.zone-body {
+.zone-line {
   display: grid;
   gap: 6px;
+  width: 100%;
+  min-height: 44px;
   padding: 10px 0;
+  border: 0;
   border-top: 1px solid var(--line);
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
-.zone-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+.zone-line:first-child {
+  border-top: 0;
+}
+
+.zone-line-row {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr) 56px 72px;
+  gap: 10px;
+  align-items: center;
 }
 
 .zone-name {
@@ -4474,7 +4476,6 @@ details[open] .journal-preview {
   align-items: center;
   gap: 6px;
   font-size: 15px;
-  font-weight: 600;
 }
 
 .zone-dot {
@@ -4482,16 +4483,6 @@ details[open] .journal-preview {
   height: 8px;
   border-radius: 4px;
   background: var(--zone);
-}
-
-.zone-minutes {
-  font-size: 15px;
-  font-variant-numeric: tabular-nums;
-}
-
-.zone-minutes span,
-.zone-note {
-  color: var(--muted);
 }
 
 .zone-bar {
@@ -4508,26 +4499,263 @@ details[open] .journal-preview {
   background: var(--zone);
 }
 
-.zone-usual {
-  position: absolute;
-  top: -3px;
-  bottom: -3px;
-  width: 2px;
-  background: var(--ink);
+.zone-minutes {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
-.zone-note {
-  font-size: 13px;
+.zone-minutes span {
+  color: var(--muted);
 }
 
-.zone-note .behind {
+.zone-status {
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+.zone-status.behind {
   color: var(--bad);
   font-weight: 600;
 }
 
-.zone-row.floor .zone-note {
+.zone-status.done {
+  color: var(--good);
+  font-weight: 600;
+}
+
+.zone-detail {
+  padding-left: 14px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* A workout's minutes per zone: one stacked bar in the same ramp */
+.workout-zones {
+  display: grid;
+  gap: 6px;
+}
+
+.workout-zones-bar {
+  display: flex;
+  gap: 2px;
+  height: 10px;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.workout-zones-bar span {
+  flex-basis: 0;
+}
+
+.workout-zones-bar .light { background: var(--zone-light); }
+.workout-zones-bar .moderate { background: var(--zone-moderate); }
+.workout-zones-bar .vigorous { background: var(--zone-vigorous); }
+.workout-zones-bar .peak { background: var(--zone-peak); }
+
+.workout-zones-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.workout-zones-legend strong {
+  color: var(--ink);
+}
+
+.workout-zones-unit {
+  margin-left: auto;
+}
+
+/* Training's Next up (app/next-up.tsx) */
+.next-up {
+  display: grid;
+  gap: 12px;
+}
+
+.next-up-label {
+  color: var(--muted);
   font-size: 12px;
-  transform: translateY(-7px);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.next-up-headline {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.next-up-summary {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.next-up-flag {
+  margin: 0;
+  color: var(--warn);
+  font-size: 14px;
+}
+
+.next-up-tiers {
+  display: grid;
+  gap: 8px;
+}
+
+.next-up-tier {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.next-up-tier-label {
+  width: 58px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.next-up-tier-label.muted {
+  color: var(--muted);
+}
+
+.next-up-pill {
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 14px;
+}
+
+.next-up-pill.hard {
+  background: var(--ink);
+  color: var(--surface);
+}
+
+.next-up-pill.medium {
+  background: var(--line);
+}
+
+.next-up-pill.light,
+.next-up-pill.finish {
+  box-shadow: inset 0 0 0 1px #d1d1d6;
+}
+
+.next-up-why {
+  border-top: 1px solid var(--line);
+}
+
+.next-up-why summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+}
+
+.next-up-why summary::-webkit-details-marker {
+  display: none;
+}
+
+.next-up-chevron {
+  color: var(--muted);
+  transition: transform 0.2s ease;
+}
+
+.next-up-why[open] .next-up-chevron {
+  transform: rotate(90deg);
+}
+
+.next-up-why-body {
+  display: grid;
+  gap: 10px;
+  padding-bottom: 4px;
+}
+
+.next-up-why-body p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.next-up-why-ailment strong {
+  font-weight: 600;
+}
+
+.next-up-why-body ul {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.next-up-split {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.next-up-split div {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+}
+
+.next-up-split strong {
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+.next-up-split strong.short {
+  color: var(--bad);
+}
+
+.next-up-split span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Training's Workouts list: one list by day, rest days included */
+.training-day-head {
+  margin: 6px 4px 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.training-day-rest {
+  margin: 0 4px;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.training-workouts-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 4px 0;
+}
+
+.training-workouts-head span {
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .split-label {
@@ -5142,4 +5370,123 @@ details[open] .journal-preview {
   margin: 4px 0 0;
   color: var(--muted);
   font-size: 12px;
+}
+
+/* Next up's rest of the week: a row per day left, from Claude's call */
+.next-up-week {
+  display: grid;
+  gap: 4px;
+}
+
+.next-up-week div {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 8px;
+  font-size: 14px;
+}
+
+.next-up-week div span:first-child {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* Next up's day pager: arrows either side of the label */
+.next-up-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: -10px -12px -4px;
+}
+
+.next-up-arrow {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.next-up-arrow:disabled {
+  color: var(--line);
+  cursor: default;
+}
+
+.next-up-label.past,
+.next-up-label.planned {
+  color: var(--ink);
+}
+
+.next-up-headline.planned {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.next-up-done {
+  margin: 0;
+  font-size: 15px;
+}
+
+.next-up-done span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  margin-right: 6px;
+}
+
+/* Today's weight under Nutrition (app/weight-row.tsx) */
+.weight-row {
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.weight-row-head {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) 14px;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.weight-row-label {
+  font-size: 15px;
+}
+
+.weight-row-value {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.weight-row-value strong {
+  color: var(--ink);
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+}
+
+.weight-row-note {
+  color: var(--muted);
+  font-size: 13px;
+  text-align: right;
+}
+
+.weight-row-chevron {
+  align-self: center;
+  color: var(--muted);
+  transition: transform 0.2s ease;
+}
+
+.weight-row-chevron.open {
+  transform: rotate(90deg);
 }

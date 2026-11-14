@@ -126,6 +126,28 @@ export async function listHealthWorkouts(userName: string, startDate: string, en
   return rows;
 }
 
+// Weigh-ins (Nov 13, 2026): at most one a day, only on days the owner
+// weighed in (the sync keeps one reading a day, keyed "weight:YYYY-MM-DD").
+export type WeighIn = { day: string; pounds: number };
+
+const GRAMS_PER_POUND = 453.59237;
+
+export async function listWeighIns(userName: string, startDate: string, endDate: string): Promise<WeighIn[]> {
+  const { rows } = await requirePool().query<{ day: string; grams: number }>(
+    `
+    select substr(record_key, 8) as day, (payload->'weight'->>'weightGrams')::float8 as grams
+    from public.health_records
+    where user_name = $1 and data_type = 'weight' and record_key like 'weight:%'
+      and substr(record_key, 8)::date between $2::date and $3::date
+    order by 1
+    `,
+    [userName, startDate, endDate]
+  );
+  return rows
+    .filter((row) => Number.isFinite(row.grams))
+    .map((row) => ({ day: row.day, pounds: Math.round((row.grams / GRAMS_PER_POUND) * 10) / 10 }));
+}
+
 export async function getLatestHealthSyncRun(userName: string): Promise<HealthSyncRun | null> {
   const { rows } = await requirePool().query(
     `

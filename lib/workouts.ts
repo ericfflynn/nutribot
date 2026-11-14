@@ -827,12 +827,6 @@ export function workoutTypeOf(fitbitType: string): WorkoutType {
   return found ?? "other";
 }
 
-// Watch workouts the Unlabeled card asks about: their name doesn't say what
-// was trained (core training and aerobics are often stretching or mobility).
-// Runs, rides, yoga and the like can still be labeled from Recent workouts;
-// walks are mostly auto-detected and never asked about.
-const ASK_ABOUT_TYPES = new Set(["WEIGHTLIFTING", "WEIGHTS", "CORE_TRAINING", "AEROBIC_WORKOUT"]);
-
 export function canLabel(fitbitType: string) {
   return fitbitType !== "WALKING";
 }
@@ -968,12 +962,6 @@ export async function listFitbitWorkouts(
     [userName, startDate, endDate]
   );
   return rows;
-}
-
-// Strength workouts from the watch that nothing has been logged for.
-export async function listUnlabeledWorkouts(db: Pool, userName: string, startDate: string, endDate: string) {
-  const workouts = await listFitbitWorkouts(db, userName, startDate, endDate);
-  return workouts.filter((w) => !w.sessionId && !w.ignored && ASK_ABOUT_TYPES.has(w.type));
 }
 
 // Ignore a watch workout nothing is logged for, or stop ignoring one.

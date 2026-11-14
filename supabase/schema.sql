@@ -692,6 +692,26 @@ select distinct on (user_name, state_date) *
 from public.body_states
 order by user_name, state_date, version desc;
 
+-- Every daily call and each chat revision of it, append-only (lib/body-state/call.ts,
+-- docs/body-state.md#the-call). body_states.call holds only the latest; this
+-- keeps the morning call and every change, for evals of good and bad calls.
+create table if not exists public.daily_calls (
+  id uuid primary key default gen_random_uuid(),
+  user_name text not null,
+  call_date date not null,
+  revision int not null, -- 0 is the first call of the day
+  trigger text not null check (trigger in ('morning', 'chat')),
+  source text not null check (source in ('claude', 'rules')),
+  call jsonb not null,
+  guardrails jsonb not null,
+  body_state_id uuid references public.body_states (id) on delete set null,
+  revised_because text,
+  created_at timestamptz not null default now(),
+  unique (user_name, call_date, revision)
+);
+
+alter table public.daily_calls enable row level security;
+
 -- Chat memories (lib/memories.ts, docs/brain.md#memory): what the chat keeps
 -- about the owner between conversations. Saved by the chat on its own; the
 -- reply's note can undo it, and the chat can change, resolve or forget it.
