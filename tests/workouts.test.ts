@@ -209,7 +209,9 @@ test("muscles decide the kind of training when the type doesn't", () => {
   assert.deepEqual(kinds("class", []), ["cardio"]); // no muscles: the type decides
   assert.deepEqual(kinds("other", ["Cardio", "Upper Abs", "Lower Abs"]), ["core", "cardio"]); // abs and cardio: core, not strength
   assert.deepEqual(kinds("strength", ["Upper Abs", "Obliques"]), ["core"]);
-  assert.deepEqual(kinds("strength", ["Chest", "Upper Abs"]), ["strength"]); // a lift with abs is still strength
+  assert.deepEqual(kinds("strength", ["Chest", "Upper Abs"]), ["strength", "core"]); // a lift with abs is strength, and core too
+  assert.deepEqual(kinds("strength", ["Cardio", "Core", "Back"]), ["strength", "core", "cardio"]); // "Back + Core + Cardio"
+  assert.deepEqual(kinds("sport", ["Back", "Obliques", "Cardio"]), ["sport", "cardio"]); // golf's obliques aren't a core session
 });
 
 test("old names count as today's: Mid Chest is Chest", () => {

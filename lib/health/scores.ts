@@ -65,7 +65,7 @@ export function recoveryScore(days: HealthDay[], sleepOn: (date: string) => numb
 
 // ---------- Sleep ----------
 // Sleep score = 70% duration (asleep / tonight's need, capped at 100) + 30%
-// consistency (a Sleep Regularity Index over 7 nights). Need starts at the
+// consistency (a softened Sleep Regularity Index over 14 nights). Need starts at the
 // 8-hour baseline and rises after a hard day, a run of short nights or a sick
 // day, up to 9.5 hours. Rationale and calibration: docs/scores.md.
 const NEED_CAP_MINUTES = 9.5 * 60;
@@ -76,8 +76,9 @@ const DEBT_REPAY_SHARE = 0.25; // an hour of debt is repaid over about 4 nights
 const DEBT_NEED_MAX = 60;
 const SICK_NEED_MINUTES = 45;
 const DURATION_WEIGHT = 0.7;
-const CONSISTENCY_NIGHTS = 7;
-const CONSISTENCY_MIN_NIGHTS = 5;
+const CONSISTENCY_NIGHTS = 14;
+const CONSISTENCY_MIN_NIGHTS = 10;
+const CONSISTENCY_MIN_PAIRS = 7;
 
 export type SleepNeed = { minutes: number; baseline: number; strain: number; debt: number; illness: number };
 
@@ -85,7 +86,7 @@ export type SleepScore = {
   score: number;
   minutes: number; // asleep
   durationPct: number; // asleep / need, capped at 100
-  consistency: number | null; // 0-100, null under 5 of 7 nights
+  consistency: number | null; // 0-100, null under 10 of 14 nights
   need: SleepNeed;
 };
 
@@ -111,12 +112,16 @@ const eveningMinutes = (timestamp: string) => {
   return (h * 60 + m - 18 * 60 + 1440) % 1440;
 };
 
-// A Sleep Regularity Index (Phillips et al. 2017) from the main sleep's bed
-// and wake times: for each pair of nights a day apart, the share of the 24
-// hours spent in the same state (asleep or awake), scaled so identical nights
-// are 100 and unrelated ones 0. Wake-ups in the night are counted as asleep,
-// so it runs a little high. `nights` are consecutive, oldest first, null
-// where there's no data; it needs CONSISTENCY_MIN_NIGHTS with times.
+// A Sleep Regularity Index (Phillips et al. 2017), softened: from the main
+// sleep's bed and wake times, for each pair of nights a day apart, the share
+// of the 24 hours spent in the same state (asleep or awake), scaled so
+// identical nights are 100 and unrelated ones 0, averaged over 14 nights so
+// one late night is one pair in thirteen bad, not two in six. Bed and wake
+// times within CONSISTENCY_GRACE_MINUTES of the night before count as the
+// same. Wake-ups in the night count as asleep. `nights` are consecutive,
+// oldest first, null where there's no data; it needs CONSISTENCY_MIN_NIGHTS
+// with times.
+const CONSISTENCY_GRACE_MINUTES = 30;
 export function sleepConsistency(nights: readonly ({ bedtime: string | null; wakeTime: string | null } | null)[]): number | null {
   const spans = nights.map((night) => {
     if (!night?.bedtime || !night.wakeTime) return null;
@@ -126,17 +131,20 @@ export function sleepConsistency(nights: readonly ({ bedtime: string | null; wak
     return { start, end };
   });
   if (spans.filter(Boolean).length < CONSISTENCY_MIN_NIGHTS) return null;
-  const asleep = (span: { start: number; end: number }, minute: number) =>
-    (minute >= span.start && minute < span.end) || (minute + 1440 >= span.start && minute + 1440 < span.end);
+  const forgive = (minutes: number) => Math.max(0, minutes - CONSISTENCY_GRACE_MINUTES);
   const pairs: number[] = [];
   for (let index = 1; index < spans.length; index += 1) {
     const [a, b] = [spans[index - 1], spans[index]];
     if (!a || !b) continue;
-    let same = 0;
-    for (let minute = 0; minute < 1440; minute += 1) if (asleep(a, minute) === asleep(b, minute)) same += 1;
-    pairs.push((200 * same) / 1440 - 100);
+    // Minutes in a different state: the shifts at each end when the nights
+    // overlap, both whole nights when they don't.
+    const overlaps = a.start < b.end && b.start < a.end;
+    const differ = overlaps
+      ? forgive(Math.abs(a.start - b.start)) + forgive(Math.abs(a.end - b.end))
+      : a.end - a.start + (b.end - b.start);
+    pairs.push((200 * (1440 - Math.min(1440, differ))) / 1440 - 100);
   }
-  if (pairs.length < CONSISTENCY_MIN_NIGHTS - 2) return null;
+  if (pairs.length < CONSISTENCY_MIN_PAIRS) return null;
   return Math.max(0, Math.round(pairs.reduce((sum, value) => sum + value, 0) / pairs.length));
 }
 

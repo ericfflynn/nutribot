@@ -129,7 +129,7 @@ function usualClock(times: (string | null | undefined)[]) {
 
 // Sleep status thresholds (calibrated October 31, 2026; docs/body-state.md).
 const GOOD_SLEEP = 90;
-const IRREGULAR = 80;
+const IRREGULAR = 86; // 14-night consistency: three or more late nights in two weeks, not one or two
 
 function sleepArea(c: Context): SleepArea {
   const night = c.healthByDay.get(c.date);
@@ -144,7 +144,7 @@ function sleepArea(c: Context): SleepArea {
   const bedtimeDrift7n = night?.bedtime && before.length >= 3 ? Math.round(eveningMinutes(night.bedtime) - median(before)) : null;
   const scored = c.sleepScores.get(c.date) ?? null;
   const pct = scored?.durationPct ?? null;
-  const consistency7n = scored?.consistency ?? null;
+  const consistency14n = scored?.consistency ?? null;
   const baseline28 = lastDays(addDays(c.date, -1), 28);
   const base = {
     minutes,
@@ -175,19 +175,19 @@ function sleepArea(c: Context): SleepArea {
     usualWakeTime: usualClock(baseline28.map((day) => c.healthByDay.get(day)?.wakeTime)),
     debt3n,
     bedtimeDrift7n,
-    consistency7n
+    consistency14n
   };
   if (minutes == null || pct == null) return { ...base, status: "unknown", headline: "Last night's sleep hasn't synced" };
   // A short night against need is low or watch; an irregular week
   // (consistency under IRREGULAR) keeps an otherwise long one from good.
-  const irregular = consistency7n != null && consistency7n < IRREGULAR;
+  const irregular = consistency14n != null && consistency14n < IRREGULAR;
   const score = scored!.score;
   const status: Status =
     pct < 60 ? "low" : pct < 75 || (debt3n ?? 0) >= 120 ? "watch" : score >= GOOD_SLEEP && (debt3n ?? 0) < 60 && !irregular ? "good" : "ok";
   const parts = [`${hm(minutes)}, sleep score ${score} (${pct}% of a ${hm(base.needMinutes)} need)`];
   if ((debt3n ?? 0) >= 60) parts.push(`${hm(debt3n!)} short over 3 nights`);
   if ((bedtimeDrift7n ?? 0) >= 60) parts.push(`to bed ${hm(bedtimeDrift7n!)} later than usual`);
-  if (irregular) parts.push(`bed and wake times irregular this week (${consistency7n}% consistent)`);
+  if (irregular) parts.push(`bed and wake times irregular lately (${consistency14n}% consistent)`);
   return { ...base, status, headline: parts.join(", ") };
 }
 

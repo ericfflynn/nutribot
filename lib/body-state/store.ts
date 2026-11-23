@@ -25,7 +25,17 @@ export function stateHash(state: BodyState) {
 
 // Upgrades, one per schema step: UPGRADES[1] turns a v1 state into v2. Readers
 // only ever see the current shape; rows in the database are never migrated.
-const UPGRADES: Record<number, (state: Record<string, unknown>) => Record<string, unknown>> = {};
+const UPGRADES: Record<number, (state: Record<string, unknown>) => Record<string, unknown>> = {
+  // v2: sleep consistency is over 14 nights, softened. The 7-night number
+  // can't be converted, so v1 states read as unknown until rebuilt.
+  1: (state) => {
+    const physical = state.physical as Record<string, unknown> | undefined;
+    const sleep = physical?.sleep as Record<string, unknown> | undefined;
+    if (!physical || !sleep) return state;
+    const { consistency7n: _old, ...rest } = sleep;
+    return { ...state, physical: { ...physical, sleep: { ...rest, consistency14n: null } } };
+  }
+};
 
 export function upgradeState(raw: Record<string, unknown>, fromVersion: number): BodyState {
   let state = raw;

@@ -3,7 +3,7 @@
 // minutes; 0 means "didn't today", said explicitly. A day with no logs is
 // unknown, never zero. Plan: docs/journal-habits-plan.md.
 import type { Pool } from "pg";
-import { addDays, isWeeknight, weekdayOf } from "./dates";
+import { addDays, isWeeknight, todayLocalDate, weekdayOf } from "./dates";
 
 type Queryable = Pick<Pool, "query">;
 
@@ -37,7 +37,27 @@ export type HabitInput = {
   active: boolean;
 };
 
-export type Habit = HabitInput & { id: string };
+// How a habit was judged from a date on: its goal, bands, cutoff, days and
+// direction. A change starts a new version that day, so past days keep the
+// color they had (habit_rules).
+export type HabitRule = Pick<HabitInput, "direction" | "goal" | "bands" | "cutoff" | "cutoffWeeknights" | "days"> & {
+  from: string;
+};
+
+// rules: every version, oldest first. Missing when not loaded (the current
+// fields then judge every day).
+export type Habit = HabitInput & { id: string; rules?: HabitRule[] };
+
+// The habit as it was judged on a date: the latest version from on or before
+// it, or the first version for days before any (a backdated log).
+export function habitOn<T extends Pick<Habit, "rules">>(habit: T, date: string): T {
+  const rules = habit.rules;
+  if (!rules?.length) return habit;
+  let rule = rules[0];
+  for (const candidate of rules) if (candidate.from <= date) rule = candidate;
+  const { from: _from, ...fields } = rule;
+  return { ...habit, ...fields } as T;
+}
 
 // A limit habit is yellow past its goal, orange past `orange` and red past
 // `red` (gaming: goal 0, orange 60, red 90). A build habit is yellow under its
@@ -104,7 +124,20 @@ const HABIT_COLUMNS = `
   to_char(cutoff, 'HH24:MI') as cutoff,
   cutoff_weeknights as "cutoffWeeknights",
   days::int[] as days,
-  active
+  active,
+  (
+    select json_agg(json_build_object(
+      'from', r.effective_from::text,
+      'direction', r.direction,
+      'goal', r.goal::float8,
+      'bands', case when r.band_orange is null then null
+        else json_build_object('orange', r.band_orange::float8, 'red', r.band_red::float8) end,
+      'cutoff', to_char(r.cutoff, 'HH24:MI'),
+      'cutoffWeeknights', r.cutoff_weeknights,
+      'days', r.days::int[]
+    ) order by r.effective_from)
+    from public.habit_rules r where r.habit_id = habits.id
+  ) as rules
 `;
 
 export async function listHabits(db: Queryable, userName: string, includeArchived = false): Promise<Habit[]> {
@@ -186,11 +219,41 @@ export async function saveHabit(db: Queryable, userName: string, input: HabitInp
           values
         );
     if (!rows[0]) throw new HabitError("That habit no longer exists.");
+    await recordHabitRule(db, rows[0].id, todayLocalDate());
     return rows[0].id;
   } catch (error) {
     if ((error as { code?: string }).code === "23505") throw new HabitError(`You already track a habit called ${input.name}.`);
     throw error;
   }
+}
+
+// Starts a version of the habit's rule on `from` when its current fields differ
+// from the version in force then; a second change the same day replaces it.
+async function recordHabitRule(db: Queryable, habitId: string, from: string) {
+  await db.query(
+    `
+    insert into public.habit_rules (habit_id, effective_from, direction, goal, band_orange, band_red, cutoff, cutoff_weeknights, days)
+    select h.id, $2::date, h.direction, h.goal, h.band_orange, h.band_red, h.cutoff, h.cutoff_weeknights, h.days
+    from public.habits h
+    where h.id = $1::uuid
+      and not exists (
+        select 1 from (
+          select * from public.habit_rules
+          where habit_id = h.id and effective_from <= $2::date
+          order by effective_from desc limit 1
+        ) r
+        where r.direction = h.direction and r.goal is not distinct from h.goal
+          and r.band_orange is not distinct from h.band_orange and r.band_red is not distinct from h.band_red
+          and r.cutoff is not distinct from h.cutoff and r.cutoff_weeknights = h.cutoff_weeknights
+          and r.days is not distinct from h.days
+      )
+    on conflict (habit_id, effective_from) do update set
+      direction = excluded.direction, goal = excluded.goal, band_orange = excluded.band_orange,
+      band_red = excluded.band_red, cutoff = excluded.cutoff, cutoff_weeknights = excluded.cutoff_weeknights,
+      days = excluded.days
+    `,
+    [habitId, from]
+  );
 }
 
 // Saves a day's logs. A use replaces that day's "none" for the habit; a "none"
@@ -338,8 +401,9 @@ function lateMinutesOf(log: HabitLog, cutoff: string) {
 }
 
 // Whether the habit is tracked on that date (its frequency).
-export function trackedOn(habit: Pick<Habit, "days">, date: string) {
-  return !habit.days || habit.days.includes(weekdayOf(date));
+export function trackedOn(habit: Pick<Habit, "days" | "rules">, date: string) {
+  const { days } = habitOn(habit, date);
+  return !days || days.includes(weekdayOf(date));
 }
 
 export function cutoffApplies(habit: Pick<Habit, "cutoff" | "cutoffWeeknights">, date: string) {
@@ -348,7 +412,8 @@ export function cutoffApplies(habit: Pick<Habit, "cutoff" | "cutoffWeeknights">,
 
 // One day's status for each habit, from that day's logs.
 export function summarizeHabitDay(habits: Habit[], date: string, dayLogs: HabitLog[]): HabitDay[] {
-  return habits.map((habit) => {
+  return habits.map((current) => {
+    const habit = habitOn(current, date);
     const logs = dayLogs.filter((log) => log.habitId === habit.id);
     const used = logs.filter((log) => log.amount > 0);
     const level =

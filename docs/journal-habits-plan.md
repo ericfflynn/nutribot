@@ -79,7 +79,7 @@ Habits are rows, not code, so new ones are added by telling the chat "start trac
 | `description` | Optional: what counts, in his words. |
 | `days` | Frequency: the weekdays it's tracked (0 Sunday–6 Saturday), null for every day. An unlogged day off is "off", not missed; a build habit done on a day off counts as met. |
 
-Habits are edited on the Habits tab (Edit on each tracked habit) or through chat. Logs belong to the habit's id, so a rename or new goal keeps history. The measure can't change once a habit has logs. Stopped habits sit under "Stopped tracking" with Track again.
+Habits are edited on the Habits tab (Edit on each tracked habit) or through chat. Logs belong to the habit's id, so a rename or new goal keeps history. Each change to the goal, bands, cutoff, days or direction starts a new version of the rule that day (`habit_rules`), and every day is judged by the version it had (`habitOn`), so old days keep their colors. The measure can't change once a habit has logs. Stopped habits sit under "Stopped tracking" with Track again.
 
 Starting set:
 

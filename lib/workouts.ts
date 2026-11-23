@@ -332,7 +332,8 @@ export function activityCategoryOf(type: WorkoutType): ActivityCategory {
 // no type of its own), only Cardio is cardio, and Mobility or Cardio inside
 // another workout counts for that kind too. An "other" workout with strength
 // muscles is strength. Abs alone (with or without cardio) is a core session,
-// not strength; a lift that includes abs is still strength.
+// not strength; a lift that includes abs is still strength first, and also a
+// core session. Core inside a sport (golf's obliques) isn't a core session.
 export function activityCategoriesOf(type: WorkoutType, muscles: readonly MuscleName[] = []): ActivityCategory[] {
   const kindOf = (name: MuscleName) =>
     name === "Mobility" ? "mobility" : name === "Cardio" ? "cardio" : groupOf(name) === "Core" ? "core" : "strength";
@@ -353,7 +354,10 @@ export function activityCategoriesOf(type: WorkoutType, muscles: readonly Muscle
             : kinds.has("cardio")
               ? "cardio"
               : byType;
-  const extra = (["mobility", "cardio"] as const).filter((kind) => kinds.has(kind) && kind !== main);
+  const trained = byType === "strength" || byType === "other";
+  const extra = (["core", "mobility", "cardio"] as const).filter(
+    (kind) => kinds.has(kind) && kind !== main && (kind !== "core" || trained)
+  );
   return [main, ...extra];
 }
 

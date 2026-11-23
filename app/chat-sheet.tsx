@@ -529,15 +529,24 @@ export function ChatThread({
   const threadRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  const sendingRef = useRef(false);
   useEffect(() => {
-    fetch("/api/brain")
-      .then((response) => response.json())
-      .then((data) => {
-        if (Array.isArray(data.messages)) setMessages(data.messages);
-        else setError(data.error || "Couldn't load the chat.");
-        setLoaded(true);
-      })
-      .catch(() => setError("Couldn't load the chat."));
+    const load = () =>
+      fetch("/api/brain")
+        .then((response) => response.json())
+        .then((data) => {
+          if (sendingRef.current) return; // a reply is on its way; don't drop it
+          if (Array.isArray(data.messages)) setMessages(data.messages);
+          else setError(data.error || "Couldn't load the chat.");
+          setLoaded(true);
+        })
+        .catch(() => setError("Couldn't load the chat."));
+    void load();
+    // The Home Screen app can sit open for hours: reload the thread when it
+    // comes back, so cards reflect replies and revisions made elsewhere.
+    const onVisible = () => document.visibilityState === "visible" && !sendingRef.current && void load();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, []);
 
   const sentPrefill = useRef<object | null>(null);
@@ -564,6 +573,7 @@ export function ChatThread({
     const message = (text ?? input).trim();
     if (!message || sending) return;
     setSending(true);
+    sendingRef.current = true;
     setError(null);
     setInput("");
     const pending: ChatMessage = { id: `pending-${Date.now()}`, role: "user", content: message, drafts: [], createdAt: "" };
@@ -586,6 +596,7 @@ export function ChatThread({
       setError(caught instanceof Error ? caught.message : "The assistant couldn't answer.");
     } finally {
       setSending(false);
+      sendingRef.current = false;
     }
   }
 
@@ -640,9 +651,19 @@ export function ChatThread({
               )
             ) : null}
             {message.drafts.map((draft) => {
+              const superseded = lastMessageFor.get(draft.id) !== message.id;
+              // Show only the latest version of a revised draft; the old card's
+              // contents (a corrected item) would read as still current.
+              if (superseded && !draft.saved_id && draft.type !== "memory") {
+                return (
+                  <p key={draft.id} className="draft-status draft-revised">
+                    {draft.type === "meal" ? `${draft.meal_type} draft` : "Draft"} · revised below
+                  </p>
+                );
+              }
               const handlers: DraftHandlers = {
                 today,
-                superseded: lastMessageFor.get(draft.id) !== message.id,
+                superseded,
                 onSave: async (fitbitWorkoutId) => {
                   const result = await saveDraftAction(message.id, draft.id, fitbitWorkoutId);
                   if (result.ok) {

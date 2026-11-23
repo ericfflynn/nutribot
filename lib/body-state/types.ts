@@ -12,7 +12,7 @@ import type { SleepNeed } from "../health/scores";
 import type { MacroEntry } from "../supabase";
 import type { FitbitWorkout, Intensity, Readiness, SorenessReport, TrackedMuscle, WorkoutSession } from "../workouts";
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export const STATUSES = ["low", "watch", "ok", "good", "unknown"] as const;
 export type Status = (typeof STATUSES)[number];
@@ -60,10 +60,11 @@ export type SleepArea = Head & {
   debt3n: number | null; // shortfall over the last 3 nights, minutes
   bedtimeDrift7n: number | null; // minutes past the 7-night median bedtime (negative: earlier)
   // Added Oct 31, 2026 (older stored states lack them): the sleep score, what
-  // tonight's need was made of, and the 7-night Sleep Regularity Index.
+  // tonight's need was made of; v2 (Nov 20, 2026): the 14-night softened Sleep
+  // Regularity Index, replacing v1's 7-night consistency7n.
   score?: number | null;
   need?: SleepNeed | null;
-  consistency7n?: number | null;
+  consistency14n?: number | null;
 };
 
 export type RecoveryArea = Head & {

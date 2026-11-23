@@ -731,3 +731,26 @@ create table if not exists public.chat_memories (
 create index if not exists chat_memories_user_status_idx on public.chat_memories (user_name, status, created_at);
 
 alter table public.chat_memories enable row level security;
+
+-- Versions of a habit's rule (lib/habits.ts, habitOn): each change to the goal,
+-- bands, cutoff, days or direction starts a row that day, so past days are
+-- judged by the rule they had. Backfilled with each habit's rule at creation.
+create table if not exists public.habit_rules (
+  habit_id uuid not null references public.habits (id) on delete cascade,
+  effective_from date not null,
+  direction text not null check (direction in ('limit', 'build')),
+  goal numeric check (goal >= 0),
+  band_orange numeric check (band_orange >= 0),
+  band_red numeric check (band_red >= 0),
+  cutoff time,
+  cutoff_weeknights boolean not null default false,
+  days smallint[],
+  primary key (habit_id, effective_from)
+);
+
+alter table public.habit_rules enable row level security;
+
+insert into public.habit_rules (habit_id, effective_from, direction, goal, band_orange, band_red, cutoff, cutoff_weeknights, days)
+select id, (created_at at time zone 'America/New_York')::date, direction, goal, band_orange, band_red, cutoff, cutoff_weeknights, days
+from public.habits
+on conflict (habit_id, effective_from) do nothing;
