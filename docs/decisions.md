@@ -4,6 +4,11 @@ Product and design decisions, newest first. One entry per decision: what was dec
 
 ## 2026-11-22
 
+### Training: no Next up; split tiles first, then zones and body map in a swipe gallery
+- **Decided:** Next up is gone from Training. The split tiles (Strength, Core, Cardio, Mobility against their weekly targets) sit at the top, always. Under them, heart-rate zones (shown first) and the body map swipe one card at a time, labels above, dots below. Then Missing this week, then one timeline, **Last 7 days**: each of the last 7 days (rolling, not the calendar week) with what was done and the points it added; tapping a workout opens its full card (zones, label, merge, edit), and Earlier adds 7 days. It replaces the calendar-week Workouts list and its type filter. Claude's daily call is still made and still shows on Today's check-in.
+- **Why:** after the heat map and 14-day list went, the owner couldn't tell what they'd done the last few days when planning the week ahead. They didn't find the plan useful on Training ("screw the plan") and wanted the split tiles visible whatever the page shows. With Last 7 days in place, the Workouts list only repeated it with bigger cards.
+- **Instead of:** bringing back the 14-day list of full cards; Last 7 days alongside the Workouts list (tried the same day, redundant); keeping Next up in the gallery (tried and rejected the same day); stacking every card.
+
 ### Training: "Missing this week" and a week of workout cards replace the heat map
 - **Decided:** the week-by-week grid is gone. Under the body map, "Missing this week" shows each muscle under 3 points as a pill with the points still to go, red for untouched; a muscle at 3 or more drops off. The workouts list shows one calendar week at a time, paging back, and each card says what it added to each muscle ("Quads +3"). Mockups and the full tab: https://claude.ai/artifact/7LTZKBwHuVEp1V9i6LmMSJ (option D).
 - **Why:** the owner found the heat map hard to read and couldn't see which muscles were short (feedback 9ed54589, a3097897). A timeline of workouts says what was trained when; the pills say what's left. 3 is a hit, so a muscle at 3 isn't "missing" even though 4 is the goal.

@@ -1,22 +1,18 @@
 import { AppShell, Login } from "../shared-ui";
 import { BodyMap, type MuscleView } from "../body-map";
 import { LabelButton, MergeControls, RestoreButton, WorkoutEditor } from "../training-ui";
-import { NextUp, type NextUpPage, type NextUpTier } from "../next-up";
 import { getSessionUser } from "@/lib/auth";
-import { addDays, currentWeekToDate, localDateTime, todayLocalDate } from "@/lib/dates";
+import { addDays, currentWeekToDate, todayLocalDate } from "@/lib/dates";
 import { ZONES, getZoneBounds, zoneGoalsOf, zoneMinutes, type ZoneMinutes } from "@/lib/health/zones";
 import { WorkoutZones, ZoneLadder } from "../zone-ladder";
+import { SwipeGallery } from "../swipe-gallery";
 import { listHealthWorkouts, type HealthWorkout } from "@/lib/health/queries";
 import { getPool, getUserGoals } from "@/lib/supabase";
 import { listSoreness } from "@/lib/body-log";
 import { getBodyState } from "@/lib/body-state/load";
-import { getDailyCall, listDailyCalls, type DailyCall, type PlannedDay } from "@/lib/body-state/call";
-import { ailmentAvoidOf, illnessStateOf } from "@/lib/body-state/build";
 import { isPossibleDuplicate, type WorkoutRecord } from "@/lib/health/dedupe-rules";
 import {
   ACTIVITY_LABELS,
-  activityCategoriesOf,
-  INTENSITIES,
   INTENSITY_RULES,
   bucketOf,
   fatigueLevel,
@@ -27,14 +23,11 @@ import {
   TRACKED_MUSCLES,
   canLabel,
   splitKinds,
-  suggestNext,
-  WORKOUT_TYPES,
   WORKOUT_TYPE_LABELS,
   musclesOf,
   listFitbitWorkouts,
   listWorkoutSessions,
   type FitbitWorkout,
-  type Intensity,
   type WorkoutSession,
   type WorkoutType,
   weekStartOf,
@@ -43,43 +36,18 @@ import {
 
 export const dynamic = "force-dynamic";
 
-// Next up pages back this many days of calls.
-const PAST_CALL_DAYS = 7;
 // Missing this week lists muscles under this many points.
 const MISSING_UNDER = 3;
-// The workouts list pages back this many calendar weeks, as far as there's data.
-const HISTORY_WEEKS = 8;
-// The hour (local) after which an untrained day is over for planning: the
-// owner's workouts have all started by 5 pm.
-const PLAN_DAY_OVER_HOUR = 19;
-
+// The timeline shows this many days back from today, whatever the week, and
+// pages back by as many.
+const LOOKBACK_DAYS = 7;
+// The timeline goes back at most this many days.
+const HISTORY_DAYS = 56;
 const dayFormat = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
-const shortDay = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 
 
-function formatMinutes(total: number) {
-  const hours = Math.floor(total / 60);
-  if (!hours) return `${total} min`;
-  return total % 60 ? `${hours} h ${total % 60} min` : `${hours} h`;
-}
 const clockFormat = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" });
 
-
-// Next up's pills: the work by intensity, hardest first, then what's tacked on
-// at the end.
-function tiersOf(work: { muscle: string; intensity: Intensity }[], finish: string[], bloodFlow: string[] = []): NextUpTier[] {
-  const tiers: NextUpTier[] = [...INTENSITIES]
-    .reverse()
-    .map((intensity) => ({
-      label: INTENSITY_RULES[intensity].label,
-      tone: intensity,
-      muscles: work.filter((item) => item.intensity === intensity).map((item) => item.muscle)
-    }))
-    .filter((tier) => tier.muscles.length);
-  if (bloodFlow.length) tiers.push({ label: "Flush", tone: "light", muscles: bloodFlow });
-  if (finish.length) tiers.push({ label: "Finish", tone: "finish", muscles: finish });
-  return tiers;
-}
 
 function formatDay(date: string) {
   return dayFormat.format(new Date(`${date}T00:00:00Z`));
@@ -143,19 +111,19 @@ function asRecord(workout: FitbitWorkout): WorkoutRecord {
   };
 }
 
-export default async function TrainingPage({ searchParams }: { searchParams: Promise<{ type?: string; ignored?: string; week?: string }> }) {
-  const { type: typeParam, ignored: ignoredParam, week: weekParam } = await searchParams;
-  // Which calendar week the workouts list shows: 0 this week, 1 last week...
-  const weeksAgo = Math.min(HISTORY_WEEKS - 1, Math.max(0, Math.floor(Number(weekParam) || 0)));
+export default async function TrainingPage({ searchParams }: { searchParams: Promise<{ ignored?: string; days?: string }> }) {
+  const { ignored: ignoredParam, days: daysParam } = await searchParams;
+  // How many days the timeline shows: 7, and 7 more per "Earlier".
+  const lookbackDays =
+    Math.min(HISTORY_DAYS, Math.max(LOOKBACK_DAYS, Math.ceil((Number(daysParam) || LOOKBACK_DAYS) / LOOKBACK_DAYS) * LOOKBACK_DAYS));
   const showIgnored = ignoredParam === "1";
-  const typeFilter = (WORKOUT_TYPES as readonly string[]).includes(typeParam ?? "") ? (typeParam as WorkoutType) : null;
   const user = await getSessionUser();
   if (!user) {
     return <Login />;
   }
 
   const today = todayLocalDate();
-  const start = addDays(today, -(HISTORY_WEEKS * 7 - 1));
+  const start = addDays(today, -(HISTORY_DAYS - 1));
   const db = getPool();
   if (!db) {
     return (
@@ -165,17 +133,13 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     );
   }
 
-  const [sessions, fitbit, healthWorkouts, soreness, body, todayCall, zoneBounds, pastCalls, goals] = await Promise.all([
+  const [sessions, fitbit, healthWorkouts, soreness, body, zoneBounds, goals] = await Promise.all([
     listWorkoutSessions(db, user.name, start, today),
     listFitbitWorkouts(db, user.name, start, today),
     listHealthWorkouts(user.name, start, today),
     listSoreness(db, user.name, addDays(today, -14), today),
-    // Illness comes from the body state, so Next up agrees with Today.
     getBodyState(db, user.name, today),
-    getDailyCall(db, user.name, today),
     getZoneBounds(user.name, today),
-    // Next up pages back through the last week's calls.
-    listDailyCalls(db, user.name, addDays(today, -PAST_CALL_DAYS), today),
     getUserGoals(user.name, db)
   ]);
   // Heart-rate zones: this calendar week's watch workouts so far, and the
@@ -192,28 +156,6 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
   const healthById = new Map<string, HealthWorkout>(healthWorkouts.map((workout) => [workout.id, workout]));
   const fitbitById = new Map<string, FitbitWorkout>(fitbit.map((workout) => [workout.id, workout]));
 
-  // Next up is for today, or tomorrow once today has a lift logged or the
-  // day's training window is over.
-  const loggedToday = sessions.some(
-    (session) => session.date === today && activityCategoriesOf(session.workoutType, session.muscleGroups)[0] === "strength"
-  );
-  const nextDate = loggedToday || Number(localDateTime().slice(11, 13)) >= PLAN_DAY_OVER_HOUR ? addDays(today, 1) : today;
-  // Readiness (recovery, drinks, strain run, food) is today's; tomorrow is
-  // planned again in the morning with last night's data.
-  const readiness = nextDate === today ? (body.physical.training.readiness ?? null) : null;
-  // Open injuries and pain carry into tomorrow too: they last until they're over.
-  const next = suggestNext(
-    sessions,
-    nextDate,
-    soreness,
-    undefined,
-    illnessStateOf(body.physical.illness),
-    readiness,
-    ailmentAvoidOf(body.physical.ailments?.open ?? [])
-  );
-  // Today's plan is Claude's call (made each morning inside the same limits);
-  // tomorrow, or before the call is made, it's the rules.
-  const call = nextDate === today ? todayCall : null;
   // The body map reads the body state (soreness, points, days to fresh, why
   // it's out, days since hit), so it agrees with Today and the chat. The owner's
   // own report for today (its id, to undo it) is the one thing the state doesn't keep.
@@ -305,40 +247,20 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     });
   }
   recent.sort((a, b) => b.sort.localeCompare(a.sort));
-  // Workouts by day for one calendar week, newest first (Nov 22, 2026: one
-  // list by week in place of the week grid and the 14-day list; ‹ pages back).
-  // Days with nothing show as rest, unless a type filter is on.
-  const listMonday = addDays(weekStartOf(today), -7 * weeksAgo);
-  const listEnd = weeksAgo === 0 ? today : addDays(listMonday, 6);
-  const inList = recent.filter((item) => item.date >= listMonday && item.date <= listEnd);
-  const typeCounts = new Map<WorkoutType, number>();
-  for (const item of inList) typeCounts.set(item.workoutType, (typeCounts.get(item.workoutType) ?? 0) + 1);
-  const shown = typeFilter ? inList.filter((item) => item.workoutType === typeFilter) : inList;
-  const listDays = Math.round((Date.parse(listEnd) - Date.parse(listMonday)) / 86_400_000) + 1;
-  const workoutDays = Array.from({ length: listDays }, (_, index) => addDays(listEnd, -index))
-    .map((date) => ({
-      date,
-      label: date === today ? "Today" : date === addDays(today, -1) ? "Yesterday" : formatDay(date),
-      items: shown.filter((item) => item.date === date)
-    }))
-    .filter((day) => !typeFilter || day.items.length);
-  const listMinutes = inList.reduce((sum, item) => sum + (item.minutes ?? 0), 0);
-  const listTitle = weeksAgo === 0 ? "This week" : weeksAgo === 1 ? "Last week" : `${weeksAgo} weeks ago`;
-  const listRange = `${shortDay.format(new Date(`${listMonday}T00:00:00Z`))} – ${shortDay.format(new Date(`${addDays(listMonday, 6)}T00:00:00Z`))}`;
-  const workoutsSummary = [listRange, inList.length ? `${inList.length} workout${inList.length === 1 ? "" : "s"}` : null, listMinutes ? formatMinutes(listMinutes) : null]
-    .filter(Boolean)
-    .join(" · ");
-  // Paging stops at the first week with a logged session.
+  // The timeline (Nov 22, 2026: one list in place of Last 7 days and the
+  // calendar-week Workouts list): a rolling look back for planning, one row
+  // per day, newest first, each workout's title and the points it added.
+  // Tapping a workout opens its card (watch match, zones, edit). "Earlier"
+  // adds 7 days, back to the first logged session.
+  const lookback = Array.from({ length: lookbackDays }, (_, index) => addDays(today, -index)).map((date) => ({
+    date,
+    label: date === today ? "Today" : date === addDays(today, -1) ? "Yesterday" : formatDay(date),
+    items: recent.filter((item) => item.date === date)
+  }));
   const firstDate = sessions.map((session) => session.date).sort()[0] ?? today;
-  const olderWeek = weeksAgo < HISTORY_WEEKS - 1 && listMonday > firstDate ? weeksAgo + 1 : null;
-  const newerWeek = weeksAgo > 0 ? weeksAgo - 1 : null;
-  const listHref = (week: number | null, type: WorkoutType | null = typeFilter) => {
-    const params = new URLSearchParams();
-    if (week) params.set("week", String(week));
-    if (type) params.set("type", type);
-    const query = params.toString();
-    return `/training${query ? `?${query}` : ""}#workouts`;
-  };
+  const oldestShown = addDays(today, -(lookbackDays - 1));
+  const earlierHref = lookbackDays < HISTORY_DAYS && oldestShown > firstDate ? `/training?days=${lookbackDays + LOOKBACK_DAYS}#day-${addDays(oldestShown, -1)}` : null;
+  const lookbackTitle = lookbackDays === LOOKBACK_DAYS ? "Last 7 days" : `Last ${lookbackDays} days`;
 
   // Missing this week: muscles under 3 points this calendar week (3 is a hit,
   // 4 the goal; the owner, Nov 22, 2026), fewest first, with the points to 3.
@@ -346,95 +268,9 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     .filter((item) => item.points < MISSING_UNDER)
     .sort((a, b) => a.points - b.points || TRACKED_MUSCLES.indexOf(a.muscle) - TRACKED_MUSCLES.indexOf(b.muscle));
 
-  // The newest week's split: a tile per kind with a target, under Next up.
-  const thisSplit = splitOf(splitKinds(sessions, fitbit, weekStartOf(today), today));
-
-  // Next up's pages. The current one is Claude's call when there is one,
-  // otherwise the rules' pick, with the notes that shaped it in the dropdown.
-  // Before it, the last week's calls with what was done; after it, the days
-  // today's call planned through Sunday.
-  const ruleNotes = [next.illness?.note, next.readiness?.note, next.ailments?.note].filter((note): note is string => Boolean(note));
-  const ruleWhy = (extra: string[] = []) => {
-    const reasons = [...ruleNotes, ...extra];
-    return reasons.length ? { note: null, reasons, ailments: [] } : null;
-  };
-  const dayLabel = (date: string) => (date === today ? "Today" : date === addDays(today, -1) ? "Yesterday" : formatDay(date));
-  const callContent = (made: DailyCall) => ({
-    headline: made.headline,
-    summary: null,
-    tiers: tiersOf(made.work, made.accessory),
-    flags: made.revised ? [`Changed${made.madeAt.slice(0, 10) === today ? " today" : ""}: ${made.revised}`] : [],
-    why: { note: made.note, reasons: made.reasons, ailments: made.ailments ?? [] }
-  });
-  // Today's call planned these days, each like a call of its own. After 7 pm
-  // tomorrow's page is its planned day until its morning call is made.
-  const plannedDays = (todayCall?.week ?? []).map((item, index) => ({ ...item, date: addDays(today, index + 1) }));
-  // Only a fully planned day (headline and muscles) stands in for the rules'
-  // pick; the first evening's text-only plans ride along as a flag.
-  const plannedNextDay = plannedDays.find((item) => item.date === next.date);
-  const plannedNext = plannedNextDay?.headline ? plannedNextDay : undefined;
-  const plannedContent = (item: PlannedDay) => ({
-    headline: item.headline ?? item.plan ?? "Planned",
-    summary: "Planned by today's call. Each morning's call plans again from what actually happened.",
-    tiers: tiersOf(item.work ?? [], item.accessory ?? []),
-    flags: [],
-    week: [],
-    why: item.note ? { note: item.note, reasons: [], ailments: [] } : null
-  });
-  const weekRows = (week: PlannedDay[]) => week.map((item) => ({ day: item.day, plan: item.headline ?? item.plan ?? "" }));
-  const current: NextUpPage = {
-    key: `current-${next.date}`,
-    kind: "current",
-    label: `Next up · ${next.date === today ? "today" : "tomorrow"}`,
-    done: null,
-    ...(call
-      ? { ...callContent(call), week: weekRows(call.week ?? []) }
-      : plannedNext
-        ? plannedContent(plannedNext)
-        : next.pick
-        ? {
-            headline: next.pick.name,
-            summary: null,
-            tiers: tiersOf(next.pick.work, next.pick.accessory, next.pick.bloodFlow),
-            flags: next.pick.heldBy ? [`Not hard: ${next.pick.heldBy.label.toLowerCase()}`] : [],
-            week: [],
-            why: ruleWhy(next.alternatives.length ? [`Or: ${next.alternatives.join(" · ")}`] : [])
-          }
-        : next.illness?.rest
-          ? { headline: "Rest", summary: "Get better first. Tell the chat when you feel better.", tiers: [], flags: [], week: [], why: ruleWhy() }
-          : next.readiness?.rest
-            ? { headline: "Rest or active recovery", summary: "A walk, yoga or mobility.", tiers: [], flags: [], week: [], why: ruleWhy() }
-            : {
-                headline: "Rest or active recovery",
-                summary: "Nothing's fresh and due yet. Light cardio, yoga or pilates fits.",
-                tiers: [],
-                flags: [],
-                week: [],
-                why: ruleWhy()
-              })
-  };
-  if (!call && !plannedNext && plannedNextDay?.plan) current.flags = [`Planned this morning: ${plannedNextDay.plan}`, ...current.flags];
-  const pastPages: NextUpPage[] = pastCalls
-    .filter((item) => item.date < next.date)
-    .map((item) => ({
-      key: `past-${item.date}`,
-      kind: "past",
-      label: dayLabel(item.date),
-      ...callContent(item.call),
-      week: [],
-      done: recent.filter((entry) => entry.date === item.date).map((entry) => entry.title)
-    }));
-  const plannedPages: NextUpPage[] = plannedDays
-    .filter((item) => item.date > next.date)
-    .map((item) => ({
-      key: `planned-${item.date}`,
-      kind: "planned",
-      label: `${formatDay(item.date)} · planned`,
-      done: null,
-      ...plannedContent(item)
-    }));
-  const nextUpPages = [...pastPages, current, ...plannedPages];
-  const nextUpSplit = thisSplit
+  // This week's split: a tile per kind with a target, at the top of the tab
+  // whatever else is there (Nov 22, 2026: Next up is gone from Training).
+  const split = splitOf(splitKinds(sessions, fitbit, weekStartOf(today), today))
     .filter((entry) => entry.target != null)
     .map((entry) => ({ kind: entry.kind, label: ACTIVITY_LABELS[entry.kind], count: entry.count, target: entry.target! }));
 
@@ -446,15 +282,25 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
       title="Training"
     >
 
-      <NextUp pages={nextUpPages} start={pastPages.length} split={nextUpSplit} />
-
-      <ZoneLadder week={zoneThisWeek} average={zoneAverage} bounds={zoneBounds} daysDone={zoneWeek.elapsedDays - 1} goals={zoneGoalsOf(goals)} />
-
-      <section className="card training-week-card" aria-label="Body map">
-        <BodyMap muscles={muscleViews} />
+      <section className="card training-split" aria-label="This week since Monday">
+        {split.map((entry) => (
+          <div key={entry.kind}>
+            <strong className={entry.count < entry.target ? "short" : undefined}>
+              {entry.count}/{entry.target}
+            </strong>
+            <span>{entry.label}</span>
+          </div>
+        ))}
       </section>
 
-      <section className="card training-missing" aria-label="Missing this week">
+      <SwipeGallery labels={["Zones", "Body"]}>
+        <ZoneLadder week={zoneThisWeek} average={zoneAverage} bounds={zoneBounds} daysDone={zoneWeek.elapsedDays - 1} goals={zoneGoalsOf(goals)} />
+        <section className="card training-week-card" aria-label="Body map">
+          <BodyMap muscles={muscleViews} />
+        </section>
+      </SwipeGallery>
+
+      <section className="card training-missing-block" aria-label="Missing this week">
         <div className="card-heading">
           <h2 className="card-title">Missing this week</h2>
           <span className="card-aside">{missing.length ? "points to go" : null}</span>
@@ -475,99 +321,87 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
         )}
       </section>
 
-      <section className="group" aria-label="Workouts" id="workouts">
-        <div className="training-workouts-head">
-          <div>
-            <h2 className="card-title">{listTitle}</h2>
-            <span>{workoutsSummary}</span>
-          </div>
-          <span className="week-nav">
-            {olderWeek != null ? <a href={listHref(olderWeek)}>‹ Earlier</a> : null}
-            {newerWeek != null ? <a href={listHref(newerWeek)}>Later ›</a> : null}
-          </span>
+      <section className="card training-lookback" aria-label={lookbackTitle} id="workouts">
+        <div className="card-heading">
+          <h2 className="card-title">{lookbackTitle}</h2>
+          <span className="card-aside">Tap a workout to edit</span>
         </div>
-        {typeCounts.size > 1 || typeFilter ? (
-          <nav className="type-filter" aria-label="Filter by type">
-            <a href={listHref(weeksAgo, null)} aria-current={typeFilter ? undefined : "true"}>
-              All
-            </a>
-            {WORKOUT_TYPES.filter((type) => typeCounts.has(type)).map((type) => (
-              <a key={type} href={listHref(weeksAgo, type)} aria-current={typeFilter === type ? "true" : undefined}>
-                {WORKOUT_TYPE_LABELS[type]} {typeCounts.get(type)}
-              </a>
-            ))}
-          </nav>
-        ) : null}
-        {workoutDays.length ? (
-          workoutDays.map((day) => (
-            <div key={day.date} className="training-recent-week">
-              <h3 className="training-day-head">{day.label}</h3>
-              {day.items.length ? null : <p className="training-day-rest">{day.date === today ? "Nothing yet" : "Rest"}</p>}
-              {day.items.map((item) => (
-                <article key={item.key} className="card training-workout">
-                  <div className="training-workout-head">
-                    <div>
-                      <strong>{item.title}</strong>
-                      {item.detail ? <span className="training-workout-detail">{item.detail}</span> : null}
-                      {item.status ? <span className="training-workout-detail">{item.status}</span> : null}
-                    </div>
-                  </div>
-                  {item.zones ? <WorkoutZones minutes={item.zones} /> : null}
-                  {item.chips.length || item.labelPrompt ? (
-                    <div className="training-workout-foot">
-                      <div className="training-chips">
-                        {item.chips.map((chip) => (
-                          <span key={chip}>{chip}</span>
-                        ))}
+        <ol>
+          {lookback.map((day) => (
+            <li key={day.date} id={`day-${day.date}`}>
+              <span className="training-lookback-day">{day.label}</span>
+              <div>
+                {day.items.length ? (
+                  day.items.map((item) => (
+                    <details key={item.key} className="training-lookback-item">
+                      <summary>
+                        <strong>
+                          {item.title}
+                          {item.labelPrompt ? <em className="training-lookback-tag">Label</em> : null}
+                        </strong>
+                        {item.chips.length ? <span>{item.chips.join(" · ")}</span> : null}
+                        {item.status ? <span>{item.status}</span> : null}
+                      </summary>
+                      <div className="training-lookback-body">
+                        {item.detail ? <span className="training-workout-detail">{item.detail}</span> : null}
+                        {item.zones ? <WorkoutZones minutes={item.zones} /> : null}
+                        {item.labelPrompt && item.fitbitId ? (
+                          <div className="training-workout-foot">
+                            <LabelButton prompt={item.labelPrompt} workoutId={item.fitbitId} date={item.date} defaultType={item.workoutType} />
+                          </div>
+                        ) : null}
+                        {item.fitbitId ? <MergeControls id={item.fitbitId} mergedCount={item.mergedCount} overlaps={item.overlaps} /> : null}
+                        {item.session ? (
+                          <WorkoutEditor
+                            id={item.session.id}
+                            name={item.session.name}
+                            workoutType={item.session.workoutType}
+                            muscleGroups={item.session.muscleGroups}
+                            muscleIntensity={item.session.muscleIntensity}
+                            rpe={item.session.rpe}
+                          />
+                        ) : null}
                       </div>
-                      {item.labelPrompt && item.fitbitId ? <LabelButton prompt={item.labelPrompt} workoutId={item.fitbitId} date={item.date} defaultType={item.workoutType} /> : null}
-                    </div>
-                  ) : null}
-                  {item.fitbitId ? (
-                    <MergeControls id={item.fitbitId} mergedCount={item.mergedCount} overlaps={item.overlaps} />
-                  ) : null}
-                  {item.session ? (
-                    <WorkoutEditor
-                      id={item.session.id}
-                      name={item.session.name}
-                      workoutType={item.session.workoutType}
-                      muscleGroups={item.session.muscleGroups}
-                      muscleIntensity={item.session.muscleIntensity}
-                      rpe={item.session.rpe}
-                    />
-                  ) : null}
-                </article>
-              ))}
-            </div>
-          ))
-        ) : (
-          <p className="footnote">
-            No {typeFilter ? `${WORKOUT_TYPE_LABELS[typeFilter].toLowerCase()} ` : ""}workouts {weeksAgo === 0 ? "this week" : "that week"}.
-          </p>
-        )}
-        {ignoredWorkouts.length ? (
+                    </details>
+                  ))
+                ) : (
+                  <p className="rest">{day.date === today ? "Nothing yet" : "Rest"}</p>
+                )}
+              </div>
+            </li>
+          ))}
+        </ol>
+        {earlierHref ? (
+          <a className="training-lookback-more" href={earlierHref}>
+            Earlier
+          </a>
+        ) : null}
+      </section>
+
+      {ignoredWorkouts.length ? (
+        <section className="group" aria-label="Ignored watch workouts">
           <p className="footnote training-ignored-toggle">
             {ignoredWorkouts.length} ignored watch workout{ignoredWorkouts.length === 1 ? "" : "s"} ·{" "}
             <a href={showIgnored ? "/training" : "/training?ignored=1#ignored"}>{showIgnored ? "Hide" : "Show"}</a>
           </p>
-        ) : null}
-        {showIgnored && ignoredWorkouts.length ? (
-          <ul className="card training-unlabeled" id="ignored">
-            {ignoredWorkouts.map((workout) => (
-              <li key={workout.id}>
-                <span>
-                  <strong>{workout.name}</strong>
-                  <small>
-                    {formatDay(workout.day)} · {formatClock(workout.startedAt)}
-                    {workout.activeMinutes != null ? ` · ${workout.activeMinutes} min` : ""}
-                  </small>
-                </span>
-                <RestoreButton workoutId={workout.id} date={workout.day} />
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </section>
+          {showIgnored ? (
+            <ul className="card training-unlabeled" id="ignored">
+              {ignoredWorkouts.map((workout) => (
+                <li key={workout.id}>
+                  <span>
+                    <strong>{workout.name}</strong>
+                    <small>
+                      {formatDay(workout.day)} · {formatClock(workout.startedAt)}
+                      {workout.activeMinutes != null ? ` · ${workout.activeMinutes} min` : ""}
+                    </small>
+                  </span>
+                  <RestoreButton workoutId={workout.id} date={workout.day} />
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
+      ) : null}
     </AppShell>
   );
 }
