@@ -293,7 +293,7 @@ export function SleepDetails({ state }: { state: BodyState }) {
           ["Sleep score", sleep.score == null ? "–" : `${sleep.score}%`],
           ["Need", sleep.need ? needLine(sleep.need) : "–"],
           ["Duration vs need", sleep.pct == null ? "–" : `${sleep.pct}%`],
-          ["Consistency, 7 nights", sleep.consistency7n == null ? "–" : `${sleep.consistency7n}%`]
+          ["Consistency, 14 nights", sleep.consistency14n == null ? "–" : `${sleep.consistency14n}%`]
         ]}
       />
     </>

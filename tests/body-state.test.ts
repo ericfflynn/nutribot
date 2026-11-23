@@ -289,19 +289,27 @@ test("the stored hash ignores meta, so a rebuild that changes nothing isn't save
   assert.throws(() => upgradeState({}, 0), /No upgrade from body state v0/);
 });
 
-test("sleep consistency is a 7-night regularity index: identical nights 100, needs 5 nights", () => {
+test("sleep consistency is a 14-night regularity index: identical nights 100, needs 10 nights", () => {
   const regular = buildBodyState(sources(), TODAY).physical.sleep;
-  assert.equal(regular.consistency7n, 100);
+  assert.equal(regular.consistency14n, 100);
   assert.equal(regular.score, 100);
   assert.equal(regular.usualBedtime, "23:00");
   assert.equal(regular.usualWakeTime, "07:00");
   assert.equal(regular.nights7.at(-1)?.bedtime, "23:00");
   const night = (bed: string, wake: string) => ({ bedtime: `2026-11-01T${bed}:00`, wakeTime: `2026-11-02T${wake}:00` });
-  // Alternating 11 pm and 1 am, 8 hours each: 2 of 24 hours differ on each
-  // side, so 20 of 24 match: 200 × 20/24 − 100 = 67.
-  const alternating = Array.from({ length: 7 }, (_, index) => (index % 2 ? night("01:00", "09:00") : night("23:00", "07:00")));
-  assert.equal(sleepConsistency(alternating), 67);
-  assert.equal(sleepConsistency([night("23:00", "07:00"), null, night("23:00", "07:00"), null, night("23:00", "07:00")]), null);
+  // Alternating 11 pm and 1 am, 8 hours each: 2 hours differ at each end, 30
+  // minutes of each forgiven, so 21 of 24 match: 200 × 21/24 − 100 = 75.
+  const alternating = Array.from({ length: 14 }, (_, index) => (index % 2 ? night("01:00", "09:00") : night("23:00", "07:00")));
+  assert.equal(sleepConsistency(alternating), 75);
+  // Shifts within 30 minutes don't count.
+  const close = Array.from({ length: 14 }, (_, index) => (index % 2 ? night("23:25", "07:25") : night("23:00", "07:00")));
+  assert.equal(sleepConsistency(close), 100);
+  // One late night 3 hours off in the middle of 14: two pairs of 13 at 58
+  // (2.5 hours counted at each end), the rest 100.
+  const regularNights = Array.from({ length: 14 }, () => night("23:00", "07:00"));
+  regularNights[7] = night("02:00", "10:00");
+  assert.equal(sleepConsistency(regularNights), 94);
+  assert.equal(sleepConsistency([...Array.from({ length: 9 }, () => night("23:00", "07:00")), null, null, null, null, null]), null);
 });
 
 test("sleep need: 8 h, plus hard-day strain, a quarter of the debt and sick days, capped", () => {
@@ -315,7 +323,7 @@ test("sleep need: 8 h, plus hard-day strain, a quarter of the debt and sick days
   assert.equal(sleepDebt([540, 420, 420]), 120);
 });
 
-test("a short night after a hard day scores lower; an irregular week keeps sleep from good", () => {
+test("a short night after a hard day scores lower; irregular weeks keep sleep from good", () => {
   const hardDay = { [shift(TODAY, -1)]: { zoneMinutesCardio: 60, zoneMinutesPeak: 20 }, [TODAY]: { sleepMinutes: 450 } };
   const easy = buildBodyState(sources({ health: health({ [TODAY]: { sleepMinutes: 450 } }) }), TODAY).physical.sleep;
   const hard = buildBodyState(sources({ health: health(hardDay) }), TODAY).physical.sleep;
@@ -323,7 +331,7 @@ test("a short night after a hard day scores lower; an irregular week keeps sleep
   assert.ok(hard.score! < easy.score!);
   const late = (days: number) => ({ [shift(TODAY, days)]: { bedtime: `${shift(TODAY, days - 1)}T01:30:00`, wakeTime: `${shift(TODAY, days)}T09:30:00` } });
   const state = buildBodyState(sources({ health: health({ ...late(-5), ...late(-3), ...late(-1) }) }), TODAY);
-  assert.ok(state.physical.sleep.consistency7n! < 80);
+  assert.ok(state.physical.sleep.consistency14n! < 86);
   assert.equal(state.physical.sleep.status, "ok");
   assert.match(state.physical.sleep.headline, /irregular/);
 });

@@ -2,6 +2,18 @@
 
 Product and design decisions, newest first. One entry per decision: what was decided, why, and what it replaced or ruled out. Add an entry whenever the owner settles something that future work should follow; link the doc that holds the detail. Data shapes live in their specs ([body-state.md](body-state.md) keeps the body state's schema versions); this log says why they are what they are.
 
+## 2026-11-20
+
+### A habit's past days keep the rule they had
+- **Decided:** changing a habit's goal, bands, cutoff, days or direction starts a new version of its rule that day (`habit_rules`); each day is colored, counted in streaks and read by the chat and body state by the version in force then (`habitOn` in `lib/habits.ts`). Logs before the first version use the first.
+- **Why:** the owner changed Gaming from an hour to none and saw old 40-minute days turn from green to missed (feedback b2912b55). A day's color should say how it went against what the owner was aiming for then.
+- **Instead of:** one rule on the habit row judging all history; a "from" date picked on each edit.
+
+### Sleep consistency over 14 nights, with a 30-minute grace
+- **Decided:** consistency averages the Sleep Regularity Index over 14 nights instead of 7, and bed or wake times within 30 minutes of the night before count as the same. Sleep isn't "irregular" (kept from good) until consistency is under 86, about three late nights in two weeks. Detail and numbers in [scores.md](scores.md#sleep).
+- **Why:** the owner found it too harsh (feedback 838baccf): one late night held it at 75 through four regular nights. Their view is that a night out shouldn't count against normal sleep; over 14 nights it costs about 6 points.
+- **Instead of:** the 7-night published index; weighting recent nights more (the owner preferred a longer window); 21 nights (too flat to say anything); a median of pairs (hides a pattern of late nights entirely).
+
 ## 2026-11-13
 
 ### Weight from the smart scale, on Today under Nutrition

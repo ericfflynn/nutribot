@@ -167,6 +167,19 @@ export async function withDraft<T>(
     if (draft.saved_id || draft.discarded) {
       throw new Error("This draft was already saved or discarded.");
     }
+    // A revision keeps the draft's id in a later reply. A view that missed it
+    // (an app left open) would otherwise save or discard the old version.
+    const { rowCount } = await client.query(
+      `
+      select 1 from public.chat_messages
+      where user_name = $1 and role = 'assistant' and id > $2
+        and conversation_id = (select conversation_id from public.chat_messages where id = $2)
+        and drafts @> jsonb_build_array(jsonb_build_object('id', $3::text))
+      limit 1
+      `,
+      [userName, messageId, draftId]
+    );
+    if (rowCount) throw new Error("This draft was revised since. Close and reopen the chat to see the latest.");
     const { draft: updated, result } = await update(draft, client);
     await client.query(`update public.chat_messages set drafts = $3::jsonb where id = $1 and user_name = $2`, [
       messageId,

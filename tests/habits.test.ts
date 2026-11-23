@@ -1,7 +1,7 @@
 // Editing habit entries and habit frequency (lib/habits.ts).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { bandsProblem, describeGoal, habitOutcome, habitStreaks, normalizeDays, planHabitLogEdit, summarizeHabitDay, type Habit, type HabitLog } from "../lib/habits";
+import { bandsProblem, describeGoal, habitOn, habitOutcome, habitStreaks, normalizeDays, planHabitLogEdit, summarizeHabitDay, type Habit, type HabitLog } from "../lib/habits";
 
 const reading: Habit = {
   id: "h-read",
@@ -113,4 +113,27 @@ test("streaks count goal-met days in a row; unlogged days are skipped, misses br
   ];
   assert.deepEqual(habitStreaks(none, logs, "2026-11-01", "2026-11-08"), { current: 2, best: 3 });
   assert.deepEqual(habitStreaks(none, [], "2026-11-01", "2026-11-08"), { current: 0, best: 0 });
+});
+
+test("a changed goal judges days from the change on; older days keep their rule", () => {
+  const gaming: Habit = {
+    ...reading,
+    id: "h-gaming",
+    name: "Gaming",
+    direction: "limit",
+    goal: 0,
+    days: null,
+    rules: [
+      { from: "2026-10-31", direction: "limit", goal: 60, bands: null, cutoff: null, cutoffWeeknights: false, days: null },
+      { from: "2026-11-19", direction: "limit", goal: 0, bands: null, cutoff: null, cutoffWeeknights: false, days: null }
+    ]
+  };
+  const before = "2026-11-12";
+  const after = "2026-11-20";
+  assert.equal(habitOutcome(summarizeHabitDay([gaming], before, [log("g1", gaming, before, 40)])[0]), "met");
+  assert.notEqual(habitOutcome(summarizeHabitDay([gaming], after, [log("g2", gaming, after, 40)])[0]), "met");
+  // A log dated before the first version uses the first version.
+  assert.equal(habitOn(gaming, "2026-10-01").goal, 60);
+  // Without versions loaded, the current fields judge.
+  assert.equal(habitOn({ ...gaming, rules: undefined }, before).goal, 0);
 });

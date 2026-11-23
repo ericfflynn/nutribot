@@ -66,12 +66,23 @@ export async function runClaude({
     }
   });
 
+  // The result message only carries the last turn's text. Claude often talks,
+  // calls a tool, then adds a closing line ("Rest up tonight."), so keep the
+  // text from every turn or the reply loses everything said before the tool.
+  const said: string[] = [];
   for await (const message of run) {
+    if (message.type === "assistant") {
+      for (const block of message.message.content) {
+        if (block.type === "text" && block.text.trim()) said.push(block.text.trim());
+      }
+      continue;
+    }
     if (message.type !== "result") continue;
     if (message.subtype !== "success") {
       throw new BrainError(`Claude run failed: ${message.subtype}`);
     }
-    return { text: message.result, model, durationMs: Date.now() - started, turns: message.num_turns };
+    const text = said.length ? said.join("\n\n") : message.result;
+    return { text, model, durationMs: Date.now() - started, turns: message.num_turns };
   }
   throw new BrainError("Claude run ended without a result.");
 }
