@@ -63,7 +63,7 @@ function sources(overrides: Partial<BodySources> = {}): BodySources {
     habitLogs: [],
     meals: [],
     water: {},
-    goals: { calories: 2200, proteinPct: 30, carbsPct: 40, fatPct: 30, waterOz: 100, caffeineLimitMg: 400, caffeineCutoff: "14:00", addedSugarLimitG: 36 },
+    goals: { calories: 2200, proteinPct: 30, carbsPct: 40, fatPct: 30, waterOz: 100, caffeineLimitMg: 400, caffeineCutoff: "14:00", addedSugarLimitG: 36, zoneModerateMin: 150, zoneVigorousMin: 75, zonePeakMin: 10 },
     lastSync: null,
     ...overrides
   };
@@ -334,4 +334,11 @@ test("a short night after a hard day scores lower; irregular weeks keep sleep fr
   assert.ok(state.physical.sleep.consistency14n! < 86);
   assert.equal(state.physical.sleep.status, "ok");
   assert.match(state.physical.sleep.headline, /irregular/);
+});
+
+test("zone goals come from the owner's saved goals", () => {
+  const base = sources();
+  const state = buildBodyState({ ...base, goals: { ...base.goals, zoneModerateMin: 200, zoneVigorousMin: 40, zonePeakMin: 0 } }, TODAY);
+  const goals = Object.fromEntries((state.physical.training.zones ?? []).map((zone) => [zone.zone, zone.goal]));
+  assert.deepEqual(goals, { light: null, moderate: 200, vigorous: 40, peak: 0 });
 });

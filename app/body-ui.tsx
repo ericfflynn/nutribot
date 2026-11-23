@@ -10,7 +10,7 @@ import type { BodyState, Status, Vital } from "@/lib/body-state/types";
 import { recoveryBand } from "@/lib/health/scores";
 import { fahrenheitDelta } from "@/lib/health/units";
 import type { WeekRow } from "@/lib/training-week";
-import { ZONES, ZONE_GOALS, zonePace, type ZoneBounds, type ZoneMinutes } from "@/lib/health/zones";
+import { ZONES, zonePace, type ZoneBounds, type ZoneGoals, type ZoneMinutes } from "@/lib/health/zones";
 import { callOf } from "@/lib/body-state/brief";
 import { workLine, type DailyCall } from "@/lib/body-state/call";
 import { INTENSITIES, INTENSITY_RULES, type Intensity } from "@/lib/workouts";
@@ -320,7 +320,7 @@ export function StrainDetails({
   call?: DailyCall | null;
   // Workout minutes per zone this calendar week through the day, and how many
   // of the week's days are over (for the pace).
-  zones: { minutes: ZoneMinutes; bounds: ZoneBounds | null; daysDone: number };
+  zones: { minutes: ZoneMinutes; bounds: ZoneBounds | null; daysDone: number; goals: ZoneGoals };
 }) {
   const pick = state.physical.training.suggested;
   return (
@@ -363,7 +363,7 @@ export function StrainDetails({
       </div>
       <div className="zone-tiles" aria-label="Workout minutes by heart-rate zone this week">
         {ZONES.map((zone) => {
-          const goal = ZONE_GOALS[zone.key];
+          const goal = zones.goals[zone.key];
           const minutes = zones.minutes[zone.key];
           const pace = goal == null ? null : zonePace(minutes, goal, zones.daysDone);
           return (

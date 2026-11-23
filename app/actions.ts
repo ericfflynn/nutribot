@@ -7,7 +7,7 @@ import { after } from "next/server";
 import { clearSession, createSession, getSessionUser } from "@/lib/auth";
 import { addDays, isValidLocalDate, todayLocalDate } from "@/lib/dates";
 import { refreshBodyStates } from "@/lib/body-state/store";
-import { parseGoals } from "@/lib/goals";
+import { MAX_ZONE_GOAL, parseGoals } from "@/lib/goals";
 import { parseMacroObject } from "@/lib/macros";
 import { syncRecentHealth } from "@/lib/health/recent-sync";
 import type { Draft } from "@/lib/brain";
@@ -69,6 +69,7 @@ import {
   getPool,
   saveMacroEntry,
   saveUserGoals,
+  saveZoneGoals,
   updateMacroEntry,
   type StoredMacros
 } from "@/lib/supabase";
@@ -244,6 +245,28 @@ export async function saveGoalsAction(formData: FormData) {
   redirect(todayPath(redirectDate));
 }
 
+// Training's zone card: the weekly heart-rate zone goals.
+export async function saveZoneGoalsAction(formData: FormData): Promise<{ ok: true } | { ok: false; error: string }> {
+  const user = await getSessionUser();
+  const db = getPool();
+  if (!user) return { ok: false, error: "Log in again." };
+  if (!db) return { ok: false, error: "DATABASE_URL is required." };
+  const values = { zoneModerateMin: formData.get("moderate"), zoneVigorousMin: formData.get("vigorous"), zonePeakMin: formData.get("peak") };
+  const valid = Object.values(values).every((value) => {
+    const number = Number(value);
+    return value !== null && value !== "" && Number.isFinite(number) && number >= 0 && number <= MAX_ZONE_GOAL;
+  });
+  if (!valid) return { ok: false, error: `Each goal is 0 to ${MAX_ZONE_GOAL} minutes a week.` };
+  await saveZoneGoals(db, user.name, {
+    zoneModerateMin: Number(values.zoneModerateMin),
+    zoneVigorousMin: Number(values.zoneVigorousMin),
+    zonePeakMin: Number(values.zonePeakMin)
+  });
+  revalidatePath("/training");
+  revalidatePath("/");
+  return { ok: true };
+}
+
 const WATER_AMOUNTS = new Set([8, 16, 24]);
 
 // Quick-add buttons on Today. The day comes from the page so past days can be filled in.
@@ -386,6 +409,11 @@ export async function saveDraftAction(
       } else if (stored.type === "feedback") {
         savedId = await saveFeedback(client, user.name, stored, stored.feedback_id);
         saved = { ...stored, saved_id: savedId };
+      } else if (stored.type === "zone_goals") {
+        await saveZoneGoals(client, user.name, { zoneModerateMin: stored.moderate, zoneVigorousMin: stored.vigorous, zonePeakMin: stored.peak });
+        savedId = "zone_goals";
+        saved = { ...stored, saved_id: savedId };
+        revalidatePath("/training");
       } else if (stored.type === "ignore") {
         await setWorkoutIgnored(client, user.name, stored.workout_id, stored.ignored);
         savedId = stored.workout_id;

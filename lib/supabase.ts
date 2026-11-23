@@ -1,6 +1,6 @@
 // Database access: Supabase Postgres through pg and DATABASE_URL.
 import { Pool, type PoolConfig } from "pg";
-import { fallbackGoals, parseGoals, type Goals } from "./goals";
+import { fallbackGoals, parseGoals, parseZoneGoals, type Goals } from "./goals";
 import type { ParsedMacros } from "./macros";
 
 export type MacroFoodItem = {
@@ -381,7 +381,10 @@ export async function getUserGoals(userName: string, db: Queryable = requirePool
       water_oz::float8,
       caffeine_limit_mg::float8,
       to_char(caffeine_cutoff, 'HH24:MI') as caffeine_cutoff,
-      added_sugar_limit_g::float8
+      added_sugar_limit_g::float8,
+      zone_moderate_min::float8,
+      zone_vigorous_min::float8,
+      zone_peak_min::float8
     from public.user_macro_goals
     where user_name = $1
     limit 1
@@ -400,8 +403,34 @@ export async function getUserGoals(userName: string, db: Queryable = requirePool
     waterOz: rows[0].water_oz,
     caffeineLimitMg: rows[0].caffeine_limit_mg,
     caffeineCutoff: rows[0].caffeine_cutoff,
-    addedSugarLimitG: rows[0].added_sugar_limit_g
+    addedSugarLimitG: rows[0].added_sugar_limit_g,
+    zoneModerateMin: rows[0].zone_moderate_min,
+    zoneVigorousMin: rows[0].zone_vigorous_min,
+    zonePeakMin: rows[0].zone_peak_min
   });
+}
+
+// Saves the weekly zone goals alone; the daily targets are untouched (a new
+// row starts from the defaults). saveUserGoals likewise leaves these alone.
+export async function saveZoneGoals(
+  db: Queryable,
+  userName: string,
+  input: Pick<Goals, "zoneModerateMin" | "zoneVigorousMin" | "zonePeakMin">
+) {
+  const zones = parseZoneGoals(input);
+  await db.query(
+    `
+    insert into public.user_macro_goals (user_name, calories, protein_pct, carbs_pct, fat_pct, zone_moderate_min, zone_vigorous_min, zone_peak_min, updated_at)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, now())
+    on conflict (user_name) do update set
+      zone_moderate_min = excluded.zone_moderate_min,
+      zone_vigorous_min = excluded.zone_vigorous_min,
+      zone_peak_min = excluded.zone_peak_min,
+      updated_at = now()
+    `,
+    [userName, fallbackGoals.calories, fallbackGoals.proteinPct, fallbackGoals.carbsPct, fallbackGoals.fatPct, zones.zoneModerateMin, zones.zoneVigorousMin, zones.zonePeakMin]
+  );
+  return zones;
 }
 
 export async function saveUserGoals(userName: string, goals: Goals) {

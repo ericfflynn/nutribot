@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { discardDraftAction, newChatAction, saveDraftAction, undoMemoryAction } from "./actions";
 import { ChatText } from "./chat-text";
 import { TagChip } from "./journal-ui";
-import type { Draft, IgnoreDraft, MealDraft, WorkoutDraft } from "@/lib/brain";
+import type { Draft, IgnoreDraft, MealDraft, WorkoutDraft, ZoneGoalsDraft } from "@/lib/brain";
 import type { HabitDraft, HabitsDraft, JournalDraft } from "@/lib/brain-checkin";
 import type { FeedbackDraft } from "@/lib/feedback";
 import type { MemoryNote } from "@/lib/memories";
@@ -381,6 +381,23 @@ function IgnoreCard({ draft, ...handlers }: { draft: IgnoreDraft } & DraftHandle
   );
 }
 
+function ZoneGoalsCard({ draft, ...handlers }: { draft: ZoneGoalsDraft } & DraftHandlers) {
+  const rows = (["peak", "vigorous", "moderate"] as const).map((key) => ({ key, from: draft.previous[key], to: draft[key] }));
+  return (
+    <CheckinCard draft={draft} kind="weekly zone goals" {...handlers}>
+      <ul className="draft-items">
+        {rows.map((row) => (
+          <li key={row.key}>
+            <span>{row.key[0].toUpperCase() + row.key.slice(1)}</span>
+            <span>{row.from === row.to ? `${row.to} min` : `${row.from} → ${row.to} min`}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="draft-edit-note">Workout minutes a week, Monday to Sunday</p>
+    </CheckinCard>
+  );
+}
+
 function FeedbackCard({ draft, ...handlers }: { draft: FeedbackDraft } & DraftHandlers) {
   return (
     <CheckinCard
@@ -692,6 +709,8 @@ export function ChatThread({
                   return <FeedbackCard key={draft.id} draft={draft} {...handlers} />;
                 case "ignore":
                   return <IgnoreCard key={draft.id} draft={draft} {...handlers} />;
+                case "zone_goals":
+                  return <ZoneGoalsCard key={draft.id} draft={draft} {...handlers} />;
                 case "illness":
                   return <IllnessCard key={draft.id} draft={draft} {...handlers} />;
                 case "ailment":
