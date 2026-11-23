@@ -321,7 +321,7 @@ app/
   today-checkin.tsx       morning brief and evening check-in card (swipe to dismiss)
   score-summary.tsx       Sleep / Recovery / Strain with their 7-day drill-downs
   nutrition-toggle.tsx    Nutrition card that opens its week
-  training/page.tsx       Training: body map, Next up, week grid, recent workouts
+  training/page.tsx       Training: split tiles, zones and body map, last 7 days, workouts
   body-map.tsx            front and back muscle map shaded by soreness
   habits/page.tsx         Habits: habit grid, check-in, journal, reminders
   chat/page.tsx           Chat tab

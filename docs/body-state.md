@@ -542,7 +542,7 @@ Changed the same night at the owner's request ([decisions.md](decisions.md)): To
 The plan below is the full design.
 
 - **Home, top card:** the domain heads as one line ("Physical: low · Mental: ok · Lifestyle: good"), then the coach note (the call's `headline` and `note`), the reasons as short rows, a 7-day trend of whatever is driving the call (resting HR while sick, recovery on a low streak), and the quick buttons. It replaces the illness card.
-- **Training, Next up:** the same call, with the muscle detail (out, fresh, the body map) underneath. `suggestNext` becomes the rule-based input to the call, not a second opinion.
+- **Training, Next up** (removed November 22, 2026; the call is on Today's check-in): the same call, with the muscle detail (out, fresh, the body map) underneath. `suggestNext` becomes the rule-based input to the call, not a second opinion.
 - **Chat:** the chat knows the model (next section).
 
 ## The chat and the body state

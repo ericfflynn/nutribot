@@ -3004,7 +3004,6 @@ button.fab {
   background: #b81d14;
 }
 
-
 .coverage-legend {
   display: flex;
   gap: 14px;
@@ -3069,21 +3068,8 @@ button.fab {
   gap: 10px;
 }
 
-.training-workout-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
 
-.training-workout-head > div:first-child {
-  display: grid;
-  gap: 2px;
-}
 
-.training-workout-head strong {
-  font-size: 17px;
-}
 
 .training-workout-when,
 .training-workout-detail {
@@ -3118,20 +3104,7 @@ button.fab {
   gap: 10px;
 }
 
-.training-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
 
-.training-chips span {
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: #fdebe3;
-  color: #a8441a;
-  font-size: 12px;
-  font-weight: 600;
-}
 
 .workout-edit-toggle {
   justify-self: start;
@@ -3336,7 +3309,6 @@ button.fab {
   display: grid;
   gap: 12px;
 }
-
 
 .workout-editor-error {
   margin: 0;
@@ -4097,11 +4069,6 @@ details[open] .journal-preview {
   font-size: 13px;
 }
 
-.training-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
 
 .training-chip {
   padding: 5px 10px;
@@ -4332,10 +4299,6 @@ details[open] .journal-preview {
   font-weight: 600;
 }
 
-.training-recent-week {
-  display: grid;
-  gap: 10px;
-}
 
 .training-week-head {
   margin: 6px 4px 0;
@@ -4425,8 +4388,6 @@ details[open] .journal-preview {
   flex-wrap: wrap;
 }
 
-/* Training: this week's split under Next up, a tile per kind with a target.
-   The count turns red while it's short. */
 /* Training's heart-rate zones: warm ramp, darker going up. One line per
    zone; tapping shows its bpm range (app/zone-ladder.tsx). */
 :root {
@@ -4572,192 +4533,37 @@ details[open] .journal-preview {
   margin-left: auto;
 }
 
-/* Training's Next up (app/next-up.tsx) */
-.next-up {
-  display: grid;
-  gap: 12px;
-}
-
-.next-up-label {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.next-up-headline {
-  margin: 0;
-  font-size: 24px;
-  font-weight: 700;
-  line-height: 1.15;
-}
-
-.next-up-summary {
-  margin: 0;
-  color: var(--muted);
-  font-size: 14px;
-}
-
-.next-up-flag {
-  margin: 0;
-  color: var(--warn);
-  font-size: 14px;
-}
-
-.next-up-tiers {
-  display: grid;
-  gap: 8px;
-}
-
-.next-up-tier {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-
-.next-up-tier-label {
-  width: 58px;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.next-up-tier-label.muted {
-  color: var(--muted);
-}
-
-.next-up-pill {
-  padding: 5px 10px;
-  border-radius: 999px;
-  font-size: 14px;
-}
-
-.next-up-pill.hard {
-  background: var(--ink);
-  color: var(--surface);
-}
-
-.next-up-pill.medium {
-  background: var(--line);
-}
-
-.next-up-pill.light,
-.next-up-pill.finish {
-  box-shadow: inset 0 0 0 1px #d1d1d6;
-}
-
-.next-up-why {
-  border-top: 1px solid var(--line);
-}
-
-.next-up-why summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 44px;
-  color: var(--ink);
-  font-size: 15px;
-  font-weight: 600;
-  list-style: none;
-  cursor: pointer;
-}
-
-.next-up-why summary::-webkit-details-marker {
-  display: none;
-}
-
-.next-up-chevron {
-  color: var(--muted);
-  transition: transform 0.2s ease;
-}
-
-.next-up-why[open] .next-up-chevron {
-  transform: rotate(90deg);
-}
-
-.next-up-why-body {
-  display: grid;
-  gap: 10px;
-  padding-bottom: 4px;
-}
-
-.next-up-why-body p {
-  margin: 0;
-  font-size: 15px;
-  line-height: 1.4;
-}
-
-.next-up-why-ailment strong {
-  font-weight: 600;
-}
-
-.next-up-why-body ul {
-  display: grid;
-  gap: 3px;
-  margin: 0;
-  padding-left: 18px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.next-up-split {
-  display: grid;
+/* Training's split tiles: this week's sessions against each target, top of
+   the tab. The count turns red while it's short. */
+.training-split {
   grid-auto-columns: minmax(0, 1fr);
   grid-auto-flow: column;
   gap: 8px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
 }
 
-.next-up-split div {
+.training-split div {
   display: grid;
   justify-items: center;
   gap: 2px;
 }
 
-.next-up-split strong {
+.training-split strong {
   font-size: 20px;
   font-variant-numeric: tabular-nums;
 }
 
-.next-up-split strong.short {
+.training-split strong.short {
   color: var(--bad);
 }
 
-.next-up-split span {
+.training-split span {
   color: var(--muted);
   font-size: 12px;
 }
 
-/* Training's Workouts list: one list by day, rest days included */
-.training-day-head {
-  margin: 6px 4px 0;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
 
-.training-day-rest {
-  margin: 0 4px;
-  color: var(--muted);
-  font-size: 15px;
-}
 
-.training-workouts-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  margin: 8px 4px 0;
-}
 
-.training-workouts-head span {
-  color: var(--muted);
-  font-size: 13px;
-}
 
 .split-label {
   margin: 0 0 -4px;
@@ -5373,71 +5179,6 @@ details[open] .journal-preview {
   font-size: 12px;
 }
 
-/* Next up's rest of the week: a row per day left, from Claude's call */
-.next-up-week {
-  display: grid;
-  gap: 4px;
-}
-
-.next-up-week div {
-  display: grid;
-  grid-template-columns: 40px minmax(0, 1fr);
-  gap: 8px;
-  font-size: 14px;
-}
-
-.next-up-week div span:first-child {
-  color: var(--muted);
-  font-weight: 600;
-}
-
-/* Next up's day pager: arrows either side of the label */
-.next-up-nav {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin: -10px -12px -4px;
-}
-
-.next-up-arrow {
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--accent);
-  cursor: pointer;
-}
-
-.next-up-arrow:disabled {
-  color: var(--line);
-  cursor: default;
-}
-
-.next-up-label.past,
-.next-up-label.planned {
-  color: var(--ink);
-}
-
-.next-up-headline.planned {
-  font-size: 20px;
-  font-weight: 600;
-}
-
-.next-up-done {
-  margin: 0;
-  font-size: 15px;
-}
-
-.next-up-done span {
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 600;
-  margin-right: 6px;
-}
-
 /* Today's weight under Nutrition (app/weight-row.tsx) */
 .weight-row {
   display: grid;
@@ -5558,17 +5299,191 @@ details[open] .journal-preview {
   margin: 0;
 }
 
-/* The workouts list's week: title and range on the left, paging on the right */
-.training-workouts-head h2 {
+
+
+
+/* Swipe gallery: cards that page sideways one at a time (Training's zones
+   and body map). The track bleeds to the screen edges so a card's
+   neighbor peeks in; the track is as tall as the card showing. */
+.swipe-gallery {
+  display: grid;
+  gap: 8px;
+}
+
+.swipe-gallery-tabs {
+  display: flex;
+  gap: 18px;
+  margin: 0 4px;
+}
+
+.swipe-gallery-tabs button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.swipe-gallery-tabs button[aria-current="true"] {
+  color: var(--ink);
+}
+
+.swipe-gallery-track {
+  display: flex;
+  align-items: flex-start;
+  margin: 0 -16px;
+  overflow-x: auto;
+  /* Only sideways: overflow-x alone makes the track scroll up and down too. */
+  overflow-y: hidden;
+  touch-action: pan-x pan-y;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+
+.swipe-gallery-track::-webkit-scrollbar {
+  display: none;
+}
+
+.swipe-gallery-slide {
+  display: grid;
+  flex: 0 0 100%;
+  min-width: 0;
+  padding: 0 16px;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+.swipe-gallery-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+}
+
+.swipe-gallery-dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--line);
+}
+
+.swipe-gallery-dots i.active {
+  background: var(--ink);
+}
+
+/* Missing this week, its own card under the gallery */
+.training-missing-block {
+  gap: 6px;
+}
+
+.training-missing-block .card-title {
   margin: 0;
 }
 
-.training-workouts-head .week-nav {
-  display: flex;
-  gap: 16px;
+.training-missing-block .footnote {
+  margin: 0;
+}
+
+/* Last 7 days: one row per day, newest first */
+.training-lookback ol {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.training-lookback li {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 10px;
+  padding: 9px 0;
+  border-top: 0.5px solid var(--line);
+}
+
+.training-lookback li:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.training-lookback-day {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.training-lookback li > div {
+  display: grid;
+  gap: 6px;
+}
+
+.training-lookback p {
+  display: grid;
+  gap: 2px;
+  margin: 0;
   font-size: 15px;
 }
 
-.training-workouts-head .week-nav a {
+.training-lookback p span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.training-lookback p.rest {
+  color: var(--muted);
+}
+
+/* The timeline's workouts: a row that opens to its card */
+.training-lookback-item summary {
+  display: grid;
+  gap: 2px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.training-lookback-item summary::-webkit-details-marker {
+  display: none;
+}
+
+.training-lookback-item summary strong {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+}
+
+.training-lookback-item summary span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.training-lookback-tag {
+  border-radius: 6px;
+  background: var(--bg);
   color: var(--accent);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 600;
+  padding: 2px 6px;
+}
+
+.training-lookback-body {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--bg);
+}
+
+.training-lookback-more {
+  justify-self: center;
+  color: var(--accent);
+  font-size: 15px;
+}
+
+.training-lookback li {
+  scroll-margin-top: 80px;
 }
