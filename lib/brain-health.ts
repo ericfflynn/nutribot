@@ -9,7 +9,8 @@ import { dayStrain, recoveryScore, sleepScoresFor, workoutStrain, type RecoveryS
 import { fahrenheitDelta } from "./health/units";
 import { listSickDates } from "./body-state/load";
 import { getPool } from "./supabase";
-import { ZONE_GOALS, describeZoneBounds, getZoneBounds, zoneMinutes } from "./health/zones";
+import { describeZoneBounds, getZoneBounds, zoneGoalsOf, zoneMinutes } from "./health/zones";
+import { getUserGoals } from "./supabase";
 
 export const HEALTH_TOOLS = ["get_health"];
 
@@ -113,13 +114,15 @@ export function healthTools({ userName, today }: { userName: string; today: stri
         }
         // Recovery needs the 30 days before each scored day as its baseline.
         // Sleep need reads the day before's strain and sick days.
-        const [allDays, workouts, sickDates, bounds, weighIns] = await Promise.all([
+        const [allDays, workouts, sickDates, bounds, weighIns, goals] = await Promise.all([
           listHealthDays(userName, addDays(args.start_date, -31), end),
           listHealthWorkouts(userName, addDays(args.start_date, -1), end),
           listSickDates(getPool()!, userName, addDays(args.start_date, -1), end),
           getZoneBounds(userName, end),
-          listWeighIns(userName, addDays(end, -365), end)
+          listWeighIns(userName, addDays(end, -365), end),
+          getUserGoals(userName)
         ]);
+        const zoneGoals = zoneGoalsOf(goals);
         const workoutsByDay = new Map<string, HealthWorkout[]>();
         for (const w of [...workouts].reverse()) {
           workoutsByDay.set(w.day, [...(workoutsByDay.get(w.day) ?? []), w]);
@@ -162,7 +165,7 @@ export function healthTools({ userName, today }: { userName: string; today: stri
         lines.push(`Averages over ${full.length} full days: ${summary.join(" · ")}`);
         const zones = zoneMinutes(inRange);
         lines.push(
-          `Workout minutes by zone over the range: light ${zones.light}, moderate ${zones.moderate}, vigorous ${zones.vigorous}, peak ${zones.peak}. Goals per calendar week (Monday to Sunday): moderate ${ZONE_GOALS.moderate}, vigorous ${ZONE_GOALS.vigorous}, peak ${ZONE_GOALS.peak}`
+          `Workout minutes by zone over the range: light ${zones.light}, moderate ${zones.moderate}, vigorous ${zones.vigorous}, peak ${zones.peak}. Goals per calendar week (Monday to Sunday, set by the owner): moderate ${zoneGoals.moderate}, vigorous ${zoneGoals.vigorous}, peak ${zoneGoals.peak}`
         );
         if (bounds) lines.push(`Fitbit's zones as of ${end}: ${describeZoneBounds(bounds)}`);
         // Weigh-ins are sparse, so every one of the last 12 months comes

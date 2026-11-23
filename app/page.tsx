@@ -6,7 +6,7 @@ import { WaterRow } from "./water-row";
 import { WeightRow } from "./weight-row";
 import { lastWeekRows, weekItems } from "@/lib/training-week";
 import { listFitbitWorkouts, listWorkoutSessions } from "@/lib/workouts";
-import { getZoneBounds, zoneMinutes } from "@/lib/health/zones";
+import { getZoneBounds, zoneGoalsOf, zoneMinutes } from "@/lib/health/zones";
 import { BodyLines, Facts, RecoveryDetails, SleepDetails, StrainDetails } from "./body-ui";
 import { GoalComboChart } from "./charts";
 import { NutritionCard } from "./nutrition-toggle";
@@ -774,7 +774,7 @@ export default async function Home({ searchParams }: PageProps) {
               done={lastWeekRows(weekItems(weekSessions, weekFitbit), date).at(-1)?.items ?? []}
               isToday={isToday}
               call={dailyCall}
-              zones={{ minutes: zoneMinutes(weekWorkouts), bounds: zoneBounds, daysDone: zoneDaysDone }}
+              zones={{ minutes: zoneMinutes(weekWorkouts), bounds: zoneBounds, daysDone: zoneDaysDone, goals: zoneGoalsOf(goals) }}
             />
           )
         }}

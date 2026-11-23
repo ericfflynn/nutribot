@@ -9,7 +9,15 @@ export type Goals = {
   caffeineLimitMg: number; // the most that's OK in a day
   caffeineCutoff: string; // local "HH:MM": caffeine after it is late, for sleep
   addedSugarLimitG: number;
+  // Weekly heart-rate zone goals, workout minutes Monday to Sunday
+  // (lib/health/zone-core.ts).
+  zoneModerateMin: number;
+  zoneVigorousMin: number;
+  zonePeakMin: number;
 };
+
+// The most minutes a week a zone goal can be: 15 hours.
+export const MAX_ZONE_GOAL = 900;
 
 export const fallbackGoals: Goals = {
   calories: 2200,
@@ -19,13 +27,20 @@ export const fallbackGoals: Goals = {
   waterOz: 100,
   caffeineLimitMg: 200,
   caffeineCutoff: "14:00",
-  addedSugarLimitG: 36
+  addedSugarLimitG: 36,
+  zoneModerateMin: 150,
+  zoneVigorousMin: 75,
+  zonePeakMin: 10
 };
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 // Rounds the inputs and rescales the macro percents to sum to 100.
-export function parseGoals(input: Goals): Goals {
+type ZoneGoalFields = "zoneModerateMin" | "zoneVigorousMin" | "zonePeakMin";
+
+// Zone goals are optional here: the Goals panel on Today doesn't send them
+// (saveUserGoals leaves them alone either way).
+export function parseGoals(input: Omit<Goals, ZoneGoalFields> & Partial<Pick<Goals, ZoneGoalFields>>): Goals {
   const parsed = {
     calories: Math.max(1, Math.round(Number(input.calories))),
     proteinPct: Math.max(0, Math.round(Number(input.proteinPct))),
@@ -38,7 +53,8 @@ export function parseGoals(input: Goals): Goals {
   const extras = {
     caffeineLimitMg: limit(input.caffeineLimitMg, fallbackGoals.caffeineLimitMg),
     caffeineCutoff: HHMM.test(String(input.caffeineCutoff ?? "")) ? input.caffeineCutoff : fallbackGoals.caffeineCutoff,
-    addedSugarLimitG: limit(input.addedSugarLimitG, fallbackGoals.addedSugarLimitG)
+    addedSugarLimitG: limit(input.addedSugarLimitG, fallbackGoals.addedSugarLimitG),
+    ...parseZoneGoals(input)
   };
   if (!Object.values(parsed).every(Number.isFinite)) {
     return { ...fallbackGoals, ...extras };
@@ -51,6 +67,19 @@ export function parseGoals(input: Goals): Goals {
   const proteinPct = Math.round((parsed.proteinPct / total) * 100);
   const carbsPct = Math.round((parsed.carbsPct / total) * 100);
   return { ...parsed, ...extras, proteinPct, carbsPct, fatPct: Math.max(0, 100 - proteinPct - carbsPct) };
+}
+
+// Weekly zone goals: whole minutes, 0 to MAX_ZONE_GOAL; a bad value keeps the default.
+export function parseZoneGoals(input: Partial<Record<ZoneGoalFields, unknown>>) {
+  const minutes = (value: unknown, fallback: number) => {
+    const number = Number(value);
+    return value != null && value !== "" && Number.isFinite(number) && number >= 0 && number <= MAX_ZONE_GOAL ? Math.round(number) : fallback;
+  };
+  return {
+    zoneModerateMin: minutes(input.zoneModerateMin, fallbackGoals.zoneModerateMin),
+    zoneVigorousMin: minutes(input.zoneVigorousMin, fallbackGoals.zoneVigorousMin),
+    zonePeakMin: minutes(input.zonePeakMin, fallbackGoals.zonePeakMin)
+  };
 }
 
 export function gramsFromPercentGoals(goals: Goals) {

@@ -754,3 +754,12 @@ insert into public.habit_rules (habit_id, effective_from, direction, goal, band_
 select id, (created_at at time zone 'America/New_York')::date, direction, goal, band_orange, band_red, cutoff, cutoff_weeknights, days
 from public.habits
 on conflict (habit_id, effective_from) do nothing;
+
+-- Weekly heart-rate zone goals, workout minutes Monday to Sunday
+-- (lib/health/zone-core.ts, zoneGoalsOf). Set on the Training tab or in chat.
+alter table public.user_macro_goals
+  add column if not exists zone_moderate_min numeric not null default 150 check (zone_moderate_min between 0 and 900);
+alter table public.user_macro_goals
+  add column if not exists zone_vigorous_min numeric not null default 75 check (zone_vigorous_min between 0 and 900);
+alter table public.user_macro_goals
+  add column if not exists zone_peak_min numeric not null default 10 check (zone_peak_min between 0 and 900);

@@ -369,3 +369,9 @@ test("the week starts on Monday", () => {
   assert.equal(weekStartOf("2026-10-26"), "2026-10-26"); // a Monday
   assert.equal(weekStartOf("2026-10-29"), "2026-10-26");
 });
+
+test("zone goals parse to whole minutes in range; bad values keep the default", async () => {
+  const { parseZoneGoals } = await import("../lib/goals");
+  assert.deepEqual(parseZoneGoals({ zoneModerateMin: "120", zoneVigorousMin: 60.4, zonePeakMin: 0 }), { zoneModerateMin: 120, zoneVigorousMin: 60, zonePeakMin: 0 });
+  assert.deepEqual(parseZoneGoals({ zoneModerateMin: -5, zoneVigorousMin: 5000, zonePeakMin: "" }), { zoneModerateMin: 150, zoneVigorousMin: 75, zonePeakMin: 10 });
+});

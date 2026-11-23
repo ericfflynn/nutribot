@@ -22,7 +22,16 @@ export type ZoneKey = (typeof ZONES)[number]["key"];
 // what HIIT studies use); the owner found them too high (he averaged 124, 38
 // and 2 a week), so moderate and vigorous are WHO's low ends, 150 and 75, and
 // peak 10, about one interval session. Light has no goal.
+// These are the defaults; since Nov 22, 2026 the owner sets their own on the
+// Training tab or through chat (user_macro_goals, zoneGoalsOf).
 export const ZONE_GOALS: Record<ZoneKey, number | null> = { light: null, moderate: 150, vigorous: 75, peak: 10 };
+
+// The weekly zone goals the owner set. Light never has one.
+export type ZoneGoalInput = { zoneModerateMin: number; zoneVigorousMin: number; zonePeakMin: number };
+export type ZoneGoals = Record<ZoneKey, number | null>;
+export function zoneGoalsOf(goals: ZoneGoalInput): ZoneGoals {
+  return { light: null, moderate: goals.zoneModerateMin, vigorous: goals.zoneVigorousMin, peak: goals.zonePeakMin };
+}
 export type ZoneBounds = Record<ZoneKey, { min: number; max: number }>;
 export type ZoneMinutes = Record<ZoneKey, number>;
 

@@ -19,7 +19,7 @@ import { HEALTH_DATA_TYPES } from "./health/google";
 import { runHealthSync } from "./health/sync";
 import { normalizeGeneratedMacroEstimate, type ParsedMacros } from "./macros";
 import { caffeineDay, sugarDay } from "./nutrients";
-import { gramsFromPercentGoals, restingKcalPerMinute, withWorkoutCalories, workoutCalories } from "./goals";
+import { MAX_ZONE_GOAL, gramsFromPercentGoals, restingKcalPerMinute, withWorkoutCalories, workoutCalories } from "./goals";
 import { listHealthDays, listHealthWorkouts } from "./health/queries";
 import {
   getMacroEntry,
@@ -113,9 +113,22 @@ export type IgnoreDraft = {
   discarded?: boolean;
 };
 
+// New weekly heart-rate zone goals, minutes Monday to Sunday; `previous` is
+// what they were when drafted, for the card.
+export type ZoneGoalsDraft = {
+  type: "zone_goals";
+  id: string;
+  moderate: number;
+  vigorous: number;
+  peak: number;
+  previous: { moderate: number; vigorous: number; peak: number };
+  saved_id: string | null;
+  discarded?: boolean;
+};
+
 // MemoryNote isn't a draft (it's saved already), but rides with them on a reply.
 // IllnessDraft is from before ailments (Nov 10, 2026): old replies still show it.
-export type Draft = MealDraft | WorkoutDraft | IgnoreDraft | CheckinDraft | FeedbackDraft | AilmentDraft | IllnessDraft | MemoryNote;
+export type Draft = MealDraft | WorkoutDraft | IgnoreDraft | ZoneGoalsDraft | CheckinDraft | FeedbackDraft | AilmentDraft | IllnessDraft | MemoryNote;
 
 export type Turn = { role: "user" | "assistant"; text: string };
 
@@ -143,7 +156,7 @@ export type BrainContext = {
 };
 
 const SERVER = "nutribot";
-const TOOLS = ["draft_meal", "draft_workout", "draft_ignore_workout", "list_workouts", "list_meals", "get_goals", ...CHECKIN_TOOLS, ...HEALTH_TOOLS, ...BODY_TOOLS, ...FEEDBACK_TOOLS, ...AILMENT_TOOLS, ...MEMORY_TOOLS];
+const TOOLS = ["draft_meal", "draft_workout", "draft_ignore_workout", "list_workouts", "list_meals", "get_goals", "draft_zone_goals", ...CHECKIN_TOOLS, ...HEALTH_TOOLS, ...BODY_TOOLS, ...FEEDBACK_TOOLS, ...AILMENT_TOOLS, ...MEMORY_TOOLS];
 
 const localDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("Local date, YYYY-MM-DD.");
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
@@ -229,7 +242,8 @@ Today is ${today}; local time is ${nowLocal.slice(11)}. The person is looking at
 - eaten_at is the local time (HH:MM, 24-hour) they ate, which places the meal on Today's timeline. Set it when they say or imply when they ate ("had eggs at 7:30", "breakfast this morning around 8", "lunch earlier at noon"), using a typical time for a vague one ("this morning" 08:00). Leave it out when they're logging as they eat, or for a past day with no time given.
 - They eat many of the same meals. Before drafting a meal, call list_meals with search set to its main food or place in a word or two ("smoothie", "buttermilks", "overnight oats"), over the last 90 days, unless it's plainly a one-off. When a past entry is the same meal, reuse its items, portions and macros, adjusted for anything they say is different, and mention which day you matched ("same as your Oct 3 smoothie"). Prefer their most recent version.
 - list_meals also answers questions about what they ate on a day or over a week.
-- get_goals gives their daily targets and a day's progress. Use it for "how much do I have left", whether a meal fits, or what to eat to hit protein. Goals are changed in the Goals panel on Today, not here.
+- get_goals gives their daily targets and a day's progress. Use it for "how much do I have left", whether a meal fits, or what to eat to hit protein. Daily targets are changed in the Goals panel on Today, not here.
+- Weekly heart-rate zone goals (moderate, vigorous, peak minutes, Monday to Sunday) are theirs to set: get_health shows the current ones. When they want them changed, call draft_zone_goals with all three (keep the ones they didn't mention); it saves on Save. Give your view if a number looks unrealistic against what they usually do, but the call is theirs. They can also edit them on the Training tab's zone card.
 - Caffeine has a daily limit and a cutoff time (get_goals). When a draft puts caffeine after the cutoff or the day over its limit, say so in a few words ("that's 250 mg after your 2 PM cutoff, which can cost you deep sleep"); once, not a lecture. Same for added sugar going over its limit. Caffeine late in the day is a likely cause when sleep or recovery is off; get_body_state's explanations say when it was.
 
 ## Fixing saved meals
@@ -289,7 +303,7 @@ function promptFor(message: string, history: Turn[], openDrafts: Draft[], savedD
   }
   if (openDrafts.length) {
     const summary = openDrafts.map((draft) =>
-      draft.type === "journal" || draft.type === "habits" || draft.type === "habit" || draft.type === "feedback" || draft.type === "ignore" || draft.type === "illness" || draft.type === "ailment" || draft.type === "memory"
+      draft.type === "journal" || draft.type === "habits" || draft.type === "habit" || draft.type === "feedback" || draft.type === "ignore" || draft.type === "zone_goals" || draft.type === "illness" || draft.type === "ailment" || draft.type === "memory"
         ? draft
         : draft.type === "meal"
         ? {
@@ -592,6 +606,36 @@ export async function runBrain(message: string, context: BrainContext): Promise<
     }
   );
 
+  const draftZoneGoals = tool(
+    "draft_zone_goals",
+    "Draft new weekly heart-rate zone goals: workout minutes per calendar week (Monday to Sunday) in moderate, vigorous and peak. Give all three; keep the current value for any the owner didn't change. Saved on Save.",
+    {
+      moderate: z.number().int().min(0).max(MAX_ZONE_GOAL),
+      vigorous: z.number().int().min(0).max(MAX_ZONE_GOAL),
+      peak: z.number().int().min(0).max(MAX_ZONE_GOAL),
+      replaces: z.string().optional().describe("Id of an open draft this revises.")
+    },
+    async (args) => {
+      const target = resolveDraftId(args.replaces);
+      if ("error" in target) return errorText(target.error!);
+      const current = await getUserGoals(userName, db);
+      const previous = { moderate: current.zoneModerateMin, vigorous: current.zoneVigorousMin, peak: current.zonePeakMin };
+      if (previous.moderate === args.moderate && previous.vigorous === args.vigorous && previous.peak === args.peak) {
+        return errorText("Those are already the goals.");
+      }
+      drafts.set(target.id!, {
+        type: "zone_goals",
+        id: target.id!,
+        moderate: args.moderate,
+        vigorous: args.vigorous,
+        peak: args.peak,
+        previous,
+        saved_id: null
+      });
+      return text({ draft_id: target.id, previous, proposed: { moderate: args.moderate, vigorous: args.vigorous, peak: args.peak } });
+    }
+  );
+
   const listWorkouts = tool(
     "list_workouts",
     "List workouts in a date range (at most 31 days), newest first: each watch workout with what it was logged as, if anything, plus logged workouts with no watch workout.",
@@ -709,6 +753,7 @@ export async function runBrain(message: string, context: BrainContext): Promise<
           listWorkouts,
           listMeals,
           getGoals,
+          draftZoneGoals,
           ...checkinTools({ db, userName, today, resolveDraftId, checkDate, putDraft: (draft) => drafts.set(draft.id, draft) }),
           ...healthTools({ userName, today }),
           ...bodyTools({ db, userName, today }),

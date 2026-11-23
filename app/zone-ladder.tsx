@@ -5,9 +5,11 @@
 // 13, 2026 (https://claude.ai/artifact/3FZGayqyayLU6Yu3ntEn2e): one line per
 // zone, peak down to light, with this week's minutes as a bar to the goal and
 // the pace. Tapping a zone shows its bpm range and the usual week. Red text
-// only for behind pace.
-import { useState } from "react";
-import { ZONES, ZONE_GOALS, zonePace, type ZoneBounds, type ZoneKey, type ZoneMinutes } from "@/lib/health/zone-core";
+// only for behind pace. "Edit goals" sets the weekly goals (Nov 22, 2026).
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { saveZoneGoalsAction } from "./actions";
+import { ZONES, zonePace, type ZoneBounds, type ZoneGoals, type ZoneKey, type ZoneMinutes } from "@/lib/health/zone-core";
 
 function rangeOf(bounds: ZoneBounds, key: ZoneKey) {
   if (key === "light") return `under ${bounds.moderate.min} bpm`;
@@ -19,27 +21,36 @@ export function ZoneLadder({
   week,
   average,
   bounds,
-  daysDone
+  daysDone,
+  goals
 }: {
   week: ZoneMinutes;
   average: ZoneMinutes | null; // per week over the 4 full weeks before; null without them
   bounds: ZoneBounds | null;
   daysDone: number; // days of this week already over
+  goals: ZoneGoals; // the owner's weekly goals; light has none
 }) {
   const [open, setOpen] = useState<ZoneKey | null>(null);
+  const [editing, setEditing] = useState(false);
   const rows = [...ZONES].reverse();
   return (
     <section className="card" aria-label="Heart-rate zones">
       <div className="card-heading">
         <h2 className="card-title">Heart-rate zones</h2>
-        <span className="card-aside">This week, since Monday</span>
+        <span className="card-aside">
+          This week, since Monday ·{" "}
+          <button type="button" className="text-button" onClick={() => setEditing(!editing)} aria-expanded={editing}>
+            {editing ? "Cancel" : "Edit goals"}
+          </button>
+        </span>
       </div>
+      {editing ? <ZoneGoalsForm goals={goals} onDone={() => setEditing(false)} /> : null}
       <div className="zone-list">
         {rows.map((zone) => {
-          const goal = ZONE_GOALS[zone.key];
+          const goal = goals[zone.key];
           const minutes = week[zone.key];
           const usual = average?.[zone.key] ?? null;
-          const scale = goal ?? Math.max(minutes, Math.round((usual ?? minutes) * 1.3), 1);
+          const scale = goal || Math.max(minutes, Math.round((usual ?? minutes) * 1.3), 1);
           const pace = goal == null ? null : zonePace(minutes, goal, daysDone);
           const status = !pace ? "no goal" : pace.status === "done" ? "done" : pace.status === "behind" ? `${pace.behind} behind` : "on pace";
           const detail = [bounds ? rangeOf(bounds, zone.key) : null, usual != null ? `usually ${usual} a week` : null].filter(Boolean).join(" · ");
@@ -72,6 +83,40 @@ export function ZoneLadder({
         })}
       </div>
     </section>
+  );
+}
+
+// The weekly goals, minutes per zone. Light has no goal.
+function ZoneGoalsForm({ goals, onDone }: { goals: ZoneGoals; onDone: () => void }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <form
+      className="zone-goals-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        startTransition(async () => {
+          const result = await saveZoneGoalsAction(form);
+          if (!result.ok) return setError(result.error);
+          onDone();
+          router.refresh();
+        });
+      }}
+    >
+      {(["peak", "vigorous", "moderate"] as const).map((key) => (
+        <label key={key}>
+          <span>{ZONES.find((zone) => zone.key === key)!.label}</span>
+          <input name={key} type="number" inputMode="numeric" min="0" max="900" step="1" defaultValue={goals[key] ?? 0} required />
+          <small>min a week</small>
+        </label>
+      ))}
+      {error ? <p className="form-error">{error}</p> : null}
+      <button type="submit" disabled={pending}>
+        {pending ? "Saving…" : "Save goals"}
+      </button>
+    </form>
   );
 }
 

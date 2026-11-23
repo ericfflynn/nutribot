@@ -1,13 +1,13 @@
 import { AppShell, Login } from "../shared-ui";
 import { BodyMap, type MuscleView } from "../body-map";
-import { WeekPages, LabelButton, MergeControls, RestoreButton, WorkoutEditor, type CoverageRow, type WeekPage } from "../training-ui";
+import { LabelButton, MergeControls, RestoreButton, WorkoutEditor } from "../training-ui";
 import { NextUp, type NextUpPage, type NextUpTier } from "../next-up";
 import { getSessionUser } from "@/lib/auth";
 import { addDays, currentWeekToDate, localDateTime, todayLocalDate } from "@/lib/dates";
-import { ZONES, getZoneBounds, zoneMinutes, type ZoneMinutes } from "@/lib/health/zones";
+import { ZONES, getZoneBounds, zoneGoalsOf, zoneMinutes, type ZoneMinutes } from "@/lib/health/zones";
 import { WorkoutZones, ZoneLadder } from "../zone-ladder";
 import { listHealthWorkouts, type HealthWorkout } from "@/lib/health/queries";
-import { getPool } from "@/lib/supabase";
+import { getPool, getUserGoals } from "@/lib/supabase";
 import { listSoreness } from "@/lib/body-log";
 import { getBodyState } from "@/lib/body-state/load";
 import { getDailyCall, listDailyCalls, type DailyCall, type PlannedDay } from "@/lib/body-state/call";
@@ -20,29 +20,21 @@ import {
   INTENSITY_RULES,
   bucketOf,
   fatigueLevel,
-  WEEKLY_TARGET_POINTS,
   intensityOf,
   muscleWeekOf,
   splitOf,
   loadOf,
-  trackedOf,
   TRACKED_MUSCLES,
-  MUSCLES,
-  STRENGTH_GROUPS,
   canLabel,
   splitKinds,
   suggestNext,
   WORKOUT_TYPES,
   WORKOUT_TYPE_LABELS,
-  describeMuscles,
-  groupDayIntensity,
   musclesOf,
   listFitbitWorkouts,
   listWorkoutSessions,
   type FitbitWorkout,
   type Intensity,
-  type MuscleGroup,
-  type TrackedMuscle,
   type WorkoutSession,
   type WorkoutType,
   weekStartOf,
@@ -53,9 +45,9 @@ export const dynamic = "force-dynamic";
 
 // Next up pages back this many days of calls.
 const PAST_CALL_DAYS = 7;
-// Recent workouts lists this many days.
-const WINDOW_DAYS = 14;
-// The week grid pages back this many calendar weeks, as far as there's data.
+// Missing this week lists muscles under this many points.
+const MISSING_UNDER = 3;
+// The workouts list pages back this many calendar weeks, as far as there's data.
 const HISTORY_WEEKS = 8;
 // The hour (local) after which an untrained day is over for planning: the
 // owner's workouts have all started by 5 pm.
@@ -70,7 +62,6 @@ function formatMinutes(total: number) {
   if (!hours) return `${total} min`;
   return total % 60 ? `${hours} h ${total % 60} min` : `${hours} h`;
 }
-const weekdayLetter = new Intl.DateTimeFormat("en-US", { weekday: "narrow", timeZone: "UTC" });
 const clockFormat = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" });
 
 
@@ -99,13 +90,22 @@ function formatClock(localDateTime: string) {
 }
 
 
-// Coverage cell shade: level-1 light, level-2 medium, level-3 hard.
-function intensityClass(intensity: Intensity | undefined) {
-  return intensity ? `level-${INTENSITIES.indexOf(intensity) + 1}` : "";
+// A logged session's chips: each muscle with the points it added ("Quads +3"),
+// a group logged whole as one chip per muscle in it, cardio and mobility plain.
+function pointChips(session: WorkoutSession): string[] {
+  const points = new Map<string, number>();
+  const plain: string[] = [];
+  for (const name of session.muscleGroups) {
+    const muscles = musclesOf(name);
+    if (!muscles.length) {
+      plain.push(name);
+      continue;
+    }
+    const value = INTENSITY_RULES[intensityOf(session, name)].points;
+    for (const muscle of muscles) points.set(muscle, Math.max(points.get(muscle) ?? 0, value));
+  }
+  return [...[...points].map(([muscle, value]) => `${muscle} +${value}`), ...plain];
 }
-
-const harder = (a: Intensity | undefined, b: Intensity) =>
-  a && INTENSITY_RULES[a].points >= INTENSITY_RULES[b].points ? a : b;
 
 type RecentItem = {
   key: string;
@@ -143,8 +143,10 @@ function asRecord(workout: FitbitWorkout): WorkoutRecord {
   };
 }
 
-export default async function TrainingPage({ searchParams }: { searchParams: Promise<{ type?: string; ignored?: string }> }) {
-  const { type: typeParam, ignored: ignoredParam } = await searchParams;
+export default async function TrainingPage({ searchParams }: { searchParams: Promise<{ type?: string; ignored?: string; week?: string }> }) {
+  const { type: typeParam, ignored: ignoredParam, week: weekParam } = await searchParams;
+  // Which calendar week the workouts list shows: 0 this week, 1 last week...
+  const weeksAgo = Math.min(HISTORY_WEEKS - 1, Math.max(0, Math.floor(Number(weekParam) || 0)));
   const showIgnored = ignoredParam === "1";
   const typeFilter = (WORKOUT_TYPES as readonly string[]).includes(typeParam ?? "") ? (typeParam as WorkoutType) : null;
   const user = await getSessionUser();
@@ -154,7 +156,6 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
 
   const today = todayLocalDate();
   const start = addDays(today, -(HISTORY_WEEKS * 7 - 1));
-  const recentStart = addDays(today, -(WINDOW_DAYS - 1));
   const db = getPool();
   if (!db) {
     return (
@@ -164,7 +165,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     );
   }
 
-  const [sessions, fitbit, healthWorkouts, soreness, body, todayCall, zoneBounds, pastCalls] = await Promise.all([
+  const [sessions, fitbit, healthWorkouts, soreness, body, todayCall, zoneBounds, pastCalls, goals] = await Promise.all([
     listWorkoutSessions(db, user.name, start, today),
     listFitbitWorkouts(db, user.name, start, today),
     listHealthWorkouts(user.name, start, today),
@@ -174,7 +175,8 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     getDailyCall(db, user.name, today),
     getZoneBounds(user.name, today),
     // Next up pages back through the last week's calls.
-    listDailyCalls(db, user.name, addDays(today, -PAST_CALL_DAYS), today)
+    listDailyCalls(db, user.name, addDays(today, -PAST_CALL_DAYS), today),
+    getUserGoals(user.name, db)
   ]);
   // Heart-rate zones: this calendar week's watch workouts so far, and the
   // average week over the 4 full weeks before, ignored recordings left out.
@@ -263,7 +265,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
         .filter(Boolean)
         .join(" · "),
       zones: health ? zoneMinutes([health]) : null,
-      chips: session ? describeMuscles(session.muscleGroups, session.muscleIntensity) : [],
+      chips: session ? pointChips(session) : [],
       minutes: workout.activeMinutes,
       workoutType: session?.workoutType ?? workoutTypeOf(workout.type),
       session,
@@ -291,7 +293,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
         .filter(Boolean)
         .join(" · "),
       zones: null,
-      chips: describeMuscles(session.muscleGroups, session.muscleIntensity),
+      chips: pointChips(session),
       minutes: session.durationMin,
       workoutType: session.workoutType,
       session,
@@ -303,85 +305,46 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
     });
   }
   recent.sort((a, b) => b.sort.localeCompare(a.sort));
-  // Workout types present in the window, for the filter and the type counts.
+  // Workouts by day for one calendar week, newest first (Nov 22, 2026: one
+  // list by week in place of the week grid and the 14-day list; ‹ pages back).
+  // Days with nothing show as rest, unless a type filter is on.
+  const listMonday = addDays(weekStartOf(today), -7 * weeksAgo);
+  const listEnd = weeksAgo === 0 ? today : addDays(listMonday, 6);
+  const inList = recent.filter((item) => item.date >= listMonday && item.date <= listEnd);
   const typeCounts = new Map<WorkoutType, number>();
-  for (const item of recent.filter((entry) => entry.date >= recentStart)) typeCounts.set(item.workoutType, (typeCounts.get(item.workoutType) ?? 0) + 1);
-  const shown = (typeFilter ? recent.filter((item) => item.workoutType === typeFilter) : recent).filter(
-    (item) => item.date >= recentStart
-  );
-  // Workouts by day, newest first (Nov 13, 2026: one list in place of Last 7
-  // days, Unlabeled and Recent workouts). Days with nothing show as rest,
-  // unless a type filter is on.
-  const workoutDays = Array.from({ length: WINDOW_DAYS }, (_, index) => addDays(today, -index))
+  for (const item of inList) typeCounts.set(item.workoutType, (typeCounts.get(item.workoutType) ?? 0) + 1);
+  const shown = typeFilter ? inList.filter((item) => item.workoutType === typeFilter) : inList;
+  const listDays = Math.round((Date.parse(listEnd) - Date.parse(listMonday)) / 86_400_000) + 1;
+  const workoutDays = Array.from({ length: listDays }, (_, index) => addDays(listEnd, -index))
     .map((date) => ({
       date,
       label: date === today ? "Today" : date === addDays(today, -1) ? "Yesterday" : formatDay(date),
       items: shown.filter((item) => item.date === date)
     }))
     .filter((day) => !typeFilter || day.items.length);
-  const thisWeekItems = recent.filter((item) => item.date >= weekStartOf(today));
-  const thisWeekMinutes = thisWeekItems.reduce((sum, item) => sum + (item.minutes ?? 0), 0);
-  const workoutsSummary = thisWeekItems.length
-    ? [`${thisWeekItems.length} this week`, thisWeekMinutes ? formatMinutes(thisWeekMinutes) : null].filter(Boolean).join(" · ")
-    : null;
-
-  // The week grid: one page per calendar week (Monday to Sunday), newest
-  // first, back to the first week with a logged session. Strength groups are shaded by how much
-  // of the group was worked (groupDayIntensity), their muscles by the hardest
-  // each got. The points column is that week's volume, so on the newest page
-  // it's the live 4-point target; a group shows its percent of that.
-  const muscleDays = new Map<string, Intensity>(); // "date|muscle"
-  for (const session of sessions) {
-    for (const name of session.muscleGroups) {
-      for (const muscle of musclesOf(name)) {
-        const key = `${session.date}|${muscle}`;
-        muscleDays.set(key, harder(muscleDays.get(key), intensityOf(session, name)));
-      }
-    }
-  }
-  // Pages stop at the first logged session: earlier weeks would only have
-  // unlabeled watch workouts, and every muscle at 0 points.
+  const listMinutes = inList.reduce((sum, item) => sum + (item.minutes ?? 0), 0);
+  const listTitle = weeksAgo === 0 ? "This week" : weeksAgo === 1 ? "Last week" : `${weeksAgo} weeks ago`;
+  const listRange = `${shortDay.format(new Date(`${listMonday}T00:00:00Z`))} – ${shortDay.format(new Date(`${addDays(listMonday, 6)}T00:00:00Z`))}`;
+  const workoutsSummary = [listRange, inList.length ? `${inList.length} workout${inList.length === 1 ? "" : "s"}` : null, listMinutes ? formatMinutes(listMinutes) : null]
+    .filter(Boolean)
+    .join(" · ");
+  // Paging stops at the first week with a logged session.
   const firstDate = sessions.map((session) => session.date).sort()[0] ?? today;
-  const weekPages: WeekPage[] = [];
-  const thisMonday = weekStartOf(today);
-  for (let week = 0; week < HISTORY_WEEKS; week++) {
-    const monday = addDays(thisMonday, -7 * week);
-    const pageDays = Array.from({ length: 7 }, (_, index) => addDays(monday, index));
-    // This week's points run through today; past weeks through their Sunday.
-    const end = week === 0 ? today : pageDays[6];
-    if (week > 0 && pageDays[6] < firstDate) break;
-    const pointsOf = (muscle: TrackedMuscle) => loadOf(sessions, muscle, end).points;
-    const pointsCell = (points: number) => ({ aside: `${points}/${WEEKLY_TARGET_POINTS}`, done: points >= WEEKLY_TARGET_POINTS });
-    // A group's share of its target, 4 points per muscle, each muscle capped
-    // at 4 so one muscle's extra can't cover for another: Shoulders at 8 of 12
-    // points is 67%. Groups differ in size, so a percent compares better.
-    const groupCell = (group: MuscleGroup) => {
-      const muscles = trackedOf(group);
-      const points = muscles.reduce((sum, muscle) => sum + Math.min(WEEKLY_TARGET_POINTS, pointsOf(muscle)), 0);
-      const target = WEEKLY_TARGET_POINTS * muscles.length;
-      return { aside: `${Math.round((points / target) * 100)}%`, done: points >= target };
-    };
-    const strength: CoverageRow[] = STRENGTH_GROUPS.map((group) => ({
-      name: group,
-      ...groupCell(group),
-      levels: pageDays.map((day) =>
-        intensityClass(groupDayIntensity(sessions.filter((session) => session.date === day), group))
-      ),
-      muscles: (MUSCLES[group] as readonly TrackedMuscle[]).map((muscle) => ({
-        name: muscle,
-        ...pointsCell(pointsOf(muscle)),
-        levels: pageDays.map((day) => intensityClass(muscleDays.get(`${day}|${muscle}`))),
-        muscles: []
-      }))
-    }));
-    weekPages.push({
-      key: end,
-      label: week === 0 ? "This week" : week === 1 ? "Last week" : `${week} weeks ago`,
-      range: `${shortDay.format(new Date(`${pageDays[0]}T00:00:00Z`))} – ${shortDay.format(new Date(`${pageDays[6]}T00:00:00Z`))}`,
-      days: pageDays.map((day) => ({ date: day, letter: weekdayLetter.format(new Date(`${day}T00:00:00Z`)) })),
-      strength
-    });
-  }
+  const olderWeek = weeksAgo < HISTORY_WEEKS - 1 && listMonday > firstDate ? weeksAgo + 1 : null;
+  const newerWeek = weeksAgo > 0 ? weeksAgo - 1 : null;
+  const listHref = (week: number | null, type: WorkoutType | null = typeFilter) => {
+    const params = new URLSearchParams();
+    if (week) params.set("week", String(week));
+    if (type) params.set("type", type);
+    const query = params.toString();
+    return `/training${query ? `?${query}` : ""}#workouts`;
+  };
+
+  // Missing this week: muscles under 3 points this calendar week (3 is a hit,
+  // 4 the goal; the owner, Nov 22, 2026), fewest first, with the points to 3.
+  const missing = TRACKED_MUSCLES.map((muscle) => ({ muscle, points: loadOf(sessions, muscle, today).points }))
+    .filter((item) => item.points < MISSING_UNDER)
+    .sort((a, b) => a.points - b.points || TRACKED_MUSCLES.indexOf(a.muscle) - TRACKED_MUSCLES.indexOf(b.muscle));
 
   // The newest week's split: a tile per kind with a target, under Next up.
   const thisSplit = splitOf(splitKinds(sessions, fitbit, weekStartOf(today), today));
@@ -485,28 +448,51 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
 
       <NextUp pages={nextUpPages} start={pastPages.length} split={nextUpSplit} />
 
-      <ZoneLadder week={zoneThisWeek} average={zoneAverage} bounds={zoneBounds} daysDone={zoneWeek.elapsedDays - 1} />
+      <ZoneLadder week={zoneThisWeek} average={zoneAverage} bounds={zoneBounds} daysDone={zoneWeek.elapsedDays - 1} goals={zoneGoalsOf(goals)} />
 
       <section className="card training-week-card" aria-label="Body map">
         <BodyMap muscles={muscleViews} />
       </section>
 
-      <section className="card" aria-label="Week by week">
-        <WeekPages pages={weekPages} />
+      <section className="card training-missing" aria-label="Missing this week">
+        <div className="card-heading">
+          <h2 className="card-title">Missing this week</h2>
+          <span className="card-aside">{missing.length ? "points to go" : null}</span>
+        </div>
+        {missing.length ? (
+          <>
+            <div className="missing-pills">
+              {missing.map((item) => (
+                <span key={item.muscle} className={item.points === 0 ? "untouched" : undefined}>
+                  {item.muscle} <strong>{MISSING_UNDER - item.points}</strong>
+                </span>
+              ))}
+            </div>
+            <p className="footnote">Under 3 points so far; red is not worked yet. Light 1, medium 2, hard 3; 4 is the goal.</p>
+          </>
+        ) : (
+          <p className="footnote">Every muscle has 3 points or more this week.</p>
+        )}
       </section>
 
-      <section className="group" aria-label="Workouts">
+      <section className="group" aria-label="Workouts" id="workouts">
         <div className="training-workouts-head">
-          <h2 className="card-title">Workouts</h2>
-          {workoutsSummary ? <span>{workoutsSummary}</span> : null}
+          <div>
+            <h2 className="card-title">{listTitle}</h2>
+            <span>{workoutsSummary}</span>
+          </div>
+          <span className="week-nav">
+            {olderWeek != null ? <a href={listHref(olderWeek)}>‹ Earlier</a> : null}
+            {newerWeek != null ? <a href={listHref(newerWeek)}>Later ›</a> : null}
+          </span>
         </div>
         {typeCounts.size > 1 || typeFilter ? (
           <nav className="type-filter" aria-label="Filter by type">
-            <a href="/training" aria-current={typeFilter ? undefined : "true"}>
+            <a href={listHref(weeksAgo, null)} aria-current={typeFilter ? undefined : "true"}>
               All
             </a>
             {WORKOUT_TYPES.filter((type) => typeCounts.has(type)).map((type) => (
-              <a key={type} href={`/training?type=${type}`} aria-current={typeFilter === type ? "true" : undefined}>
+              <a key={type} href={listHref(weeksAgo, type)} aria-current={typeFilter === type ? "true" : undefined}>
                 {WORKOUT_TYPE_LABELS[type]} {typeCounts.get(type)}
               </a>
             ))}
@@ -556,7 +542,7 @@ export default async function TrainingPage({ searchParams }: { searchParams: Pro
           ))
         ) : (
           <p className="footnote">
-            No {typeFilter ? `${WORKOUT_TYPE_LABELS[typeFilter].toLowerCase()} ` : ""}workouts in the last {WINDOW_DAYS} days.
+            No {typeFilter ? `${WORKOUT_TYPE_LABELS[typeFilter].toLowerCase()} ` : ""}workouts {weeksAgo === 0 ? "this week" : "that week"}.
           </p>
         )}
         {ignoredWorkouts.length ? (

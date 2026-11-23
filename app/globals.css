@@ -176,6 +176,7 @@ button {
 .field select,
 .field textarea,
 .goals-form input,
+.zone-goals-form input,
 .review-adjust-grid input {
   width: 100%;
   border: 1px solid var(--line);
@@ -5489,4 +5490,85 @@ details[open] .journal-preview {
 
 .weight-row-chevron.open {
   transform: rotate(90deg);
+}
+
+/* Training's zone card: the weekly goals, edited in place */
+.zone-goals-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  align-items: end;
+  margin: 4px 0 14px;
+}
+
+.zone-goals-form label {
+  display: grid;
+  gap: 4px;
+}
+
+.zone-goals-form label span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.zone-goals-form label small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.zone-goals-form button[type="submit"] {
+  grid-column: 1 / -1;
+}
+
+.zone-goals-form .form-error {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--bad);
+  font-size: 14px;
+}
+
+.card-aside .text-button {
+  padding: 0;
+  font-size: inherit;
+}
+
+/* Training: muscles under 3 points this week, as pills with the points to go */
+.missing-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.missing-pills span {
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 14px;
+  padding: 5px 9px;
+}
+
+.missing-pills span.untouched {
+  background: var(--status-low-soft);
+  color: var(--status-low-ink);
+}
+
+.training-missing .footnote {
+  margin: 0;
+}
+
+/* The workouts list's week: title and range on the left, paging on the right */
+.training-workouts-head h2 {
+  margin: 0;
+}
+
+.training-workouts-head .week-nav {
+  display: flex;
+  gap: 16px;
+  font-size: 15px;
+}
+
+.training-workouts-head .week-nav a {
+  color: var(--accent);
 }

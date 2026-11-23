@@ -57,7 +57,7 @@ import {
   type VitalsArea
 } from "./types";
 import { fahrenheitDelta } from "../health/units";
-import { ZONES, ZONE_GOALS, zoneMinutes, zonePace } from "../health/zones";
+import { ZONES, zoneGoalsOf, zoneMinutes, zonePace } from "../health/zones";
 
 const WORST: Status[] = ["low", "watch", "ok", "good"];
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -536,8 +536,9 @@ function zonesOf(c: Context) {
   const week = minutesIn(start, c.date);
   const past = [1, 2, 3, 4].map((ago) => minutesIn(addDays(start, -7 * ago), addDays(start, -7 * ago + 6)));
   const daysDone = Math.round((Date.parse(c.date) - Date.parse(start)) / 86_400_000);
+  const goals = zoneGoalsOf(c.sources.goals);
   return ZONES.map((zone) => {
-    const goal = ZONE_GOALS[zone.key];
+    const goal = goals[zone.key];
     const pace = goal == null ? null : zonePace(week[zone.key], goal, daysDone);
     return {
       zone: zone.key,

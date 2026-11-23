@@ -2,6 +2,18 @@
 
 Product and design decisions, newest first. One entry per decision: what was decided, why, and what it replaced or ruled out. Add an entry whenever the owner settles something that future work should follow; link the doc that holds the detail. Data shapes live in their specs ([body-state.md](body-state.md) keeps the body state's schema versions); this log says why they are what they are.
 
+## 2026-11-22
+
+### Training: "Missing this week" and a week of workout cards replace the heat map
+- **Decided:** the week-by-week grid is gone. Under the body map, "Missing this week" shows each muscle under 3 points as a pill with the points still to go, red for untouched; a muscle at 3 or more drops off. The workouts list shows one calendar week at a time, paging back, and each card says what it added to each muscle ("Quads +3"). Mockups and the full tab: https://claude.ai/artifact/7LTZKBwHuVEp1V9i6LmMSJ (option D).
+- **Why:** the owner found the heat map hard to read and couldn't see which muscles were short (feedback 9ed54589, a3097897). A timeline of workouts says what was trained when; the pills say what's left. 3 is a hit, so a muscle at 3 isn't "missing" even though 4 is the goal.
+- **Instead of:** a "still short" list grouped by gap (A); a timeline with a running tally (B); a bar per muscle with the days that hit it (C); keeping the 14-day list alongside a week view; listing muscles at 3 too.
+
+### The owner sets their own heart-rate zone goals
+- **Decided:** the weekly zone goals (moderate, vigorous, peak) are the owner's to change: "Edit goals" on Training's zone card, or in chat, which drafts a card with old and new values that saves on Save. They're stored with the daily targets (`user_macro_goals`); 150, 75 and 10 stay as defaults. Everything that reads the goals (Training, Today's zone tiles, the body state and the daily call, the chat's health tool) reads the saved ones. Claude can say a number looks unrealistic, but doesn't refuse it.
+- **Why:** the owner found no way to change them anywhere (feedback 152b8ad8) and called it a big gap; until now changing them took a code change.
+- **Instead of:** goals fixed in code; editing them in Today's Goals panel (the zones live on Training); a chat tool that saves straight away (every other chat change goes through a card).
+
 ## 2026-11-20
 
 ### A habit's past days keep the rule they had
