@@ -11,7 +11,7 @@ import { HEALTH_PROMPT, HEALTH_TOOLS, healthTools } from "./brain-health";
 import { BODY_PROMPT, BODY_TOOLS, bodyTools } from "./brain-body";
 import { FEEDBACK_PROMPT, FEEDBACK_TOOLS, feedbackTools, type FeedbackDraft } from "./feedback";
 import { AILMENT_PROMPT, AILMENT_TOOLS, ailmentTools, type AilmentDraft } from "./ailments";
-import { MEMORY_PROMPT, MEMORY_TOOLS, describeMemories, listMemories, memoryTools, type MemoryNote } from "./memories";
+import { MEMORY_PROMPT, MEMORY_TOOLS, describeMemories, listMemories, memoryTools, recallFor, type MemoryNote } from "./memories";
 import type { IllnessDraft } from "./illness-days";
 import { runClaude } from "./claude-brain";
 import { addDays, isValidLocalDate, localDateTime } from "./dates";
@@ -20,7 +20,7 @@ import { runHealthSync } from "./health/sync";
 import { normalizeGeneratedMacroEstimate, type ParsedMacros } from "./macros";
 import { caffeineDay, sugarDay } from "./nutrients";
 import { MAX_ZONE_GOAL, gramsFromPercentGoals, restingKcalPerMinute, withWorkoutCalories, workoutCalories } from "./goals";
-import { listHealthDays, listHealthWorkouts } from "./health/queries";
+import { listHealthDays, listHealthWorkouts, listWeighIns } from "./health/queries";
 import {
   getMacroEntry,
   getUserGoals,
@@ -261,7 +261,8 @@ Today is ${today}; local time is ${nowLocal.slice(11)}. The person is looking at
 - Watch workouts can be ignored (accidental recordings, shown as "ignored by the owner" in list_workouts) and restored. When they ask, find it with list_workouts and call draft_ignore_workout.
 - Stretching or mobility on its own has no type of its own: use other (it matches whatever the watch recorded, often core training or aerobics) with Mobility as the muscle, plus any muscles they name. It counts as mobility on the Training tab.
 - workout_type: strength for lifting, run, walk, ride, sport (tennis, golf), pilates, yoga, class (spin, aerobics, other classes), or other.
-- rpe converts intensity words: easy or light 3, moderate or solid 5-6, hard 8, brutal or all-out 9-10. Use a number they give as is. With no sense of intensity, rpe is null and you ask how hard it was. That is the only question to ask about a workout; never ask for exercises, sets or duration.
+- Draft only what they said they did. Today's call, its week plan and what's due are plans, never evidence: "hit a solid workout" on a planned pull day doesn't mean pull. When they don't say what they trained (no muscles, day type, exercises or activity), don't draft yet; ask what they trained, and match it to the watch workout once they say.
+- rpe converts intensity words: easy or light 3, moderate or solid 5-6, hard 8, brutal or all-out 9-10. Use a number they give as is. With no sense of intensity, rpe is null and you ask how hard it was. Besides what they trained (above), that is the only question to ask about a workout; never ask for exercises, sets or duration.
 - The watch records most workouts, and the app matches each draft to the right one. Help it with time_hint when they say when: morning 05:00-12:00, afternoon 12:00-17:00, evening or after work 17:00-22:00, or a specific time ±1 hour. Leave time_hint null for "just now" or no time.
 - untracked is true only when they say they didn't wear the watch. Only then is duration_min filled, and only if they state it.
 - For past days, or when they describe a workout by its time or type, call list_workouts and pass fitbit_workout_id when their description clearly points to one workout.
@@ -342,6 +343,12 @@ export async function runBrain(message: string, context: BrainContext): Promise<
   const nowLocal = localDateTime(now);
   const today = nowLocal.slice(0, 10);
   const { db, userName } = context;
+  // Memories (docs/memory.md): the core starts the prompt; the rest ride on
+  // the tools for their area. A weight goal's progress needs the weigh-ins.
+  const memories = await listMemories(db, userName);
+  const weighIns = memories.some((memory) => memory.target?.metric === "weight_lb") ? await listWeighIns(userName, addDays(today, -60), today) : [];
+  const recall = recallFor(memories, today);
+  const withMemories = <T extends object>(value: T, lines: string[]) => (lines.length ? { ...value, memories: lines } : value);
 
   // Drafts this reply produced, keyed by id so a revision replaces in place.
   const drafts = new Map<string, Draft>();
@@ -459,7 +466,7 @@ export async function runBrain(message: string, context: BrainContext): Promise<
         edits,
         saved_id: null
       });
-      return text({
+      return text(withMemories({
         draft_id: target.id,
         date: day.date,
         eaten_at: eatenAt,
@@ -472,7 +479,7 @@ export async function runBrain(message: string, context: BrainContext): Promise<
           caffeine_mg: estimate.caffeine_mg,
           added_sugar_g: estimate.added_sugar_g
         }
-      });
+      }, recall(["physical.fuel"], ["preference", "pattern"])));
     }
   );
 
@@ -564,7 +571,7 @@ export async function runBrain(message: string, context: BrainContext): Promise<
         linked_by: linkedBy,
         saved_id: null
       });
-      return text({
+      return text(withMemories({
         draft_id: target.id,
         date,
         watch: args.untracked
@@ -573,7 +580,7 @@ export async function runBrain(message: string, context: BrainContext): Promise<
             ? `${match.status === "ambiguous" ? "best guess" : "matched"}: ${describeWorkout(match.match)}`
             : "no watch workout yet; it will link when the watch syncs",
         other_candidates: match.alternatives.length
-      });
+      }, recall(["physical.training", "physical.ailments"], ["preference", "pattern"])));
     }
   );
 
@@ -668,7 +675,11 @@ export async function runBrain(message: string, context: BrainContext): Promise<
         rows.push({ day: s.date, line: `${s.date} ${describeSession(s)}${minutes} (${watch})` });
       }
       rows.sort((a, b) => b.day.localeCompare(a.day));
-      return text(rows.length ? rows.map((row) => row.line).join("\n") : "No workouts in that range.");
+      const training = recall(["physical.training", "physical.ailments"], ["preference", "pattern"]);
+      return text(
+        (rows.length ? rows.map((row) => row.line).join("\n") : "No workouts in that range.") +
+          (training.length ? `\n\nTraining memories (follow these preferences):\n${training.join("\n")}` : "")
+      );
     },
     { annotations: { readOnlyHint: true } }
   );
@@ -722,7 +733,7 @@ export async function runBrain(message: string, context: BrainContext): Promise<
       const caffeine = caffeineDay(entries, baseGoals);
       const sugar = sugarDay(entries, baseGoals);
       const row = (target: number, done: number) => ({ target, done: Math.round(done), left: Math.round(target - done) });
-      return text({
+      return text(withMemories({
         date: day.date,
         meals_saved: entries.length,
         calories: { ...row(goals.calories, eaten.calories), base_target: baseGoals.calories, from_workouts: workoutKcal },
@@ -733,14 +744,14 @@ export async function runBrain(message: string, context: BrainContext): Promise<
         // Null when that day's meals predate caffeine and sugar tracking.
         caffeine_mg: { limit: caffeine.limitMg, done: caffeine.mg, last_at: caffeine.last, cutoff: caffeine.cutoff, after_cutoff: caffeine.late },
         added_sugar_g: { limit: sugar.limitG, done: sugar.g }
-      });
+      }, recall(["physical.fuel"], ["preference", "pattern"])));
     },
     { annotations: { readOnlyHint: true } }
   );
 
   const run = await runClaude({
     system: systemPrompt(today, nowLocal, context.viewDate),
-    prompt: promptFor(message, context.history, context.openDrafts, context.savedDrafts, describeMemories(await listMemories(db, userName), today)),
+    prompt: promptFor(message, context.history, context.openDrafts, context.savedDrafts, describeMemories(memories, today, { weighIns })),
     server: {
       name: SERVER,
       config: createSdkMcpServer({
@@ -754,9 +765,9 @@ export async function runBrain(message: string, context: BrainContext): Promise<
           listMeals,
           getGoals,
           draftZoneGoals,
-          ...checkinTools({ db, userName, today, resolveDraftId, checkDate, putDraft: (draft) => drafts.set(draft.id, draft) }),
+          ...checkinTools({ db, userName, today, resolveDraftId, checkDate, recall, putDraft: (draft) => drafts.set(draft.id, draft) }),
           ...healthTools({ userName, today }),
-          ...bodyTools({ db, userName, today }),
+          ...bodyTools({ db, userName, today, recall }),
           ...feedbackTools({ db, userName, resolveDraftId, putDraft: (draft) => drafts.set(draft.id, draft) }),
           ...memoryTools({ db, userName, dryRun: context.dryRun, putNote: (note) => drafts.set(note.id, note) }),
           ...ailmentTools({

@@ -8,7 +8,7 @@ import { z } from "zod";
 import { runClaude } from "../claude-brain";
 import { addDays, localDateTime } from "../dates";
 import { listJournalEntries } from "../journal";
-import { describeMemories, listMemories } from "../memories";
+import { isLive, listMemories, memoryLine, memoriesFor, type Memory } from "../memories";
 import { appendAssistantMessage, currentConversation } from "../chat";
 import { INTENSITIES, INTENSITY_RULES, TRACKED_MUSCLES, WEEKLY_TARGET_POINTS, loadOf, muscleCapsOn, weekStartOf, type Intensity, type TrackedMuscle } from "../workouts";
 import { callOf, morningBrief } from "./brief";
@@ -250,6 +250,7 @@ How to decide:
 - Strength muscles take an intensity each, never above their guardrail.
 - Heart-rate zone goals (training.zones: this week's workout minutes per zone against the weekly goal, the usual week, the pace): plan cardio toward them. When moderate, vigorous or peak is behind pace and the body allows it, a cardio day or a cardio finisher fits: a steady run or ride for moderate, intervals (4 × 4 minutes hard) for vigorous and peak. Say which zone it's for in the note. Lifting earns little of it. Don't chase minutes on a rest or easy day.
 - Close out the week. Each muscle's goal is ${WEEKLY_TARGET_POINTS} points by Sunday (training.muscles[].points7 is this calendar week so far; light earns ${INTENSITY_RULES.light.points}, medium ${INTENSITY_RULES.medium.points}, hard ${INTENSITY_RULES.hard.points}). <week> lists the days left after today and the muscles still short. Plan today and each day left so every short muscle gets there by Sunday, as far as the body allows: with few days left, round several short muscles out in one session (one day left with chest, biceps and calves short: that day trains all three). A muscle needs its recovery before it's trained again (light ${INTENSITY_RULES.light.recoveryDays} day, medium ${INTENSITY_RULES.medium.recoveryDays}, hard ${INTENSITY_RULES.hard.recoveryDays}; readyIn says when each is ready), so pick today's intensities with the later days in mind. When more is short than the days and recovery allow, put first the muscles that also missed last week (lastWeek under ${WEEKLY_TARGET_POINTS}): chest short both weeks comes before back that was done last week. Fill week with each day left, planned like today (headline, muscles with intensities, finisher, a sentence on why); it's a plan, not a promise, and tomorrow's call starts again from what happened. Never push past what recovery, illness or an injury allows to hit a number.
+- Their preferences (<memories>, kind preference) are their own rules for how they like to train ("no pull day right after a heavy chest day"): follow them in today and every planned day, unless their body or an ailment says otherwise, and then say why. When a memory (a preference, a goal, a situation) shaped the call, name it in reasons ("you don't like pull after heavy chest, so legs today").
 - Open ailments (physical.ailments.open) are yours to weigh. Illness is already in the guardrails, and so is a bad (3) injury, which rests the whole region of its muscles. For a mild or hurting injury or pain, guardrails.ailments lists the muscles whose training loads it; decide how much to spare them from its severity, its day and trend (reportedOn, the days in the journal), what they wrote about it, and what's due. Usually that means skipping them or keeping them light for a few days (light rehab work is fine) and training something else; think about cardio that loads it too (running on a sore knee). Say how the plan treats each one in ailments, and name them in the note.
 
 ${CALL_STYLE}
@@ -324,6 +325,17 @@ export function weekContext(state: BodyState, guardrails: Guardrails, sources: P
   };
 }
 
+// The memories the call reads (docs/memory.md): training and ailment
+// preferences and patterns, goals, and live situations (stress, mood, work).
+export function callMemories(memories: Memory[], date: string) {
+  const ids = new Set<string>();
+  const picked = [
+    ...memoriesFor(memories, ["physical.training", "physical.ailments", "physical.recovery"], date, ["preference", "pattern"]),
+    ...memories.filter((memory) => (memory.kind === "goal" || memory.kind === "situation") && isLive(memory, date))
+  ].filter((memory) => !ids.has(memory.id) && ids.add(memory.id));
+  return picked.length ? `<memories>\n${picked.map((memory) => memoryLine(memory)).join("\n")}\n</memories>` : "";
+}
+
 // Claude's call for a day, or the rules' when Claude fails or breaks a limit.
 export async function makeCall(db: Pool, userName: string, state: BodyState, sources: BodySources, guardrails: Guardrails): Promise<DailyCall> {
   const madeAt = localDateTime();
@@ -347,7 +359,7 @@ export async function makeCall(db: Pool, userName: string, state: BodyState, sou
         lastEntries.length
           ? `<journal>\n${lastEntries.map((entry) => `${entry.date} ${entry.kind}: ${entry.body}`).join("\n")}\n</journal>`
           : "",
-        describeMemories(memories, date)
+        callMemories(memories, date)
       ]
         .filter(Boolean)
         .join("\n\n"),

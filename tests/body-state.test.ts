@@ -342,3 +342,24 @@ test("zone goals come from the owner's saved goals", () => {
   const goals = Object.fromEntries((state.physical.training.zones ?? []).map((zone) => [zone.zone, zone.goal]));
   assert.deepEqual(goals, { light: null, moderate: 200, vigorous: 40, peak: 0 });
 });
+
+test("a live situation from memories sits in its areas and explanations, and changes no status or illness call", () => {
+  const situation = {
+    id: "m1", kind: "situation" as const, content: "Tension at home since Nov 8", status: "active" as const, told: false,
+    followUpOn: shift(TODAY, 7), areas: ["lifestyle.relationships" as const, "mental.mood" as const], target: null,
+    createdAt: shift(TODAY, -4), updatedAt: shift(TODAY, -4), resolvedAt: null
+  };
+  const low = { [shift(TODAY, -1)]: { hrvMs: 30 }, [TODAY]: { hrvMs: 28, restingHr: 61 } };
+  const without = buildBodyState(sources({ health: health(low) }), TODAY);
+  const withIt = buildBodyState(sources({ health: health(low), memories: [situation] }), TODAY);
+  assert.deepEqual(withIt.lifestyle.relationships.situations?.map((item) => item.id), ["m1"]);
+  assert.deepEqual(withIt.mental.mood.situations?.map((item) => item.id), ["m1"]);
+  assert.equal(withIt.lifestyle.career.situations, undefined);
+  assert.ok(withIt.explanations.some((item) => item.kind === "situation" && item.detail === situation.content));
+  assert.equal(withIt.physical.illness.phase, without.physical.illness.phase);
+  assert.equal(withIt.physical.recovery.headline, without.physical.recovery.headline);
+  assert.equal(withIt.lifestyle.relationships.status, without.lifestyle.relationships.status);
+  // Not yet saved on an earlier day.
+  const before = buildBodyState(sources({ health: health(low), memories: [situation] }), shift(TODAY, -5));
+  assert.equal(before.lifestyle.relationships.situations, undefined);
+});

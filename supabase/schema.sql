@@ -712,23 +712,36 @@ create table if not exists public.daily_calls (
 
 alter table public.daily_calls enable row level security;
 
--- Chat memories (lib/memories.ts, docs/brain.md#memory): what the chat keeps
+-- Chat memories (lib/memories.ts, docs/memory.md): what the chat keeps
 -- about the owner between conversations. Saved by the chat on its own; the
 -- reply's note can undo it, and the chat can change, resolve or forget it.
+-- Each has a kind (how long it lasts) and areas (where it's used: body-state
+-- paths and `chat`); a goal can have a target code measures.
 create table if not exists public.chat_memories (
   id uuid primary key default gen_random_uuid(),
   user_name text not null,
-  kind text not null check (kind in ('about', 'goal', 'ongoing', 'pattern')),
+  kind text not null constraint chat_memories_kind_check check (kind in ('preference', 'situation', 'goal', 'fact', 'pattern')),
   content text not null,
   status text not null default 'active' check (status in ('active', 'resolved', 'forgotten')),
   told boolean not null default false,
-  follow_up_on date,
+  follow_up_on date, -- a day to ask about it; a situation's review day
+  areas text[] not null default '{}',
+  target jsonb, -- a goal's number: { "metric": "weight_lb", "target": 180 }
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   resolved_at timestamptz
 );
 
 create index if not exists chat_memories_user_status_idx on public.chat_memories (user_name, status, created_at);
+
+-- Memory v2 (November 24, 2026): v1's kinds about and ongoing become fact and situation.
+alter table public.chat_memories add column if not exists areas text[] not null default '{}';
+alter table public.chat_memories add column if not exists target jsonb;
+alter table public.chat_memories drop constraint if exists chat_memories_kind_check;
+update public.chat_memories set kind = 'fact' where kind = 'about';
+update public.chat_memories set kind = 'situation' where kind = 'ongoing';
+alter table public.chat_memories add constraint chat_memories_kind_check
+  check (kind in ('preference', 'situation', 'goal', 'fact', 'pattern'));
 
 alter table public.chat_memories enable row level security;
 

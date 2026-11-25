@@ -10,6 +10,7 @@ import { CALL_STYLE, callShape, checkCall, getDailyCall, guardrailsOf, saveDaily
 import { localDateTime } from "./dates";
 import { listBodyStates, listBodyStateVersions } from "./body-state/store";
 import type { BodyState } from "./body-state/types";
+import type { Recall } from "./memories";
 
 export const BODY_TOOLS = ["get_body_state", "list_body_states", "submit_call"];
 
@@ -19,7 +20,7 @@ export const BODY_PROMPT = `## Body state
 - explanations lists things that move the numbers besides illness: drinking or other habits, a late night, a hard training stretch, work stress. Use them when a number is off: "recovery is low after a late night" rather than an alarm.
 - Illness phases: sick (they said so: logged, or a journal entry tagged sick), recovering (2 days after), early_signs (the watch shows resting HR, temperature or HRV off their baseline and nothing explains it), well. What the owner says beats what the data suggests.
 - Today's call (get_body_state's call, shown on Today's check-in and as Training's Next up) is what to do today: made by you each morning inside guardrails the app sets (illness, readiness, sore muscles, the training rules), with a coach note and a question. physical.training.suggested is the rule-based default it started from. Explain the call from its reasons and the state; don't re-derive it.
-- When they tell you something that changes today's plan ("my wrist hurts", "no gym today", "I feel great, can I go harder?", their answer to the morning question), revise the call: call submit_call with the whole new call and revised_because, after saving any report it depends on. The call includes week, the plan for each day left through Sunday so every muscle reaches 4 points (training.muscles[].points7 is this week's points); keep it in step with today's change ("chest today instead" moves what Saturday needs). When not everything fits, muscles that also missed last week come first (last Sunday's body state has last week's points). It's checked against the guardrails (which can't be lifted: "I feel great" doesn't make a red day hard); an error says what to fix. Revise only today's call, and only when the plan really changes. Say what changed in a sentence. The call's voice: ${CALL_STYLE}
+- When they tell you something that changes today's plan ("my wrist hurts", "no gym today", "I feel great, can I go harder?", their answer to the morning question), revise the call: call submit_call with the whole new call and revised_because, after saving any report it depends on. The call includes week, the plan for each day left through Sunday so every muscle reaches 4 points (training.muscles[].points7 is this week's points); keep it in step with today's change ("chest today instead" moves what Saturday needs). When not everything fits, muscles that also missed last week come first (last Sunday's body state has last week's points). It's checked against the guardrails (which can't be lifted: "I feel great" doesn't make a red day hard); an error says what to fix. Follow their training preferences (get_body_state's memories) in the revised call and its week. Revise only today's call, and only when the plan really changes. Say what changed in a sentence. The call's voice: ${CALL_STYLE}
 - Temperatures are in Celsius in the data (physical.vitals.sleepTemp is a °C difference from the watch's baseline). Always tell the owner Fahrenheit, as the headlines do: multiply a difference by 1.8 (+0.5°C is +0.9°F).
 - Status unknown means no data for that area; say so instead of guessing. meta.missing lists what's missing for the day.
 - Body states are stored daily from late June 2026. list_body_states reads history: each day's domain and area statuses and headlines, plus any areas you ask for in full by path (physical.recovery, mental.mood, lifestyle.career, explanations). Use it for "how was October", "when was I last sick", trends and comparisons. A past day changes when something is logged late; with versions for a single day it shows what the app believed as the day went on. Before about mid-September most mental and lifestyle areas are unknown: there was no journal or habit data yet.`;
@@ -28,7 +29,7 @@ function text(value: unknown) {
   return { content: [{ type: "text" as const, text: typeof value === "string" ? value : JSON.stringify(value) }] };
 }
 
-export function bodyTools({ db, userName, today }: { db: Pool; userName: string; today: string }) {
+export function bodyTools({ db, userName, today, recall }: { db: Pool; userName: string; today: string; recall?: Recall }) {
   const getBodyStateTool = tool(
     "get_body_state",
     "Read the body state for a day (today by default): domains, areas, signals, explanations and the suggested training.",
@@ -37,7 +38,10 @@ export function bodyTools({ db, userName, today }: { db: Pool; userName: string;
       const date = args.date ?? today;
       if (date > today) return { ...text("Can't read a future date."), isError: true };
       const [state, call] = await Promise.all([getBodyState(db, userName, date), getDailyCall(db, userName, date)]);
-      return text({ ...state, call });
+      // Preferences and patterns for the areas a "how am I doing" or training
+      // question is about (docs/memory.md); goals and situations are in the core.
+      const memories = date === today ? (recall?.(["physical.training", "physical.sleep", "physical.recovery", "physical.ailments"], ["preference", "pattern"]) ?? []) : [];
+      return text({ ...state, call, ...(memories.length ? { memories } : {}) });
     },
     { annotations: { readOnlyHint: true } }
   );

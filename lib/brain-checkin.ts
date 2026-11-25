@@ -5,6 +5,7 @@ import { tool } from "@anthropic-ai/claude-agent-sdk";
 import type { Pool } from "pg";
 import { z } from "zod";
 import { addDays } from "./dates";
+import type { Recall } from "./memories";
 import {
   HABIT_DIRECTIONS,
   HABIT_MEASURES,
@@ -162,8 +163,11 @@ export function checkinTools(context: {
   resolveDraftId: (replaces: string | undefined) => DraftSlot;
   checkDate: (date: string | undefined) => { date: string } | { error: string };
   putDraft: (draft: CheckinDraft) => void;
+  // Live memories for an area (docs/memory.md): habit patterns ride on the habit tools.
+  recall?: Recall;
 }) {
   const { db, userName, resolveDraftId, checkDate, putDraft } = context;
+  const habitMemories = () => context.recall?.(["lifestyle.habits"], ["preference", "pattern", "goal"]) ?? [];
 
   const draftJournal = tool(
     "draft_journal",
@@ -317,7 +321,8 @@ export function checkinTools(context: {
           }),
         not_logged_yet: habits
           .filter((habit) => !covered.has(habit.id) && trackedOn(habit, day.date))
-          .map((habit) => habit.name)
+          .map((habit) => habit.name),
+        ...(habitMemories().length ? { memories: habitMemories() } : {})
       });
     }
   );
@@ -394,7 +399,11 @@ export function checkinTools(context: {
     { include_archived: z.boolean() },
     async (args) => {
       const habits = await listHabits(db, userName, args.include_archived);
-      return text(habits.length ? habits.map(describeHabit).join("\n") : "No habits are tracked yet.");
+      const memories = habitMemories();
+      return text(
+        (habits.length ? habits.map(describeHabit).join("\n") : "No habits are tracked yet.") +
+          (memories.length ? `\n\nHabit memories:\n${memories.join("\n")}` : "")
+      );
     },
     { annotations: { readOnlyHint: true } }
   );

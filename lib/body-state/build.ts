@@ -57,6 +57,7 @@ import {
   type VitalsArea
 } from "./types";
 import { fahrenheitDelta } from "../health/units";
+import { isLive, type Memory } from "../memories-core";
 import { ZONES, zoneGoalsOf, zoneMinutes, zonePace } from "../health/zones";
 
 const WORST: Status[] = ["low", "watch", "ok", "good"];
@@ -848,6 +849,15 @@ function otherExplanations(c: Context, sleep: SleepArea, load: LoadArea, career:
   return list;
 }
 
+// ---------- Situations ----------
+
+// Situations live on the day (docs/memory.md), oldest first.
+function situationsOn(memories: readonly Memory[], date: string) {
+  return memories
+    .filter((memory) => memory.kind === "situation" && isLive(memory, date))
+    .map((memory) => ({ id: memory.id, content: memory.content, since: memory.createdAt, review: memory.followUpOn, areas: memory.areas }));
+}
+
 // ---------- The whole state ----------
 
 export function buildBodyState(
@@ -878,13 +888,25 @@ export function buildBodyState(
   const { area: habits, explanations: habitExplanations } = habitsArea(c);
   const career = careerArea(c);
   const relationships = relationshipsArea(c);
-  const explanations = [...habitExplanations, ...otherExplanations(c, sleep, load, career, fuel)];
+  // Live situations from memories go in their areas and the explanations,
+  // as context for Claude: no status changes, no headline, no illness effect.
+  const situations = situationsOn(sources.memories ?? [], date);
+  for (const [area, key] of [[mood, "mental.mood"], [career, "lifestyle.career"], [relationships, "lifestyle.relationships"]] as const) {
+    const here = situations.filter((item) => item.areas.includes(key));
+    if (here.length) area.situations = here.map(({ id, content, since, review }) => ({ id, content, since, review }));
+  }
+  const explanations = [
+    ...habitExplanations,
+    ...otherExplanations(c, sleep, load, career, fuel),
+    ...situations.map((item): Explanation => ({ kind: "situation", detail: item.content, affects: ["sleep", "hrv", "recovery"], source: item.areas[0] }))
+  ];
+  const measured = explanations.filter((item) => item.kind !== "situation");
   // A low recovery or short sleep says what likely caused it.
-  const recoveryCause = explanations.find((item) => item.affects.includes("recovery"));
+  const recoveryCause = measured.find((item) => item.affects.includes("recovery"));
   if (recoveryCause && (recovery.status === "low" || recovery.status === "watch")) recovery.headline += `, after ${recoveryCause.detail}`;
-  const sleepCause = explanations.find((item) => item.affects.includes("sleep") && item.kind !== "late_night");
+  const sleepCause = measured.find((item) => item.affects.includes("sleep") && item.kind !== "late_night");
   if (sleepCause && (sleep.status === "low" || sleep.status === "watch")) sleep.headline += `, after ${sleepCause.detail}`;
-  const illness = illnessArea(c, vitals, explanations);
+  const illness = illnessArea(c, vitals, measured);
   const ailments = ailmentsArea(c);
   const drinks = habitExplanations.filter((item) => item.kind === "habit");
   const training = trainingArea(c, illness, readinessOf(recovery, load, drinks, fuel));

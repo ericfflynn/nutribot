@@ -8,6 +8,7 @@ import type { Ailment, OpenAilment } from "../ailments-core";
 import type { IllnessDay } from "../illness-days";
 import type { JournalEntry } from "../journal";
 import type { Goals } from "../goals";
+import type { Memory } from "../memories-core";
 import type { SleepNeed } from "../health/scores";
 import type { MacroEntry } from "../supabase";
 import type { FitbitWorkout, Intensity, Readiness, SorenessReport, TrackedMuscle, WorkoutSession } from "../workouts";
@@ -170,6 +171,10 @@ export type FuelArea = Head & {
   proteinStreak: number; // days in a row under 80% of the protein target, with meals logged
 };
 
+// A live situation from the chat's memories (docs/memory.md) tagged with an
+// area: context for Claude, never a status. Added Nov 24, 2026.
+export type Situation = { id: string; content: string; since: string; review: string | null };
+
 export type MoodArea = Head & {
   mood: Dated<number> | null;
   stress: Dated<number> | null;
@@ -177,6 +182,7 @@ export type MoodArea = Head & {
   trend7: (number | null)[];
   lowStreak: number; // rated days in a row with mood 2 or under
   lastEntries: { id: string; date: string; kind: string }[];
+  situations?: Situation[];
 };
 
 export type HabitsArea = Head & {
@@ -189,15 +195,19 @@ export type CareerArea = Head & {
   workDays7: number;
   latestTag: Dated<string> | null; // the latest work tag's value ("deadline")
   feel7?: { good: number; bad: number }; // days work felt good or bad, last 7 (added Nov 10, 2026)
+  situations?: Situation[];
 };
 
 export type RelationshipsArea = Head & {
   // Who they were with (the `with` tag's value), last 7 days; feeling since Nov 10, 2026.
   recent: { tag: string; date: string; mood: number | null; feeling?: "good" | "bad" | null }[];
   social7: number;
+  situations?: Situation[];
 };
 
-export const EXPLANATION_KINDS = ["habit", "late_night", "load", "stress", "caffeine"] as const;
+// situation: a live situation from memories (Nov 24, 2026). Context for
+// Claude only: it never quiets the illness check or names a cause in a headline.
+export const EXPLANATION_KINDS = ["habit", "late_night", "load", "stress", "caffeine", "situation"] as const;
 export type Explanation = {
   kind: (typeof EXPLANATION_KINDS)[number];
   detail: string;
@@ -247,4 +257,5 @@ export type BodySources = {
   water: Record<string, number>; // oz by date, yesterday and today
   goals: Goals;
   lastSync: HealthSyncRun | null;
+  memories?: Memory[]; // active and resolved; live ones on the day become situations
 };

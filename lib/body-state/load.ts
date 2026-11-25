@@ -7,6 +7,7 @@ import { listHabitLogs, listHabits } from "../habits";
 import { illnessDates, listAilments } from "../ailments";
 import { listIllnessDays } from "../illness";
 import { listJournalEntries } from "../journal";
+import { listMemories } from "../memories";
 import { getUserGoals, getWaterOunces, listEntriesForDateRange } from "../supabase";
 import { listFitbitWorkouts, listWorkoutSessions } from "../workouts";
 import { buildBodyState } from "./build";
@@ -14,7 +15,7 @@ import type { BodySources, BodyState } from "./types";
 
 export async function loadBodySources(db: Pool, userName: string, date: string): Promise<BodySources> {
   const yesterday = addDays(date, -1);
-  const [health, healthWorkouts, sessions, fitbit, soreness, illness, ailments, journal, habits, habitLogs, meals, waterYesterday, waterToday, goals, lastSync] =
+  const [health, healthWorkouts, sessions, fitbit, soreness, illness, ailments, journal, habits, habitLogs, meals, waterYesterday, waterToday, goals, lastSync, memories] =
     await Promise.all([
       listHealthDays(userName, addDays(date, -62), date),
       listHealthWorkouts(userName, addDays(date, -35), date),
@@ -30,7 +31,9 @@ export async function loadBodySources(db: Pool, userName: string, date: string):
       getWaterOunces(userName, yesterday, db),
       getWaterOunces(userName, date, db),
       getUserGoals(userName, db),
-      getLatestHealthSyncRun(userName)
+      getLatestHealthSyncRun(userName),
+      // Situations for the body state (docs/memory.md); forgotten ones were wrong.
+      listMemories(db, userName, ["active", "resolved"])
     ]);
   return {
     health,
@@ -46,7 +49,8 @@ export async function loadBodySources(db: Pool, userName: string, date: string):
     meals,
     water: { [yesterday]: waterYesterday, [date]: waterToday },
     goals,
-    lastSync
+    lastSync,
+    memories
   };
 }
 
