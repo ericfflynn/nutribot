@@ -284,6 +284,7 @@ type Explanation = {
 How they're used:
 
 - **Stored** in `state.explanations[]`, each pointing at the area it came from.
+- **Situations** (since November 24, 2026, [memory.md](memory.md)): each live situation from the chat's memories is an explanation of kind `situation`, and is listed in `situations[]` on `mental.mood`, `lifestyle.career` or `lifestyle.relationships` by its areas. They're context for Claude (the call and the chat): they change no status, never quiet the illness check and never become a headline's "after …", since a situation lasts weeks.
 - **Illness:** with a fitting explanation, a `possible` signal stays `well` and a `likely` one stays `early_signs` but the call says it's probably the explanation ("resting HR up 3, likely the drinks: easy day, see how tomorrow looks"). A signal that lasts past the explanation (2+ days after it) counts as illness again. Explanations never override what the owner reports.
 - **Recovery:** a low recovery with an explanation reads as that ("recovery 38 after a late night"), not as something wrong.
 - **Tuning:** each early warning is stored with its explanations, so false alarms can be checked against them.

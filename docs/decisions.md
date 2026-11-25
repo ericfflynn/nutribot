@@ -2,6 +2,18 @@
 
 Product and design decisions, newest first. One entry per decision: what was decided, why, and what it replaced or ruled out. Add an entry whenever the owner settles something that future work should follow; link the doc that holds the detail. Data shapes live in their specs ([body-state.md](body-state.md) keeps the body state's schema versions); this log says why they are what they are.
 
+## 2026-11-24
+
+### Memory v2: kinds with their own life, areas that say where they're used
+- **Decided:** memories are preferences, situations, goals, facts and patterns, each tagged with the body-state areas it belongs to (plus `chat`). Code delivers them: every chat turn gets only a small core (goals, live situations, chat preferences, facts while 20 or fewer); training preferences ride on the workout tools and the morning call; food preferences on the meal tools; live situations show in the body state's mood, career and relationships areas. Situations need a review day and fade a week after it unless updated. A weight goal carries a target measured against the weigh-ins. Pushback on a recommendation is saved as a preference, not filed as app feedback. Spec: [memory.md](memory.md).
+- **Why:** v1 loaded every memory into every turn and saved one memory in about 200 messages. The owner's "I don't like pull after heavy chest" became an app bug report, so the next call never saw it. The owner: memories differ in how long they last and where they matter, and loading them all everywhere is primitive.
+- **Instead of:** v1's one list in every turn; a hard-coded "no pull after chest" guardrail; Claude looking memories up on its own (v1 showed it doesn't); situations changing area statuses or quieting the illness check.
+
+### The chat drafts only what the owner says they did
+- **Decided:** a plan (today's call, its week, what's due) is never evidence of a workout. When the owner doesn't say what they trained, the chat asks before drafting.
+- **Why:** on November 24 the chat logged "a solid workout" as the planned pull day; it had been legs (feedback 740a4640).
+- **Instead of:** filling the draft from the plan and asking the owner to correct it.
+
 ## 2026-11-22
 
 ### Training: no Next up; split tiles first, then zones and body map in a swipe gallery
